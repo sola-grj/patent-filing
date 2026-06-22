@@ -10,38 +10,84 @@ import {
   toErrorMessage,
 } from "../server-utils";
 import { inferFileRole, inferLanguage, writeRequestEvent } from "./helpers";
+import {
+  parseQuoteNegotiationInput,
+  startQuoteNegotiation,
+} from "./quote-negotiation";
 import { createWizardQuote } from "./wizard-quote-persistence";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 
 export async function persistWizardRequest(
   formData: FormData,
-  mode: "draft" | "submit",
+  mode: "draft" | "submit" | "negotiate",
 ): Promise<ActionResult<WizardPersistResult>> {
   try {
     const payload = parseWizardPayload(formData);
     const { supabase, userId, organization } = await getRequesterOrganization();
     if (!organization) throw new Error("Create an organization before creating requests.");
+    const negotiationInput =
+      mode === "negotiate" ? parseQuoteNegotiationInput(formData) : null;
 
-    const requestId = randomUUID();
-    await createRequest(supabase, requestId, organization.id, userId, payload, mode);
-    const requestFileIds = await persistSourceFiles(supabase, requestId, userId, payload, formData);
+    const requestId = payload.requestId ?? randomUUID();
+    const uploadedFormFiles = formData.getAll("files").filter((file): file is File => file instanceof File);
+    const reuseExistingUploadFiles = Boolean(payload.requestId)
+      && payload.sourceMode === "upload"
+      && uploadedFormFiles.length === 0;
 
-    if (mode === "submit") {
-      await persistSubmissionArtifacts(supabase, requestId, userId, payload, requestFileIds);
+    if (payload.requestId) {
+      await assertEditableDraft(supabase, requestId, userId);
+      if (!reuseExistingUploadFiles) {
+        await clearDraftSourceArtifacts(supabase, requestId);
+      }
+    }
+
+    await upsertRequest(supabase, requestId, organization.id, userId, payload, mode);
+    const requestFileIds = await persistSourceFiles(
+      supabase,
+      requestId,
+      userId,
+      payload,
+      formData,
+      reuseExistingUploadFiles,
+    );
+
+    let quoteId: string | null = null;
+    if (mode !== "draft") {
+      quoteId = await persistSubmissionArtifacts(
+        supabase,
+        requestId,
+        userId,
+        payload,
+        requestFileIds,
+      );
     }
 
     await writeRequestEvent(
       supabase,
       requestId,
       userId,
-      mode === "submit" ? "request.submitted.from_wizard" : "request.draft.saved",
+      mode === "draft" ? "request.draft.saved" : "request.submitted.from_wizard",
       null,
-      mode === "submit" ? "quoted" : "draft",
+      mode === "draft" ? "draft" : "quoted",
       { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
     );
+
+    if (mode === "negotiate" && quoteId && negotiationInput) {
+      await startQuoteNegotiation(
+        supabase,
+        requestId,
+        quoteId,
+        userId,
+        negotiationInput,
+        { source: "wizard" },
+      );
+    }
+
     revalidatePath("/requester");
     revalidatePath("/requester/requests");
+    revalidatePath(`/requester/requests/${requestId}`);
+    revalidatePath(`/requester/requests/${requestId}/quote`);
     return { success: true, data: { requestId } };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
@@ -57,27 +103,34 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   return payload;
 }
 
-async function createRequest(
+async function upsertRequest(
   supabase: SupabaseClient,
   requestId: string,
   organizationId: string,
   userId: string,
   payload: WizardPayload,
-  mode: "draft" | "submit",
+  mode: "draft" | "submit" | "negotiate",
 ) {
-  const { error } = await supabase.from("translation_requests").insert({
-    id: requestId,
+  const requestInput = {
     organization_id: organizationId,
     requester_id: userId,
     source_mode: payload.sourceMode,
     title: payload.title.trim(),
-    workflow_stage: mode === "submit" ? "quoted" : "draft",
-    requester_status: "responding",
-    pm_status: "responding",
-    draft_payload: payload,
+    workflow_stage: mode === "draft" ? "draft" : "quoted",
+    requester_status: mode === "draft" ? "responding" : "responding",
+    pm_status: mode === "draft" ? "responding" : "responding",
+    draft_payload: { ...payload, requestId },
     last_draft_step: payload.lastStep,
-    submitted_at: mode === "submit" ? new Date().toISOString() : null,
-  });
+    submitted_at: mode === "draft" ? null : new Date().toISOString(),
+  };
+
+  const { error } = payload.requestId
+    ? await supabase.from("translation_requests").update(requestInput).eq("id", requestId)
+    : await supabase.from("translation_requests").insert({
+        id: requestId,
+        ...requestInput,
+      });
+
   if (error) throw new Error(error.message);
 }
 
@@ -87,8 +140,12 @@ async function persistSourceFiles(
   userId: string,
   payload: WizardPayload,
   formData: FormData,
+  reuseExistingUploadFiles: boolean,
 ) {
   if (payload.sourceMode === "upload") {
+    if (reuseExistingUploadFiles) {
+      return fetchExistingRequestFileIds(supabase, requestId);
+    }
     return persistUploadedFiles(supabase, requestId, userId, formData);
   }
   return persistPatentSelection(supabase, requestId, payload);
@@ -133,6 +190,21 @@ async function persistUploadedFiles(
   }
 
   return fileIds;
+}
+
+async function fetchExistingRequestFileIds(
+  supabase: SupabaseClient,
+  requestId: string,
+) {
+  const { data, error } = await supabase
+    .from("request_files")
+    .select("id")
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((file) => file.id);
 }
 
 async function persistPatentSelection(
@@ -204,6 +276,50 @@ async function persistPatentSelection(
   return requestFileIds;
 }
 
+async function assertEditableDraft(
+  supabase: SupabaseClient,
+  requestId: string,
+  userId: string,
+) {
+  const { data, error } = await supabase
+    .from("translation_requests")
+    .select("id, workflow_stage, requester_id")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data || data.requester_id !== userId || data.workflow_stage !== "draft") {
+    throw new Error("Draft request is no longer editable.");
+  }
+}
+
+async function clearDraftSourceArtifacts(
+  supabase: SupabaseClient,
+  requestId: string,
+) {
+  const { data: requestFiles, error: requestFilesError } = await supabase
+    .from("request_files")
+    .select("id, source, storage_bucket, storage_path")
+    .eq("request_id", requestId);
+
+  if (requestFilesError) throw new Error(requestFilesError.message);
+
+  const uploadedPaths = (requestFiles ?? [])
+    .filter((file) => file.source === "upload")
+    .map((file) => file.storage_path);
+
+  if (uploadedPaths.length) {
+    const { error: storageError } = await supabase.storage.from("request-files").remove(uploadedPaths);
+    if (storageError) throw new Error(storageError.message);
+  }
+
+  const { error: deleteFilesError } = await supabase.from("request_files").delete().eq("request_id", requestId);
+  if (deleteFilesError) throw new Error(deleteFilesError.message);
+
+  const { error: deleteSearchesError } = await supabase.from("patent_searches").delete().eq("request_id", requestId);
+  if (deleteSearchesError) throw new Error(deleteSearchesError.message);
+}
+
 async function persistSubmissionArtifacts(
   supabase: SupabaseClient,
   requestId: string,
@@ -219,7 +335,7 @@ async function persistSubmissionArtifacts(
   await supabase.from("request_config_files").insert(
     requestFileIds.map((fileId) => ({ config_version_id: configId, request_file_id: fileId })),
   );
-  await createWizardQuote(supabase, requestId, payload);
+  return createWizardQuote(supabase, requestId, payload);
 }
 
 async function createParseResults(

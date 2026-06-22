@@ -46,6 +46,7 @@ export type WizardUploadedFile = {
 };
 
 export type WizardPayload = {
+  requestId?: string;
   title: string;
   sourceMode: WizardSourceMode;
   patentQuery?: string;
@@ -54,6 +55,12 @@ export type WizardPayload = {
   uploadedFiles: WizardUploadedFile[];
   config: WizardConfig;
   lastStep: string;
+};
+
+export type WizardDraftSession = {
+  requestId: string;
+  requestNo: string;
+  payload: Partial<WizardPayload>;
 };
 
 export type WizardPersistResult = {

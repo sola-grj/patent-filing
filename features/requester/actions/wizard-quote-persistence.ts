@@ -52,6 +52,8 @@ export async function createWizardQuote(
       urgent: payload.config.isUrgent,
     },
   });
+
+  return quoteId;
 }
 
 function totalWordCount(payload: WizardPayload) {

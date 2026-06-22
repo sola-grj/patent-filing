@@ -6,17 +6,22 @@ import { Label } from "@/components/ui/label";
 export function StepShell({
   title,
   description,
+  action,
   children,
 }: {
   title: string;
   description: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       {children}
     </div>
@@ -41,10 +46,21 @@ export function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function Metric({ title, value }: { title: string; value: number | string }) {
+export function Metric({
+  title,
+  value,
+  action,
+}: {
+  title: string;
+  value: number | string;
+  action?: ReactNode;
+}) {
   return (
     <div className="rounded-md border p-4">
-      <p className="text-sm text-muted-foreground">{title}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-muted-foreground">{title}</p>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
       <p className="mt-2 text-2xl font-semibold">
         {typeof value === "number" ? value.toLocaleString() : value}
       </p>

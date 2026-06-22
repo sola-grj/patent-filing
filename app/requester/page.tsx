@@ -1,21 +1,34 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge, formatDate } from "@/features/requester/format";
+import { StatusPill } from "@/components/ui/status-pill";
 import { WorkspaceSetupForm } from "@/features/requester/components/workspace-setup-form";
+import { formatDate } from "@/features/requester/format";
 import { getRequesterDashboard } from "@/features/requester/queries";
+import {
+  RequesterStatusBadge,
+  type RequesterLifecycleStatus,
+  getRequesterStatusMeta,
+} from "@/features/requester/requester-status";
 
 export default function RequesterDashboardPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading dashboard...</p>}>
+    <Suspense
+      fallback={
+        <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+      }
+    >
       <DashboardContent />
     </Suspense>
   );
 }
 
 async function DashboardContent() {
-  const { organization, stats, recentRequests } = await getRequesterDashboard();
+  const { organization, stats, recentRequests, recentDrafts, draftCount } =
+    await getRequesterDashboard();
+  const visibleDrafts = recentDrafts.slice(0, 3);
 
   if (!organization || !stats) {
     return (
@@ -28,7 +41,8 @@ async function DashboardContent() {
             Set up your Patentia workspace
           </h1>
           <p className="mx-auto max-w-xl text-sm text-muted-foreground">
-            Create your organization profile before starting patent translation requests.
+            Create your organization profile before starting patent translation
+            requests.
           </p>
         </div>
         <WorkspaceSetupForm />
@@ -44,15 +58,38 @@ async function DashboardContent() {
         </h1>
       </section>
       <div className="grid gap-4 md:grid-cols-5">
-        <Metric title="Responding" value={stats.responding} />
-        <Metric title="Negotiating" value={stats.negotiating} />
-        <Metric title="In progress" value={stats.inProgress} />
-        <Metric title="Rejected" value={stats.rejected} />
-        <Metric title="Completed" value={stats.completed} />
+        <Metric
+          status="responding"
+          value={stats.responding}
+          href="/requester/requests?status=responding"
+        />
+        <Metric
+          status="negotiation"
+          value={stats.negotiating}
+          href="/requester/requests?status=negotiation"
+        />
+        <Metric
+          status="in_progress"
+          value={stats.inProgress}
+          href="/requester/requests?status=in_progress"
+        />
+        <Metric
+          status="rejected"
+          value={stats.rejected}
+          href="/requester/requests?status=rejected"
+        />
+        <Metric
+          status="completed"
+          value={stats.completed}
+          href="/requester/requests?status=completed"
+        />
       </div>
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Recent Requests</CardTitle>
+          <Button asChild variant="link" size="sm" className="px-0">
+            <Link href="/requester/requests">More</Link>
+          </Button>
         </CardHeader>
         <CardContent>
           {recentRequests.length ? (
@@ -63,10 +100,19 @@ async function DashboardContent() {
                   href={`/requester/requests/${request.id}`}
                   className="flex items-center justify-between py-3 text-sm"
                 >
-                  <span>{request.request_no} · {request.title ?? "Untitled request"}</span>
+                  <span>
+                    <span className="block font-semibold text-foreground">
+                      {request.title ?? "Untitled request"}
+                    </span>
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {request.request_no}
+                    </span>
+                  </span>
                   <span className="flex items-center gap-3">
-                    <StatusBadge status={request.requester_status} />
-                    <span className="text-muted-foreground">{formatDate(request.updated_at)}</span>
+                    <RequesterStatusBadge status={request.requester_status} />
+                    <span className="text-muted-foreground">
+                      {formatDate(request.updated_at)}
+                    </span>
                   </span>
                 </Link>
               ))}
@@ -76,15 +122,80 @@ async function DashboardContent() {
           )}
         </CardContent>
       </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle>My drafts</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Continue editing saved request drafts.
+            </p>
+          </div>
+          <Button asChild variant="link" size="sm" className="px-0">
+            <Link href="/requester/drafts">Open drafts</Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {draftCount ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {draftCount} draft requests saved.
+              </p>
+              <div className="divide-y">
+                {visibleDrafts.map((draft) => (
+                  <Link
+                    key={draft.id}
+                    href={`/requester/drafts/${draft.id}`}
+                    className="flex items-center justify-between py-3 text-sm"
+                  >
+                    <span>
+                      {draft.title ?? "Untitled draft"}
+                      <span className="block text-muted-foreground">
+                        {draft.last_draft_step ?? "Basics"}
+                      </span>
+                    </span>
+                    <span className="text-muted-foreground">
+                      {formatDate(draft.updated_at)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No drafts yet.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
-function Metric({ title, value }: { title: string; value: number }) {
+function Metric({
+  status,
+  value,
+  href,
+}: {
+  status: RequesterLifecycleStatus;
+  value: number;
+  href: string;
+}) {
+  const statusMeta = getRequesterStatusMeta(status);
+
   return (
-    <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
-      <CardContent><p className="text-2xl font-semibold">{value}</p></CardContent>
-    </Card>
+    <Link href={href} className="block cursor-pointer">
+      <Card className="transition-colors hover:bg-muted/40">
+        <CardHeader className="pb-2">
+          <CardTitle className="sr-only">{statusMeta.label}</CardTitle>
+          <StatusPill
+            icon={statusMeta.icon}
+            label={statusMeta.label}
+            size="compact"
+            toneClassName={statusMeta.toneClassName}
+          />
+        </CardHeader>
+        <CardContent>
+          <p className="text-2xl font-semibold">{value}</p>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }

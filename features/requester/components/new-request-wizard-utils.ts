@@ -29,22 +29,27 @@ export const defaultWizardConfig: WizardConfig = {
 };
 
 export function buildWizardPayload(input: {
+  requestId?: string;
   title: string;
   sourceMode: WizardSourceMode;
   patentQuery: string;
   selectedPatent?: WizardPatentCandidate;
   selectedPatentFileIds: string[];
   uploadedFiles: File[];
+  uploadedFileSnapshots?: WizardUploadedFile[];
   config: WizardConfig;
   lastStep: string;
 }): WizardPayload {
   return {
+    requestId: input.requestId,
     title: input.title,
     sourceMode: input.sourceMode,
     patentQuery: input.patentQuery,
     selectedPatent: input.selectedPatent,
     selectedPatentFileIds: input.selectedPatentFileIds,
-    uploadedFiles: input.uploadedFiles.map(fileToUploadedFile),
+    uploadedFiles: input.uploadedFiles.length
+      ? input.uploadedFiles.map(fileToUploadedFile)
+      : input.uploadedFileSnapshots ?? [],
     config: input.config,
     lastStep: input.lastStep,
   };

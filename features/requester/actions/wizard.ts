@@ -34,3 +34,9 @@ export async function submitRequestFromWizard(
 ): Promise<ActionResult<WizardPersistResult>> {
   return persistWizardRequest(formData, "submit");
 }
+
+export async function submitNegotiationFromWizard(
+  formData: FormData,
+): Promise<ActionResult<WizardPersistResult>> {
+  return persistWizardRequest(formData, "negotiate");
+}

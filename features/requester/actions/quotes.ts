@@ -3,13 +3,16 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  optionalNumber,
   optionalString,
   requiredString,
   type ActionResult,
 } from "@/lib/validators/requester";
 import { getAuthenticatedUser, toErrorMessage } from "../server-utils";
 import { calculateQuote, nextVersion, sumParseMetric, writeRequestEvent } from "./helpers";
+import {
+  parseQuoteNegotiationInput,
+  startQuoteNegotiation,
+} from "./quote-negotiation";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 type SelectedRequestFile = { id: string; file_parse_results?: unknown };
@@ -120,44 +123,15 @@ export async function negotiateQuote(formData: FormData): Promise<ActionResult> 
     const { supabase, userId } = await getAuthenticatedUser();
     const requestId = requiredString(formData.get("requestId"), "Request");
     const quoteId = requiredString(formData.get("quoteId"), "Quote");
-    const expectedAmount = optionalNumber(formData.get("expectedAmount"));
-    const expectedDeliveryAt = optionalString(formData.get("expectedDeliveryAt"));
-    const adjustmentNotes = optionalString(formData.get("adjustmentNotes"));
+    const negotiationInput = parseQuoteNegotiationInput(formData);
 
-    if (!expectedAmount && !expectedDeliveryAt && !adjustmentNotes) {
-      throw new Error("Provide expected price, delivery date, or adjustment notes.");
-    }
-
-    const { data, error } = await supabase.from("quote_negotiations").insert({
-      request_id: requestId,
-      quote_id: quoteId,
-      initiated_by: userId,
-      expected_amount: expectedAmount,
-      expected_delivery_at: expectedDeliveryAt,
-      adjustment_notes: adjustmentNotes,
-      status: "open",
-    }).select("id").single();
-
-    if (error) throw new Error(error.message);
-
-    await supabase.from("quote_negotiation_messages").insert({
-      negotiation_id: data.id,
-      author_id: userId,
-      body: adjustmentNotes,
-      expected_amount: expectedAmount,
-      expected_delivery_at: expectedDeliveryAt,
-      adjustment_notes: adjustmentNotes,
-    });
-    await supabase.from("quotes").update({ status: "negotiating" }).eq("id", quoteId);
-    await supabase
-      .from("translation_requests")
-      .update({
-        workflow_stage: "negotiation",
-        requester_status: "negotiation",
-        pm_status: "negotiation",
-      })
-      .eq("id", requestId);
-    await writeRequestEvent(supabase, requestId, userId, "quote.negotiation.started", "quoted", "negotiation");
+    await startQuoteNegotiation(
+      supabase,
+      requestId,
+      quoteId,
+      userId,
+      negotiationInput,
+    );
 
     revalidatePath(`/requester/requests/${requestId}`);
     return { success: true };
