@@ -9,12 +9,18 @@ const statusPillVariants = cva(
   {
     variants: {
       size: {
-        default: "h-7 w-40 gap-1.5 px-2.5 text-xs [&_svg]:size-3.5",
-        compact: "h-6 w-36 gap-1.5 px-2 text-[11px] [&_svg]:size-3.5",
+        default: "h-7 gap-1.5 px-2.5 text-xs [&_svg]:size-3.5",
+        compact: "h-6 gap-1.5 px-2 text-[11px] [&_svg]:size-3.5",
+      },
+      width: {
+        fixed: "w-40",
+        compactFixed: "w-36",
+        full: "w-full",
       },
     },
     defaultVariants: {
       size: "default",
+      width: "fixed",
     },
   },
 );
@@ -32,13 +38,17 @@ export function StatusPill({
   icon: Icon,
   label,
   size,
+  width,
   toneClassName,
   ...props
 }: StatusPillProps) {
   return (
     <div
       className={cn(
-        statusPillVariants({ size }),
+        statusPillVariants({
+          size,
+          width: width ?? (size === "compact" ? "compactFixed" : "fixed"),
+        }),
         "whitespace-nowrap",
         toneClassName,
         className,

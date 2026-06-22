@@ -189,6 +189,7 @@ function Metric({
             icon={statusMeta.icon}
             label={statusMeta.label}
             size="compact"
+            width="full"
             toneClassName={statusMeta.toneClassName}
           />
         </CardHeader>
