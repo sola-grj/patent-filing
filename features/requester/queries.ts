@@ -76,6 +76,7 @@ export type RequesterQuoteViewModel = {
   quote: QuoteRow | null;
   latestNegotiation: RequesterQuoteHistoryEntry | null;
   isWaitingForPmFeedback: boolean;
+  isPmInitiatedNegotiation: boolean;
   negotiationHistory: RequesterQuoteHistoryEntry[];
 };
 
@@ -93,6 +94,11 @@ type QuoteRow = {
     amount: number | string;
     description?: string | null;
   }> | null;
+};
+
+type OrderAssignmentContacts = {
+  pm_names?: string | null;
+  linguist_names?: string | null;
 };
 
 export async function getRequesterDashboard() {
@@ -193,7 +199,7 @@ export async function getRequesterRequest(requestId: string) {
   const { data, error } = await supabase
     .from("translation_requests")
     .select(
-      "*, request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*), request_events(*)",
+      "*, request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at)), request_events(*)",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -206,7 +212,41 @@ export async function getRequesterRequest(requestId: string) {
     return null;
   }
 
-  return data;
+  const order = firstRelation<{ id: string }>(
+    (data?.orders as { id: string } | Array<{ id: string }> | null) ?? null,
+  );
+
+  if (!order?.id) {
+    return data;
+  }
+
+  const { data: assignmentRows, error: assignmentError } = await supabase.rpc(
+    "get_order_assignment_contacts",
+    { target_order_id: order.id },
+  );
+
+  if (assignmentError) {
+    throw new Error(assignmentError.message);
+  }
+
+  const assignmentContacts = ((assignmentRows ?? [])[0] ?? null) as OrderAssignmentContacts | null;
+  const enrichedOrder = {
+    ...order,
+    assignment_contacts: assignmentContacts,
+  };
+
+  return {
+    ...data,
+    orders: Array.isArray(data.orders) ? [enrichedOrder] : enrichedOrder,
+  };
+}
+
+function firstRelation<T>(value?: T | T[] | null) {
+  if (!value) {
+    return null;
+  }
+
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
 export async function getRequesterDrafts(filters?: {
@@ -288,8 +328,17 @@ export async function getRequesterQuote(requestId: string): Promise<RequesterQuo
     quote,
     latestNegotiation: negotiationHistory[negotiationHistory.length - 1] ?? null,
     isWaitingForPmFeedback:
+      request?.requester_status === "negotiation" &&
       quote?.status === "negotiating" &&
+      latestNegotiationRow?.initiated_by === request?.requester_id &&
       latestNegotiationRow?.pm_decision === "pending",
+    isPmInitiatedNegotiation:
+      request?.requester_status === "negotiation" &&
+      quote?.status === "negotiating" &&
+      Boolean(
+        latestNegotiationRow?.initiated_by &&
+          latestNegotiationRow.initiated_by !== request?.requester_id,
+      ),
     negotiationHistory,
   };
 }

@@ -35,6 +35,8 @@ export async function startQuoteNegotiation(
   input: QuoteNegotiationInput,
   payload: Record<string, unknown> = {},
 ) {
+  await closeOpenNegotiations(supabase, requestId);
+
   const { data, error } = await supabase
     .from("quote_negotiations")
     .insert({
@@ -79,4 +81,19 @@ export async function startQuoteNegotiation(
     "negotiation",
     payload,
   );
+}
+
+async function closeOpenNegotiations(
+  supabase: SupabaseClient,
+  requestId: string,
+) {
+  const { error } = await supabase
+    .from("quote_negotiations")
+    .update({ status: "closed" })
+    .eq("request_id", requestId)
+    .eq("status", "open");
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }

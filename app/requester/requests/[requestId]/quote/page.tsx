@@ -40,11 +40,13 @@ async function QuoteContent({
     request,
     quote,
     isWaitingForPmFeedback,
+    isPmInitiatedNegotiation,
     negotiationHistory,
   } = await getRequesterQuote(requestId);
 
   if (!request) notFound();
   const items = (quote?.quote_items ?? []) as QuoteItem[];
+  const isAcceptedQuote = quote?.status === "accepted";
 
   return (
     <div className="space-y-8">
@@ -94,6 +96,32 @@ async function QuoteContent({
                     <p className="mt-3 text-sm font-medium">Waiting for PM feedback</p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       Your negotiation request has been sent. Actions will be available again after the PM responds.
+                    </p>
+                  </div>
+                ) : isPmInitiatedNegotiation ? (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-dashed px-4 py-5">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="gap-1.5">
+                          <CircleEllipsis className="size-3.5" />
+                          Negotiating
+                        </Badge>
+                      </div>
+                      <p className="mt-3 text-sm font-medium">PM requested quote adjustments</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Review the latest negotiation request and continue negotiating from this page. The current quote cannot be accepted until the PM sends a revised offer.
+                      </p>
+                    </div>
+                    <QuoteActions canAccept={false} requestId={request.id} quoteId={quote.id} />
+                  </div>
+                ) : isAcceptedQuote ? (
+                  <div className="rounded-xl border border-dashed px-4 py-5">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">Accepted on submit</Badge>
+                    </div>
+                    <p className="mt-3 text-sm font-medium">Machine quote already accepted</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Submitting the request confirmed this machine quote. PM can start the request after the file check, or reopen pricing through negotiation if needed.
                     </p>
                   </div>
                 ) : (

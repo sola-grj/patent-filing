@@ -9,25 +9,25 @@ import {
   safeFileName,
   toErrorMessage,
 } from "../server-utils";
-import { inferFileRole, inferLanguage, writeRequestEvent } from "./helpers";
 import {
-  parseQuoteNegotiationInput,
-  startQuoteNegotiation,
-} from "./quote-negotiation";
-import { createWizardQuote } from "./wizard-quote-persistence";
+  calculateQuote,
+  inferFileRole,
+  inferLanguage,
+  nextVersion,
+  sumParseMetric,
+  writeRequestEvent,
+} from "./helpers";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 
 export async function persistWizardRequest(
   formData: FormData,
-  mode: "draft" | "submit" | "negotiate",
+  mode: "draft" | "submit",
 ): Promise<ActionResult<WizardPersistResult>> {
   try {
     const payload = parseWizardPayload(formData);
     const { supabase, userId, organization } = await getRequesterOrganization();
     if (!organization) throw new Error("Create an organization before creating requests.");
-    const negotiationInput =
-      mode === "negotiate" ? parseQuoteNegotiationInput(formData) : null;
 
     const requestId = payload.requestId ?? randomUUID();
     const uploadedFormFiles = formData.getAll("files").filter((file): file is File => file instanceof File);
@@ -52,9 +52,18 @@ export async function persistWizardRequest(
       reuseExistingUploadFiles,
     );
 
-    let quoteId: string | null = null;
+    await writeRequestEvent(
+      supabase,
+      requestId,
+      userId,
+      mode === "draft" ? "request.draft.saved" : "request.submitted.from_wizard",
+      null,
+      mode === "draft" ? "draft" : "configured",
+      { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
+    );
+
     if (mode !== "draft") {
-      quoteId = await persistSubmissionArtifacts(
+      await persistSubmissionArtifacts(
         supabase,
         requestId,
         userId,
@@ -63,31 +72,13 @@ export async function persistWizardRequest(
       );
     }
 
-    await writeRequestEvent(
-      supabase,
-      requestId,
-      userId,
-      mode === "draft" ? "request.draft.saved" : "request.submitted.from_wizard",
-      null,
-      mode === "draft" ? "draft" : "quoted",
-      { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
-    );
-
-    if (mode === "negotiate" && quoteId && negotiationInput) {
-      await startQuoteNegotiation(
-        supabase,
-        requestId,
-        quoteId,
-        userId,
-        negotiationInput,
-        { source: "wizard" },
-      );
-    }
-
     revalidatePath("/requester");
     revalidatePath("/requester/requests");
     revalidatePath(`/requester/requests/${requestId}`);
     revalidatePath(`/requester/requests/${requestId}/quote`);
+    revalidatePath("/pm");
+    revalidatePath("/pm/requests");
+    revalidatePath(`/pm/requests/${requestId}`);
     return { success: true, data: { requestId } };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
@@ -109,14 +100,14 @@ async function upsertRequest(
   organizationId: string,
   userId: string,
   payload: WizardPayload,
-  mode: "draft" | "submit" | "negotiate",
+  mode: "draft" | "submit",
 ) {
   const requestInput = {
     organization_id: organizationId,
     requester_id: userId,
     source_mode: payload.sourceMode,
     title: payload.title.trim(),
-    workflow_stage: mode === "draft" ? "draft" : "quoted",
+    workflow_stage: mode === "draft" ? "draft" : "configured",
     requester_status: mode === "draft" ? "responding" : "responding",
     pm_status: mode === "draft" ? "responding" : "responding",
     draft_payload: { ...payload, requestId },
@@ -335,7 +326,7 @@ async function persistSubmissionArtifacts(
   await supabase.from("request_config_files").insert(
     requestFileIds.map((fileId) => ({ config_version_id: configId, request_file_id: fileId })),
   );
-  return createWizardQuote(supabase, requestId, payload);
+  await createInitialQuote(supabase, requestId, userId, payload, requestFileIds);
 }
 
 async function createParseResults(
@@ -411,4 +402,92 @@ async function createConfigVersion(
     config_snapshot: payload.config,
     created_by: userId,
   });
+}
+
+async function createInitialQuote(
+  supabase: SupabaseClient,
+  requestId: string,
+  userId: string,
+  payload: WizardPayload,
+  requestFileIds: string[],
+) {
+  const { data: files, error: filesError } = await supabase
+    .from("request_files")
+    .select("id, file_parse_results(word_count, page_count, claim_count, technical_fields)")
+    .in("id", requestFileIds);
+
+  if (filesError) throw new Error(filesError.message);
+
+  const wordCount = sumParseMetric(files ?? [], "word_count");
+  const amount = calculateQuote(
+    wordCount,
+    payload.config.qualityLevel,
+    payload.config.isUrgent,
+  );
+  const versionNo = await nextVersion(supabase, "quotes", requestId);
+  const pricingSnapshot = {
+    source: "requester_wizard_preview",
+    wordCount,
+    qualityLevel: payload.config.qualityLevel,
+    urgent: payload.config.isUrgent,
+    deliveryOption: payload.config.deliveryOption,
+  };
+
+  const { data: quote, error: quoteError } = await supabase
+    .from("quotes")
+    .insert({
+      request_id: requestId,
+      version_no: versionNo,
+      status: "accepted",
+      currency: "USD",
+      total_amount: amount,
+      estimated_delivery_at: payload.config.dueAt || null,
+      valid_until: new Date(Date.now() + 7 * 86400000).toISOString(),
+      notes: "Generated from the requester quote preview.",
+      pricing_snapshot: pricingSnapshot,
+      breakdown_json: pricingSnapshot,
+    })
+    .select("id")
+    .single();
+
+  if (quoteError) throw new Error(quoteError.message);
+
+  const { error: quoteItemError } = await supabase.from("quote_items").insert({
+    quote_id: quote.id,
+    label: "Patent translation service",
+    amount,
+    quantity: wordCount || null,
+    unit: wordCount ? "word" : "project",
+    description: "Initial quote generated from submitted request configuration.",
+  });
+  if (quoteItemError) throw new Error(quoteItemError.message);
+
+  const { error: factorError } = await supabase.from("quote_factor_snapshots").insert({
+    quote_id: quote.id,
+    factors: {
+      ...pricingSnapshot,
+      amount,
+    },
+  });
+  if (factorError) throw new Error(factorError.message);
+
+  const { error: requestError } = await supabase
+    .from("translation_requests")
+    .update({
+      workflow_stage: "quoted",
+      requester_status: "responding",
+      pm_status: "responding",
+    })
+    .eq("id", requestId);
+  if (requestError) throw new Error(requestError.message);
+
+  await writeRequestEvent(
+    supabase,
+    requestId,
+    userId,
+    "quote.accepted.requester_preview",
+    "configured",
+    "quoted",
+    { quoteId: quote.id, amount, currency: "USD" },
+  );
 }

@@ -8,7 +8,7 @@ import {
   type ActionResult,
 } from "@/lib/validators/requester";
 import { getAuthenticatedUser, toErrorMessage } from "../server-utils";
-import { calculateQuote, nextVersion, sumParseMetric, writeRequestEvent } from "./helpers";
+import { nextVersion, writeRequestEvent } from "./helpers";
 import {
   parseQuoteNegotiationInput,
   startQuoteNegotiation,
@@ -16,9 +16,8 @@ import {
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 type SelectedRequestFile = { id: string; file_parse_results?: unknown };
-type RequirementInput = ReturnType<typeof buildRequirementInput>;
 
-export async function saveTranslationConfigAndGenerateQuote(formData: FormData): Promise<ActionResult> {
+export async function saveTranslationConfig(formData: FormData): Promise<ActionResult> {
   try {
     const { supabase, userId } = await getAuthenticatedUser();
     const requestId = requiredString(formData.get("requestId"), "Request");
@@ -37,17 +36,15 @@ export async function saveTranslationConfigAndGenerateQuote(formData: FormData):
       files.map((file) => ({ config_version_id: configId, request_file_id: file.id })),
     );
 
-    const wordCount = sumParseMetric(files, "word_count") || 12000;
-    await createMockQuote(supabase, requestId, requirementInput, wordCount);
     await supabase
       .from("translation_requests")
       .update({
-        workflow_stage: "quoted",
+        workflow_stage: "configured",
         requester_status: "responding",
         pm_status: "responding",
       })
       .eq("id", requestId);
-    await writeRequestEvent(supabase, requestId, userId, "quote.generated.mock", "configured", "quoted");
+    await writeRequestEvent(supabase, requestId, userId, "request.configured", "parsing", "configured");
 
     revalidatePath(`/requester/requests/${requestId}`);
     return { success: true };
@@ -56,32 +53,42 @@ export async function saveTranslationConfigAndGenerateQuote(formData: FormData):
   }
 }
 
+export async function saveTranslationConfigAndGenerateQuote(formData: FormData): Promise<ActionResult> {
+  return saveTranslationConfig(formData);
+}
+
 export async function acceptQuote(formData: FormData): Promise<ActionResult> {
   try {
     const { supabase, userId } = await getAuthenticatedUser();
     const requestId = requiredString(formData.get("requestId"), "Request");
     const quoteId = requiredString(formData.get("quoteId"), "Quote");
-    const { data: request, error } = await supabase
-      .from("translation_requests")
-      .select("id, organization_id, requester_id")
-      .eq("id", requestId)
-      .single();
-
-    if (error) throw new Error(error.message);
+    await supabase
+      .from("quotes")
+      .update({ status: "superseded" })
+      .eq("request_id", requestId)
+      .eq("status", "accepted")
+      .neq("id", quoteId);
 
     await supabase.from("quotes").update({ status: "accepted" }).eq("id", quoteId);
     await supabase
       .from("translation_requests")
       .update({
-        workflow_stage: "order_pending",
-        requester_status: "completed",
-        pm_status: "completed",
+        workflow_stage: "quoted",
+        requester_status: "responding",
+        pm_status: "responding",
       })
       .eq("id", requestId);
-    await createOrderIfMissing(supabase, requestId, quoteId, request.organization_id, request.requester_id);
-    await writeRequestEvent(supabase, requestId, userId, "quote.accepted", "quoted", "order_pending");
+    await writeRequestEvent(supabase, requestId, userId, "quote.accepted", "quoted", "quoted", {
+      quoteId,
+    });
 
     revalidatePath(`/requester/requests/${requestId}`);
+    revalidatePath(`/requester/requests/${requestId}/quote`);
+    revalidatePath("/requester");
+    revalidatePath("/requester/requests");
+    revalidatePath("/pm");
+    revalidatePath("/pm/requests");
+    revalidatePath(`/pm/requests/${requestId}`);
     return { success: true };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
@@ -191,64 +198,4 @@ async function selectedRequestFiles(
     .eq("request_id", requestId)
     .eq("confirmed_for_translation", true);
   return data ?? [];
-}
-
-async function createMockQuote(
-  supabase: SupabaseClient,
-  requestId: string,
-  requirement: RequirementInput,
-  wordCount: number,
-) {
-  const totalAmount = calculateQuote(wordCount, requirement.quality_level, requirement.is_urgent);
-  const { data: quote, error } = await supabase.from("quotes").insert({
-    request_id: requestId,
-    version_no: await nextVersion(supabase, "quotes", requestId),
-    status: "generated",
-    currency: "USD",
-    total_amount: totalAmount,
-    estimated_delivery_at: requirement.due_at,
-    valid_until: new Date(Date.now() + 7 * 86400000).toISOString(),
-    notes: "TODO: replace mock quote with formal pricing engine output.",
-    pricing_snapshot: { wordCount, quality: requirement.quality_level },
-    breakdown_json: { baseRate: 0.12, urgent: requirement.is_urgent },
-  }).select("id").single();
-
-  if (error) throw new Error(error.message);
-
-  await supabase.from("quote_items").insert([
-    { quote_id: quote.id, label: "Word count", amount: Math.round(wordCount * 0.12), quantity: wordCount, unit: "word" },
-    { quote_id: quote.id, label: "Quality and delivery factors", amount: totalAmount - Math.round(wordCount * 0.12), unit: "factor" },
-  ]);
-  await supabase.from("quote_factor_snapshots").insert({
-    quote_id: quote.id,
-    factors: {
-      wordCount,
-      languagePair: `${requirement.source_language}-${requirement.target_language}`,
-      qualityLevel: requirement.quality_level,
-      deliveryOption: requirement.delivery_option,
-      urgent: requirement.is_urgent,
-    },
-  });
-  return quote;
-}
-
-async function createOrderIfMissing(
-  supabase: SupabaseClient,
-  requestId: string,
-  quoteId: string,
-  organizationId: string,
-  requesterId: string,
-) {
-  const { data: existingOrder } = await supabase.from("orders").select("id").eq("request_id", requestId).maybeSingle();
-  if (existingOrder) return;
-
-  const { error } = await supabase.from("orders").insert({
-    request_id: requestId,
-    accepted_quote_id: quoteId,
-    organization_id: organizationId,
-    requester_id: requesterId,
-    status: "pending_confirmation",
-  });
-
-  if (error) throw new Error(error.message);
 }

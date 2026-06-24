@@ -97,6 +97,10 @@ type Quote = {
 
 type Order = {
   id: string;
+  assignment_contacts?: {
+    pm_names?: string | null;
+    linguist_names?: string | null;
+  } | null;
 };
 
 type RequestDetail = {
@@ -127,10 +131,13 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     (left, right) => right.version_no - left.version_no,
   )[0];
   const order = firstRelation(request.orders);
-  const isNegotiatingStage = request.workflow_stage === "negotiation";
   const latestQuoteValue = latestQuote
     ? formatCurrency(latestQuote.total_amount, latestQuote.currency ?? "USD")
     : null;
+  const assignmentContacts = order?.assignment_contacts ?? null;
+  const showAssignees =
+    Boolean(order?.id) &&
+    (request.requester_status === "in_progress" || request.requester_status === "completed");
   const sourceLanguage = formatConfigLabel(
     sourceLanguageOptions,
     requirement?.source_language ?? config?.sourceLanguage,
@@ -147,10 +154,22 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       value: <RequesterStatusBadge status={request.requester_status} />,
     },
     { label: "Submitted time", value: formatDate(request.submitted_at) },
-    ...(isNegotiatingStage
+    ...(latestQuote
       ? [{ label: "Latest quote", value: latestQuoteValue ?? "-" }]
       : []),
     { label: "Language pair", value: `${sourceLanguage} → ${targetLanguage}` },
+    ...(showAssignees
+      ? [
+          {
+            label: "Responsible PM",
+            value: assignmentContacts?.pm_names?.trim() || "-",
+          },
+          {
+            label: "Linguist",
+            value: assignmentContacts?.linguist_names?.trim() || "-",
+          },
+        ]
+      : []),
   ];
   const patentItems: DetailItem[] = [
     {
@@ -210,7 +229,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           cardClassName="h-full min-h-0"
           action={
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {isNegotiatingStage && latestQuote ? (
+              {latestQuote ? (
                 <Button asChild size="sm">
                   <Link href={`/requester/requests/${request.id}/quote`}>
                     Open quote

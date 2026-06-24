@@ -34,9 +34,11 @@ import { acceptQuote, negotiateQuote, rejectQuote } from "@/features/requester/a
 import { rejectReasonOptions } from "@/features/requester/options";
 
 export function QuoteActions({
+  canAccept = true,
   requestId,
   quoteId,
 }: {
+  canAccept?: boolean;
   requestId: string;
   quoteId: string;
 }) {
@@ -55,15 +57,17 @@ export function QuoteActions({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={isPending}
-          onClick={() => {
-            const formData = baseFormData(requestId, quoteId);
-            run(acceptQuote, formData);
-          }}
-        >
-          Accept quote
-        </Button>
+        {canAccept ? (
+          <Button
+            disabled={isPending}
+            onClick={() => {
+              const formData = baseFormData(requestId, quoteId);
+              run(acceptQuote, formData);
+            }}
+          >
+            Accept quote
+          </Button>
+        ) : null}
         <RejectDialog disabled={isPending} onSubmit={(formData) => run(rejectQuote, formData)} quoteId={quoteId} requestId={requestId} />
         <NegotiateDialog disabled={isPending} onSubmit={(formData) => run(negotiateQuote, formData)} quoteId={quoteId} requestId={requestId} />
       </div>
