@@ -123,11 +123,11 @@ export function PmDeliveryPanel({
   }
 
   return (
-    <Card className="flex shrink-0 flex-col overflow-hidden">
+    <Card className="flex flex-col overflow-visible">
       <CardHeader className="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85">
         <CardTitle>Delivery</CardTitle>
       </CardHeader>
-      <CardContent className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto">
+      <CardContent className="space-y-4">
         {!order ? (
           <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
             Start the translation task before uploading the translated ZIP.

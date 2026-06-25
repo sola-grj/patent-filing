@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
-import { type ActionResult, validateUploadFile } from "@/lib/validators/requester";
+import {
+  type ActionResult,
+  validateFutureDateString,
+  validateUploadFile,
+} from "@/lib/validators/requester";
 import type { WizardPayload, WizardPersistResult } from "@/features/requester/wizard-types";
 import {
   getAuthenticatedUser,
@@ -28,6 +32,9 @@ export async function persistWizardRequest(
     const payload = parseWizardPayload(formData);
     const { supabase, userId, organization } = await getRequesterOrganization();
     if (!organization) throw new Error("Create an organization before creating requests.");
+    if (mode !== "draft") {
+      validateFutureDateString(payload.config.dueAt, "Due date");
+    }
 
     const requestId = payload.requestId ?? randomUUID();
     const uploadedFormFiles = formData.getAll("files").filter((file): file is File => file instanceof File);

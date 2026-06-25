@@ -95,6 +95,21 @@ type Quote = {
   currency?: string | null;
 };
 
+type QuoteNegotiationMessage = {
+  author_id?: string | null;
+  expected_amount?: number | string | null;
+  expected_delivery_at?: string | null;
+  created_at: string;
+};
+
+type QuoteNegotiation = {
+  initiated_by?: string | null;
+  expected_amount?: number | string | null;
+  expected_delivery_at?: string | null;
+  created_at: string;
+  quote_negotiation_messages?: QuoteNegotiationMessage[] | null;
+};
+
 type Order = {
   id: string;
   assignment_contacts?: {
@@ -106,6 +121,7 @@ type Order = {
 type RequestDetail = {
   id: string;
   request_no: string;
+  requester_id?: string | null;
   title?: string | null;
   workflow_stage?: string | null;
   requester_status?: string | null;
@@ -115,6 +131,7 @@ type RequestDetail = {
   translation_requirements?: TranslationRequirement | TranslationRequirement[] | null;
   request_config_versions?: RequestConfigVersion[] | null;
   quotes?: Quote[] | null;
+  quote_negotiations?: QuoteNegotiation[] | null;
   orders?: Order | Order[] | null;
 };
 
@@ -130,9 +147,16 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const latestQuote = [...(request.quotes ?? [])].sort(
     (left, right) => right.version_no - left.version_no,
   )[0];
+  const latestNegotiation = [...(request.quote_negotiations ?? [])].sort(
+    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+  )[0] ?? null;
   const order = firstRelation(request.orders);
-  const latestQuoteValue = latestQuote
-    ? formatCurrency(latestQuote.total_amount, latestQuote.currency ?? "USD")
+  const latestQuoteAmount =
+    request.requester_status === "negotiation"
+      ? getLatestNegotiationAmount(latestNegotiation) ?? latestQuote?.total_amount
+      : latestQuote?.total_amount;
+  const latestQuoteValue = latestQuoteAmount != null
+    ? formatCurrency(latestQuoteAmount, latestQuote?.currency ?? "USD")
     : null;
   const assignmentContacts = order?.assignment_contacts ?? null;
   const showAssignees =
@@ -158,6 +182,18 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       ? [{ label: "Latest quote", value: latestQuoteValue ?? "-" }]
       : []),
     { label: "Language pair", value: `${sourceLanguage} → ${targetLanguage}` },
+    {
+      label: "Delivery date",
+      value: formatDate(requirement?.due_at ?? config?.dueAt),
+    },
+    {
+      label: "Files",
+      value: `${files.length} file${files.length === 1 ? "" : "s"}`,
+    },
+    {
+      label: "Urgent",
+      value: (requirement?.is_urgent ?? config?.isUrgent) ? "Yes" : "No",
+    },
     ...(showAssignees
       ? [
           {
@@ -244,7 +280,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             </div>
           }
         >
-          <DetailsGrid items={requestItems} />
+          <DetailsGrid items={requestItems} columns="single" />
         </Section>
         <Section
           title="Patent Information"
@@ -317,6 +353,28 @@ function formatEnumLabel(value?: string | null) {
   return value ? titleCaseStatus(value) : "-";
 }
 
+function getLatestNegotiationAmount(
+  negotiation: QuoteNegotiation | null,
+) {
+  if (!negotiation) {
+    return null;
+  }
+
+  const latestMessageWithQuote = [...(negotiation.quote_negotiation_messages ?? [])]
+    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+    .find((message) => message.expected_amount != null || message.expected_delivery_at);
+
+  if (latestMessageWithQuote) {
+    return latestMessageWithQuote.expected_amount ?? null;
+  }
+
+  if (negotiation.expected_amount != null) {
+    return negotiation.expected_amount;
+  }
+
+  return null;
+}
+
 function Section({
   title,
   action,
@@ -349,9 +407,15 @@ type DetailItem = {
   className?: string;
 };
 
-function DetailsGrid({ items }: { items: DetailItem[] }) {
+function DetailsGrid({
+  items,
+  columns = "double",
+}: {
+  items: DetailItem[];
+  columns?: "single" | "double";
+}) {
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className={columns === "single" ? "grid gap-4" : "grid gap-4 md:grid-cols-2"}>
       {items.map((item) => (
         <div key={item.label} className={item.className}>
           <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">

@@ -46,6 +46,9 @@ export function PmTaskPanel({
 }) {
   const tasks = [...(order?.translation_tasks ?? [])];
   const hasStartedTasks = tasks.length > 0;
+  const hasCompletedTasks =
+    (order?.status ?? null) === "completed" ||
+    tasks.some((task) => task.status === "completed");
   const hasQuote = Boolean(quoteStatus);
   const selectableTranslators = translators.filter((translator) => translator.isSelectable);
   const currentTranslatorId =
@@ -56,7 +59,7 @@ export function PmTaskPanel({
       <CardHeader className="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85">
         <CardTitle>Task control</CardTitle>
       </CardHeader>
-      <CardContent className="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto">
+      <CardContent className="space-y-4">
         {order || hasQuote || canStartTask || tasks.length ? (
           <>
             <div className="grid gap-4 md:grid-cols-2">
@@ -91,6 +94,11 @@ export function PmTaskPanel({
               <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                 No confirmed request files are available yet. Confirm files before starting
                 translation tasks.
+              </p>
+            ) : hasCompletedTasks ? (
+              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                This task has already been completed. Completed tasks cannot be reassigned or
+                restarted.
               </p>
             ) : canStartTask && selectableTranslators.length ? (
               <PmStartTaskForm

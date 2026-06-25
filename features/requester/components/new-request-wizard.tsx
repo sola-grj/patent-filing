@@ -123,6 +123,31 @@ export function NewRequestWizard({
     });
   }
 
+  function handleConfigChange(nextConfig: WizardConfig) {
+    setConfig(nextConfig);
+
+    if (!error || step !== 4) {
+      return;
+    }
+
+    const nextPayload = buildWizardPayload({
+      requestId,
+      title,
+      sourceMode,
+      patentQuery,
+      selectedPatent,
+      selectedPatentFileIds,
+      uploadedFiles,
+      uploadedFileSnapshots,
+      config: nextConfig,
+      lastStep: wizardSteps[step].title,
+    });
+
+    if (!validateWizardStep(step, nextPayload)) {
+      setError(null);
+    }
+  }
+
   function goNext() {
     const validationError = validateWizardStep(step, payload);
     if (validationError) {
@@ -275,7 +300,7 @@ export function NewRequestWizard({
                   type: file.type,
                 })));
               }}
-              setConfig={setConfig}
+              setConfig={handleConfigChange}
               setStep={setStep}
               quoteAction={
                 <TooltipProvider delayDuration={120}>

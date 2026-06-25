@@ -1,10 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getTomorrowDateInputValue } from "@/lib/validators/requester";
 import {
   Select,
   SelectContent,
@@ -109,6 +110,22 @@ export function ConfigStep({
   config: WizardConfig;
   onChange: (config: WizardConfig) => void;
 }) {
+  const dueDateRef = useRef<HTMLInputElement | null>(null);
+
+  function openDueDatePicker() {
+    const input = dueDateRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.focus();
+    (
+      input as HTMLInputElement & {
+        showPicker?: () => void;
+      }
+    ).showPicker?.();
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 space-y-5">
@@ -171,8 +188,13 @@ export function ConfigStep({
           />
           <Field label="Due date">
             <Input
+              className={requesterFieldClassName}
+              required
+              ref={dueDateRef}
               value={config.dueAt}
               type="date"
+              min={getTomorrowDateInputValue()}
+              onClick={openDueDatePicker}
               onChange={(event) =>
                 onChange({ ...config, dueAt: event.target.value })
               }
@@ -192,6 +214,7 @@ export function ConfigStep({
               Custom pages / paragraphs or special requirements
             </Label>
             <Input
+              className={requesterFieldClassName}
               id="customScope"
               value={config.customScope}
               onChange={(event) =>
@@ -266,7 +289,7 @@ function SelectField(props: {
   return (
     <Field label={props.label}>
       <Select value={props.value} onValueChange={props.onChange}>
-        <SelectTrigger>
+        <SelectTrigger className={requesterFieldClassName}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -280,6 +303,9 @@ function SelectField(props: {
     </Field>
   );
 }
+
+const requesterFieldClassName =
+  "focus-visible:ring-0 focus-visible:border-border focus:ring-0 focus:border-border data-[state=open]:border-border";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

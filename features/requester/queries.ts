@@ -329,12 +329,12 @@ export async function getRequesterQuote(requestId: string): Promise<RequesterQuo
     latestNegotiation: negotiationHistory[negotiationHistory.length - 1] ?? null,
     isWaitingForPmFeedback:
       request?.requester_status === "negotiation" &&
-      quote?.status === "negotiating" &&
+      latestNegotiationRow?.status === "open" &&
       latestNegotiationRow?.initiated_by === request?.requester_id &&
       latestNegotiationRow?.pm_decision === "pending",
     isPmInitiatedNegotiation:
       request?.requester_status === "negotiation" &&
-      quote?.status === "negotiating" &&
+      latestNegotiationRow?.status === "open" &&
       Boolean(
         latestNegotiationRow?.initiated_by &&
           latestNegotiationRow.initiated_by !== request?.requester_id,

@@ -217,6 +217,20 @@ export async function respondToNegotiation(formData: FormData): Promise<ActionRe
         .eq("id", negotiation.quote_id);
     }
 
+    if (decision === "accept") {
+      await context.supabase
+        .from("quotes")
+        .update({ status: "superseded" })
+        .eq("request_id", requestId)
+        .eq("status", "accepted")
+        .neq("id", responseQuote.id);
+
+      await context.supabase
+        .from("quotes")
+        .update({ status: "accepted" })
+        .eq("id", responseQuote.id);
+    }
+
     await context.supabase.from("quote_negotiation_messages").insert({
       negotiation_id: negotiationId,
       author_id: context.userId,
@@ -236,9 +250,9 @@ export async function respondToNegotiation(formData: FormData): Promise<ActionRe
     await context.supabase
       .from("translation_requests")
       .update({
-        workflow_stage: "quoted",
-        requester_status: "responding",
-        pm_status: "responding",
+        workflow_stage: decision === "accept" ? "order_pending" : "negotiation",
+        requester_status: decision === "accept" ? "in_progress" : "negotiation",
+        pm_status: decision === "accept" ? "in_progress" : "negotiation",
       })
       .eq("id", requestId);
     await writeRequestEvent(
@@ -247,7 +261,7 @@ export async function respondToNegotiation(formData: FormData): Promise<ActionRe
       context.userId,
       "quote.negotiation.responded.pm",
       "negotiation",
-      "quoted",
+      decision === "accept" ? "order_pending" : "negotiation",
       { decision, responseQuoteId: responseQuote.id },
     );
 
@@ -411,8 +425,8 @@ export async function startTranslationTaskFromPm(
       .eq("id", requestId)
       .single();
     if (requestError) throw new Error(requestError.message);
-    if (request.pm_status !== "responding") {
-      throw new Error("Tasks can only start while the request is responding.");
+    if (request.pm_status !== "responding" && request.pm_status !== "in_progress") {
+      throw new Error("Tasks can only start after the quote is accepted.");
     }
 
     const { data: acceptedQuote, error: acceptedQuoteError } = await context.supabase
@@ -435,6 +449,16 @@ export async function startTranslationTaskFromPm(
       requesterId: request.requester_id,
       startedAt: now,
     });
+
+    const { data: orderStatusRow, error: orderStatusError } = await context.supabase
+      .from("orders")
+      .select("id, status")
+      .eq("id", order.id)
+      .single();
+    if (orderStatusError) throw new Error(orderStatusError.message);
+    if (orderStatusRow.status === "completed") {
+      throw new Error("Completed tasks cannot be reassigned or restarted.");
+    }
 
     const { data: translatorMembership, error: translatorError } = await context.supabase
       .from("organization_members")
@@ -461,10 +485,14 @@ export async function startTranslationTaskFromPm(
 
     const { data: existingTasks, error: taskError } = await context.supabase
       .from("translation_tasks")
-      .select("id, request_file_id")
+      .select("id, request_file_id, status")
       .eq("order_id", order.id)
       .eq("task_type", "translation");
     if (taskError) throw new Error(taskError.message);
+
+    if ((existingTasks ?? []).some((task) => task.status === "completed")) {
+      throw new Error("Completed tasks cannot be reassigned or restarted.");
+    }
 
     const existingTaskByFileId = new Map(
       (existingTasks ?? [])

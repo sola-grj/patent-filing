@@ -10,11 +10,11 @@ const statusPillVariants = cva(
     variants: {
       size: {
         default: "h-7 gap-1.5 px-2.5 text-xs [&_svg]:size-3.5",
-        compact: "h-6 gap-1.5 px-2 text-[11px] [&_svg]:size-3.5",
+        compact: "h-6 gap-1 px-1.5 text-[11px] [&_svg]:size-3",
       },
       width: {
         fixed: "w-40",
-        compactFixed: "w-36",
+        compactFixed: "w-28",
         full: "w-full",
       },
     },

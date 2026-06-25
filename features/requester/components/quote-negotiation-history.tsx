@@ -2,6 +2,7 @@ import { MessageSquareMore, Scale, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
   formatCurrency,
   formatDate,
@@ -10,12 +11,18 @@ import {
 import type { RequesterQuoteHistoryEntry } from "@/features/requester/queries";
 
 type QuoteNegotiationHistoryProps = {
+  cardClassName?: string;
+  contentClassName?: string;
   currency?: string | null;
+  headerClassName?: string;
   items: RequesterQuoteHistoryEntry[];
 };
 
 export function QuoteNegotiationHistory({
+  cardClassName,
+  contentClassName,
   currency,
+  headerClassName,
   items,
 }: QuoteNegotiationHistoryProps) {
   if (!items.length) {
@@ -23,8 +30,13 @@ export function QuoteNegotiationHistory({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+    <Card className={cardClassName}>
+      <CardHeader
+        className={cn(
+          "flex flex-row items-start justify-between gap-3 space-y-0",
+          headerClassName,
+        )}
+      >
         <div className="space-y-1">
           <CardTitle>Negotiation history</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -33,7 +45,7 @@ export function QuoteNegotiationHistory({
         </div>
         <Badge variant="secondary">{items.length} rounds</Badge>
       </CardHeader>
-      <CardContent>
+      <CardContent className={contentClassName}>
         <div className="space-y-4">
           {items.map((item, index) => (
             <article
@@ -81,16 +93,8 @@ export function QuoteNegotiationHistory({
                 </div>
               </div>
 
-              <div className="grid gap-4 pt-4 lg:grid-cols-[minmax(0,0.86fr)_minmax(240px,0.54fr)]">
+              <div className="grid gap-4 pt-4 ">
                 <section className="space-y-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                      Requester notes
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-foreground">
-                      {item.adjustmentNotes ?? item.rejectReason ?? "-"}
-                    </p>
-                  </div>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <MessageSquareMore className="size-4 text-muted-foreground" />
@@ -111,33 +115,29 @@ export function QuoteNegotiationHistory({
                                 {formatDateTime(message.createdAt)}
                               </p>
                             </div>
-                            <p className="mt-2 text-sm leading-6 text-foreground">
-                              {message.body}
-                            </p>
-                            {message.adjustmentNotes &&
-                            message.adjustmentNotes !== message.body ? (
-                              <p className="mt-2 text-sm text-muted-foreground">
-                                Notes: {message.adjustmentNotes}
-                              </p>
-                            ) : null}
-                            {(message.expectedAmount != null ||
-                              message.expectedDeliveryAt) ? (
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {message.expectedAmount != null ? (
-                                  <Badge variant="outline">
-                                    {formatCurrency(
-                                      message.expectedAmount,
-                                      currency ?? "USD",
-                                    )}
-                                  </Badge>
-                                ) : null}
-                                {message.expectedDeliveryAt ? (
-                                  <Badge variant="outline">
-                                    {formatDate(message.expectedDeliveryAt)}
-                                  </Badge>
-                                ) : null}
-                              </div>
-                            ) : null}
+                            <div className="mt-3 space-y-2 text-sm">
+                              <KeyValueRow
+                                label="Quote amount"
+                                value={
+                                  message.expectedAmount != null
+                                    ? formatCurrency(
+                                        message.expectedAmount,
+                                        currency ?? "USD",
+                                      )
+                                    : "-"
+                                }
+                              />
+                              <KeyValueRow
+                                label="Delivery date"
+                                value={formatDate(message.expectedDeliveryAt)}
+                              />
+                              <KeyValueRow
+                                label="Notes"
+                                value={
+                                  message.adjustmentNotes ?? message.body ?? "-"
+                                }
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -148,29 +148,6 @@ export function QuoteNegotiationHistory({
                     )}
                   </div>
                 </section>
-
-                <aside className="space-y-3 rounded-xl border border-border/70 bg-background p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Sparkles className="size-4 text-muted-foreground" />
-                    <span>PM outcome</span>
-                  </div>
-                  <InfoRow
-                    label="Decision"
-                    value={titleCaseStatus(item.pmDecision)}
-                  />
-                  <InfoRow
-                    label="Negotiation status"
-                    value={titleCaseStatus(item.status)}
-                  />
-                  <InfoRow
-                    label="Updated"
-                    value={formatDateTime(item.updatedAt ?? item.createdAt)}
-                  />
-                  <InfoRow
-                    label="Response quote"
-                    value={item.responseQuoteId ? "Generated" : "Pending"}
-                  />
-                </aside>
               </div>
             </article>
           ))}
@@ -180,13 +157,7 @@ export function QuoteNegotiationHistory({
   );
 }
 
-function MetricItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function MetricItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-28 rounded-lg border border-border/70 bg-background px-3 py-2">
       <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
@@ -197,19 +168,22 @@ function MetricItem({
   );
 }
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1">
       <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
       <p className="text-sm leading-6 text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function KeyValueRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+      <span className="font-medium text-foreground">{label}：</span>
+      <span className="text-foreground">{value}</span>
     </div>
   );
 }

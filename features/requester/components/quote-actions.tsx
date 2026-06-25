@@ -30,15 +30,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { acceptQuote, negotiateQuote, rejectQuote } from "@/features/requester/actions";
+import {
+  acceptPmNegotiationQuote,
+  acceptQuote,
+  negotiateQuote,
+  rejectQuote,
+} from "@/features/requester/actions";
 import { rejectReasonOptions } from "@/features/requester/options";
 
 export function QuoteActions({
+  acceptLabel = "Accept quote",
+  acceptMode = "quote",
   canAccept = true,
+  negotiationId,
   requestId,
   quoteId,
 }: {
+  acceptLabel?: string;
+  acceptMode?: "quote" | "pm-negotiation";
   canAccept?: boolean;
+  negotiationId?: string;
   requestId: string;
   quoteId: string;
 }) {
@@ -62,10 +73,21 @@ export function QuoteActions({
             disabled={isPending}
             onClick={() => {
               const formData = baseFormData(requestId, quoteId);
+              if (acceptMode === "pm-negotiation") {
+                if (!negotiationId) {
+                  setError("Negotiation context is required.");
+                  return;
+                }
+
+                formData.set("negotiationId", negotiationId);
+                run(acceptPmNegotiationQuote, formData);
+                return;
+              }
+
               run(acceptQuote, formData);
             }}
           >
-            Accept quote
+            {acceptLabel}
           </Button>
         ) : null}
         <RejectDialog disabled={isPending} onSubmit={(formData) => run(rejectQuote, formData)} quoteId={quoteId} requestId={requestId} />

@@ -7,6 +7,7 @@ import {
   respondToNegotiation,
   startNegotiationFromPm,
 } from "@/features/pm/actions";
+import { QuoteNegotiationHistory } from "@/features/requester/components/quote-negotiation-history";
 import {
   StatusBadge,
   formatCurrency,
@@ -20,11 +21,12 @@ import {
   sourceLanguageOptions,
   targetLanguageOptions,
 } from "@/features/requester/options";
+import type { RequesterQuoteHistoryEntry } from "@/features/requester/queries";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
 import { PmCloseRequestDialog } from "./pm-close-request-dialog";
-import { PmHeader } from "./pm-header";
 import { PmDeliveryPanel } from "./pm-delivery-panel";
+import { PmHeader } from "./pm-header";
 import { PmTaskPanel } from "./pm-task-panel";
 
 type RequestFile = {
@@ -63,6 +65,16 @@ type QuoteItem = {
   description?: string | null;
 };
 
+type NegotiationMessage = {
+  id: string;
+  author_id?: string | null;
+  body?: string | null;
+  expected_amount?: number | string | null;
+  expected_delivery_at?: string | null;
+  adjustment_notes?: string | null;
+  created_at: string;
+};
+
 type Negotiation = {
   id: string;
   initiated_by?: string | null;
@@ -70,15 +82,13 @@ type Negotiation = {
   expected_amount?: number | string | null;
   expected_delivery_at?: string | null;
   adjustment_notes?: string | null;
+  reject_reason?: string | null;
   pm_decision?: string | null;
   status?: string | null;
   response_quote_id?: string | null;
   created_at: string;
-  quote_negotiation_messages?: Array<{
-    id: string;
-    body?: string | null;
-    created_at: string;
-  }> | null;
+  updated_at?: string | null;
+  quote_negotiation_messages?: NegotiationMessage[] | null;
 };
 
 type Requirement = {
@@ -126,6 +136,12 @@ type RequestEvent = {
   created_at: string;
 };
 
+type NegotiationPoint = {
+  amount: number | string | null;
+  deliveryAt: string | null;
+  source: "pm" | "requester" | "quote";
+};
+
 type PmRequestDetailProps = {
   request: {
     id: string;
@@ -169,8 +185,23 @@ export function PmRequestDetail({
   const files = request.request_files ?? [];
   const quoteById = new Map((request.quotes ?? []).map((quote) => [quote.id, quote]));
   const negotiations = [...(request.quote_negotiations ?? [])].sort((left, right) =>
-    new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+    new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
   );
+  const latestOpenNegotiation =
+    [...negotiations].reverse().find((negotiation) => negotiation.status === "open") ?? null;
+  const negotiationHistory = negotiations.map((negotiation, index) =>
+    mapPmNegotiationHistoryEntry(
+      negotiation,
+      index === negotiations.length - 1,
+      currentUserId,
+    ),
+  );
+  const latestNegotiationHistory =
+    negotiationHistory[negotiationHistory.length - 1] ?? null;
+  const activeSourceQuote =
+    latestOpenNegotiation?.quote_id
+      ? quoteById.get(latestOpenNegotiation.quote_id) ?? null
+      : latestQuote;
   const events = [...(request.request_events ?? [])].sort((left, right) =>
     new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
   );
@@ -182,7 +213,7 @@ export function PmRequestDetail({
         description={`${request.request_no} · ${organization?.name ?? "Customer organization"}`}
         action={<PmCloseRequestDialog requestId={request.id} />}
       />
-      <div className="grid gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-stretch">
+      <div className="grid gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)] xl:items-start">
         <div className="hide-scrollbar flex flex-col gap-6 xl:min-h-0 xl:h-full xl:overflow-y-auto xl:pr-2">
           <Section title="Request overview">
             <InfoGrid
@@ -196,7 +227,7 @@ export function PmRequestDetail({
           </Section>
           <Section
             title="Files and parsing"
-            cardClassName="flex h-[32rem] min-h-0 flex-col overflow-hidden"
+            cardClassName="flex min-h-0 max-h-[32rem] flex-col overflow-hidden"
             headerClassName="sticky top-0 z-10 flex flex-row items-center justify-between gap-3 space-y-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
             contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
             action={
@@ -231,27 +262,26 @@ export function PmRequestDetail({
               ]}
             />
           </Section>
-          <Section title="Negotiation history">
-            {negotiations.length ? (
-              <div className="space-y-4">
-                {negotiations.map((negotiation) => (
-                  <NegotiationCard
-                    key={negotiation.id}
-                    currentUserId={currentUserId}
-                    requestId={request.id}
-                    negotiation={negotiation}
-                    currency={latestQuote?.currency ?? "USD"}
-                    sourceQuote={negotiation.quote_id ? quoteById.get(negotiation.quote_id) ?? null : latestQuote}
-                  />
-                ))}
-              </div>
-            ) : (
+          {negotiationHistory.length ? (
+            <QuoteNegotiationHistory
+              cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
+              contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
+              currency={latestQuote?.currency ?? "USD"}
+              headerClassName="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+              items={negotiationHistory}
+            />
+          ) : (
+            <Section
+              title="Negotiation history"
+              cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
+              headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+            >
               <EmptyState>No negotiation rounds yet.</EmptyState>
-            )}
-          </Section>
+            </Section>
+          )}
           <Section
             title="Event timeline"
-            cardClassName="flex min-h-0 flex-1 flex-col overflow-hidden"
+            cardClassName="flex min-h-0 max-h-[24rem] flex-col overflow-hidden"
             headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
             contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
           >
@@ -274,7 +304,7 @@ export function PmRequestDetail({
             )}
           </Section>
         </div>
-        <aside className="flex flex-col gap-6 xl:min-h-0 xl:h-full xl:self-stretch">
+        <aside className="hide-scrollbar flex flex-col gap-6 xl:min-h-0 xl:h-full xl:overflow-y-auto xl:pr-2">
           <PmTaskPanel
             requestId={request.id}
             order={order}
@@ -288,6 +318,11 @@ export function PmRequestDetail({
           <PmDeliveryPanel requestId={request.id} order={order} />
           <QuotePanel
             quote={latestQuote}
+            sourceQuote={activeSourceQuote}
+            latestNegotiation={latestOpenNegotiation}
+            latestNegotiationHistory={latestNegotiationHistory}
+            negotiationHistory={negotiationHistory}
+            currentUserId={currentUserId}
             requestId={request.id}
             requestStatus={request.pm_status}
           />
@@ -299,30 +334,97 @@ export function PmRequestDetail({
 
 function QuotePanel({
   quote,
+  sourceQuote,
+  latestNegotiation,
+  latestNegotiationHistory,
+  negotiationHistory,
+  currentUserId,
   requestId,
   requestStatus,
 }: {
   quote?: Quote | null;
+  sourceQuote?: Quote | null;
+  latestNegotiation?: Negotiation | null;
+  latestNegotiationHistory?: RequesterQuoteHistoryEntry | null;
+  negotiationHistory: RequesterQuoteHistoryEntry[];
+  currentUserId: string | null;
   requestId: string;
   requestStatus?: string | null;
 }) {
+  const isActiveNegotiation = latestNegotiation?.status === "open";
+  const isWaitingForRequesterFeedback = Boolean(
+    isActiveNegotiation &&
+      latestNegotiation?.initiated_by &&
+      currentUserId &&
+      latestNegotiation.initiated_by === currentUserId,
+  );
+  const primaryPoint = isActiveNegotiation
+    ? getLatestNegotiationPoint(latestNegotiationHistory ?? null, quote ?? null)
+    : null;
+  const previousPmPoint = isActiveNegotiation
+    ? getPreviousPmQuotePoint(negotiationHistory, primaryPoint)
+    : null;
+  const primaryAmount =
+    primaryPoint?.amount != null ? primaryPoint.amount : quote?.total_amount;
+  const primaryDeliveryAt =
+    primaryPoint?.deliveryAt ? primaryPoint.deliveryAt : quote?.estimated_delivery_at;
+  const comparisonAmount =
+    previousPmPoint?.amount ?? sourceQuote?.total_amount ?? null;
+  const comparisonDeliveryAt =
+    previousPmPoint?.deliveryAt ?? sourceQuote?.estimated_delivery_at ?? null;
+  const showNegotiatedComparison = Boolean(
+    isActiveNegotiation && primaryPoint && (previousPmPoint || sourceQuote),
+  );
+  const reQuoteFormId = `pm-requote-${requestId}`;
+
   return (
     <Section
       title="Quote panel"
-      cardClassName="flex min-h-0 flex-col overflow-hidden xl:flex-1"
+      cardClassName="flex flex-col overflow-visible"
       headerClassName="sticky top-0 z-10 flex flex-row items-center justify-between gap-3 space-y-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-      contentClassName="hide-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto"
+      contentClassName="space-y-4"
     >
       {quote ? (
         <div className="space-y-4">
-          <div>
-            <p className="text-3xl font-semibold">
-              {formatCurrency(quote.total_amount, quote.currency ?? "USD")}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <StatusBadge status={quote.status} />
-              <span>v{quote.version_no}</span>
-              <span>Delivery {formatDate(quote.estimated_delivery_at)}</span>
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-2">
+              {showNegotiatedComparison ? (
+                <p className="whitespace-nowrap text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Negotiated quote
+                </p>
+              ) : null}
+              <p className="text-3xl font-semibold">
+                {formatCurrency(primaryAmount, quote.currency ?? "USD")}
+              </p>
+            </div>
+            {showNegotiatedComparison ? (
+              <div className="min-w-[180px] rounded-xl border bg-muted/20 px-4 py-3 md:text-right">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Previous quote
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-muted-foreground">
+                  {formatCurrency(comparisonAmount, quote.currency ?? "USD")}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Delivery {formatDate(comparisonDeliveryAt)}
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <div className="grid gap-3 text-sm md:grid-cols-3 md:items-start">
+            <div className="space-y-1 md:justify-self-start">
+              <p className="text-sm font-semibold text-foreground">Status</p>
+              <div className="text-sm leading-6">
+                <RequesterStatusBadge size="compact" status={requestStatus} />
+              </div>
+            </div>
+            <div className="space-y-1 md:justify-self-center">
+              <p className="text-sm font-semibold text-foreground">Delivery</p>
+              <div className="text-sm leading-6">{formatDate(primaryDeliveryAt)}</div>
+            </div>
+            <div className="space-y-1 md:justify-self-end">
+              <p className="text-sm font-semibold text-foreground">Valid until</p>
+              <div className="text-sm leading-6">{formatDate(quote.valid_until)}</div>
             </div>
           </div>
           <div className="space-y-2">
@@ -350,7 +452,64 @@ function QuotePanel({
           <Field label="Notes" name="notes" />
           <Button type="submit" className="w-full">Generate quote</Button>
         </form>
-      ) : requestStatus === "responding" || requestStatus === "negotiation" ? (
+      ) : requestStatus === "negotiation" && latestNegotiation ? (
+        <div className="space-y-3 rounded-md border p-4">
+          {isWaitingForRequesterFeedback ? (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+              Waiting for requester feedback on the latest negotiation round.
+            </p>
+          ) : (
+            <>
+              <form
+                id={reQuoteFormId}
+                className="space-y-3"
+                action={async (formData) => {
+                  "use server";
+                  await respondToNegotiation(formData);
+                }}
+              >
+                <input type="hidden" name="requestId" value={requestId} />
+                <input type="hidden" name="negotiationId" value={latestNegotiation.id} />
+                <input type="hidden" name="currency" value={quote.currency ?? "USD"} />
+                <Field
+                  label="Target amount"
+                  name="amount"
+                  type="number"
+                  min="0"
+                  step="1"
+                  defaultValue={latestNegotiation.expected_amount ? String(latestNegotiation.expected_amount) : undefined}
+                />
+                <Field
+                  label="Target delivery"
+                  name="estimatedDeliveryAt"
+                  type="date"
+                  defaultValue={latestNegotiation.expected_delivery_at ?? undefined}
+                />
+                <Field
+                  label="Negotiation notes"
+                  name="message"
+                  defaultValue={latestNegotiation.adjustment_notes ?? undefined}
+                />
+              </form>
+              <div className="flex flex-wrap gap-2">
+                <form
+                  action={async (formData) => {
+                    "use server";
+                    await respondToNegotiation(formData);
+                  }}
+                >
+                  <input type="hidden" name="requestId" value={requestId} />
+                  <input type="hidden" name="negotiationId" value={latestNegotiation.id} />
+                  <Button type="submit" name="decision" value="accept">Accept</Button>
+                </form>
+                <Button form={reQuoteFormId} type="submit" name="decision" value="counter" variant="outline">
+                  Re-quote
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : requestStatus === "responding" ? (
         <form
           className="mt-4 space-y-3 rounded-md border p-4"
           action={async (formData) => {
@@ -369,86 +528,6 @@ function QuotePanel({
         </form>
       ) : null}
     </Section>
-  );
-}
-
-function NegotiationCard({
-  currentUserId,
-  requestId,
-  negotiation,
-  currency,
-  sourceQuote,
-}: {
-  currentUserId: string | null;
-  requestId: string;
-  negotiation: Negotiation;
-  currency: string;
-  sourceQuote?: Quote | null;
-}) {
-  const isPending = negotiation.status === "open" && negotiation.pm_decision === "pending";
-  const isPmInitiated = Boolean(currentUserId && negotiation.initiated_by === currentUserId);
-  const baseAmount = sourceQuote?.total_amount ?? null;
-  const baseDelivery = sourceQuote?.estimated_delivery_at ?? null;
-
-  return (
-    <div className="rounded-md border p-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={negotiation.status} />
-            <StatusBadge status={negotiation.pm_decision} />
-            <StatusBadge status={isPmInitiated ? "pm_initiated" : "requester_initiated"} />
-          </div>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <ComparisonMetric
-              label="Current quote"
-              value={formatCurrency(baseAmount, currency)}
-              secondary={`Delivery ${formatDate(baseDelivery)}`}
-            />
-            <ComparisonMetric
-              label="Negotiation target"
-              value={formatCurrency(negotiation.expected_amount, currency)}
-              secondary={`Delivery ${formatDate(negotiation.expected_delivery_at)}`}
-            />
-          </div>
-          <p className="mt-2 text-sm">{negotiation.adjustment_notes ?? "-"}</p>
-        </div>
-        <p className="text-sm text-muted-foreground">{formatDate(negotiation.created_at)}</p>
-      </div>
-      {(negotiation.quote_negotiation_messages ?? []).length ? (
-        <div className="mt-4 space-y-2">
-          {(negotiation.quote_negotiation_messages ?? []).map((message) => (
-            <p key={message.id} className="rounded-md bg-muted/30 px-3 py-2 text-sm">
-              {message.body ?? "-"}
-            </p>
-          ))}
-        </div>
-      ) : null}
-      {isPending && !isPmInitiated ? (
-        <form
-          className="mt-4 grid gap-3 md:grid-cols-2"
-          action={async (formData) => {
-            "use server";
-            await respondToNegotiation(formData);
-          }}
-        >
-          <input type="hidden" name="requestId" value={requestId} />
-          <input type="hidden" name="negotiationId" value={negotiation.id} />
-          <Field label="Response amount" name="amount" type="number" min="0" step="1" />
-          <Field label="Currency" name="currency" defaultValue={currency} />
-          <Field label="Delivery" name="estimatedDeliveryAt" type="date" />
-          <Field label="Message" name="message" />
-          <div className="flex flex-wrap gap-2 md:col-span-2">
-            <Button type="submit" name="decision" value="accept">Accept terms</Button>
-            <Button type="submit" name="decision" value="counter" variant="outline">Send counter</Button>
-          </div>
-        </form>
-      ) : isPending ? (
-        <p className="mt-4 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-          Waiting for requester response on this negotiation round.
-        </p>
-      ) : null}
-    </div>
   );
 }
 
@@ -527,26 +606,6 @@ function Metric({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-function ComparisonMetric({
-  label,
-  secondary,
-  value,
-}: {
-  label: string;
-  secondary: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-md border bg-muted/20 px-3 py-3 text-sm">
-      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-2 font-medium">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{secondary}</p>
-    </div>
-  );
-}
-
 function Field({
   label,
   name,
@@ -603,4 +662,121 @@ function labelFor(options: Array<{ value: string; label: string }>, value?: stri
   }
 
   return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function mapPmNegotiationHistoryEntry(
+  negotiation: Negotiation,
+  isLatest: boolean,
+  currentUserId?: string | null,
+): RequesterQuoteHistoryEntry {
+  const messages = [...(negotiation.quote_negotiation_messages ?? [])]
+    .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+    .map((message) => ({
+      id: message.id,
+      authorId: message.author_id ?? null,
+      authorLabel:
+        message.author_id && currentUserId && message.author_id === currentUserId
+          ? "PM feedback"
+          : "Requester",
+      body: message.body?.trim() || "No message provided.",
+      expectedAmount: message.expected_amount ?? null,
+      expectedDeliveryAt: message.expected_delivery_at ?? null,
+      adjustmentNotes: message.adjustment_notes ?? null,
+      createdAt: message.created_at,
+    }));
+
+  return {
+    id: negotiation.id,
+    quoteId: negotiation.quote_id ?? null,
+    initiatedBy: negotiation.initiated_by ?? null,
+    expectedAmount: negotiation.expected_amount ?? null,
+    expectedDeliveryAt: negotiation.expected_delivery_at ?? null,
+    adjustmentNotes: negotiation.adjustment_notes ?? null,
+    rejectReason: negotiation.reject_reason ?? null,
+    pmDecision: negotiation.pm_decision ?? null,
+    status: negotiation.status ?? null,
+    responseQuoteId: negotiation.response_quote_id ?? null,
+    createdAt: negotiation.created_at,
+    updatedAt: negotiation.updated_at ?? null,
+    isLatest,
+    messages,
+  };
+}
+
+function getLatestNegotiationPoint(
+  latestNegotiation: RequesterQuoteHistoryEntry | null,
+  quote: Quote | null,
+): NegotiationPoint | null {
+  if (!latestNegotiation) {
+    return null;
+  }
+
+  const latestMessageWithQuote = [...latestNegotiation.messages]
+    .reverse()
+    .find((message) => message.expectedAmount != null || message.expectedDeliveryAt);
+
+  if (latestMessageWithQuote) {
+    return {
+      amount: latestMessageWithQuote.expectedAmount ?? null,
+      deliveryAt: latestMessageWithQuote.expectedDeliveryAt ?? null,
+      source: latestMessageWithQuote.authorLabel === "Requester" ? "requester" : "pm",
+    };
+  }
+
+  if (latestNegotiation.expectedAmount != null || latestNegotiation.expectedDeliveryAt) {
+    return {
+      amount: latestNegotiation.expectedAmount ?? null,
+      deliveryAt: latestNegotiation.expectedDeliveryAt ?? null,
+      source: "requester",
+    };
+  }
+
+  if (!quote) {
+    return null;
+  }
+
+  return {
+    amount: quote.total_amount ?? null,
+    deliveryAt: quote.estimated_delivery_at ?? null,
+    source: "quote",
+  };
+}
+
+function getPreviousPmQuotePoint(
+  history: RequesterQuoteHistoryEntry[],
+  primaryPoint: NegotiationPoint | null,
+): NegotiationPoint | null {
+  const pmMessages = history
+    .flatMap((entry) => entry.messages)
+    .filter((message) => message.authorLabel === "PM feedback")
+    .filter((message) => message.expectedAmount != null || message.expectedDeliveryAt);
+
+  if (!pmMessages.length) {
+    return null;
+  }
+
+  const currentPmSignature =
+    primaryPoint?.source === "pm"
+      ? `${String(primaryPoint.amount ?? "")}|${primaryPoint.deliveryAt ?? ""}`
+      : null;
+
+  const previousPmMessage = [...pmMessages]
+    .reverse()
+    .find((message) => {
+      if (!currentPmSignature) {
+        return true;
+      }
+
+      return `${String(message.expectedAmount ?? "")}|${message.expectedDeliveryAt ?? ""}` !== currentPmSignature;
+    });
+
+  if (!previousPmMessage) {
+    return null;
+  }
+
+  return {
+    amount: previousPmMessage.expectedAmount ?? null,
+    deliveryAt: previousPmMessage.expectedDeliveryAt ?? null,
+    source: "pm",
+  };
 }

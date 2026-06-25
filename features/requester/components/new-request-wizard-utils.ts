@@ -6,6 +6,7 @@ import type {
   WizardSourceMode,
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
+import { validateFutureDateString } from "@/lib/validators/requester";
 
 export const wizardSteps = [
   { title: "Basics", description: "Name the request and choose the source." },
@@ -65,6 +66,13 @@ export function validateWizardStep(step: number, payload: WizardPayload) {
   }
   if (step === 2 && payload.sourceMode === "patent_search" && !payload.selectedPatentFileIds.length) {
     return "Select at least one downloadable patent file.";
+  }
+  if (step === 4) {
+    try {
+      validateFutureDateString(payload.config.dueAt, "Due date");
+    } catch (error) {
+      return error instanceof Error ? error.message : "Due date is invalid.";
+    }
   }
   return null;
 }
