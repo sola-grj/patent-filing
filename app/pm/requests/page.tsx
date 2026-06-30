@@ -7,6 +7,7 @@ import { PmAccessDenied } from "@/features/pm/components/pm-access-denied";
 import { PmHeader } from "@/features/pm/components/pm-header";
 import { PmRequestFilterForm } from "@/features/pm/components/pm-request-filter-form";
 import { getPmRequests, normalizePmStatusFilter } from "@/features/pm/queries";
+import { UrgentBadge } from "@/features/requester/components/urgent-badge";
 import { formatCurrency, formatDate } from "@/features/requester/format";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
@@ -42,23 +43,26 @@ async function PmRequestsContent({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
       <PmHeader
         title="Request queue"
         description="Prioritize configured requests, negotiations, and accepted quote follow-up."
       />
       <PmRequestFilterForm status={normalizedStatus} query={params.q} />
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="shrink-0 flex items-center justify-between text-sm text-muted-foreground">
         <span>{result.totalCount} requests found</span>
         <span>Page {result.page} of {result.totalPages}</span>
       </div>
-      <Card>
-        <CardContent className="p-0">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CardContent className="min-h-0 flex-1 overflow-y-auto p-0">
           {result.requests.length ? (
             <div className="divide-y">
               {result.requests.map((request) => {
                 const quote = latestBy(request.quotes ?? [], "created_at");
                 const organization = firstRelation(request.organizations);
+                const requirement = Array.isArray(request.translation_requirements)
+                  ? request.translation_requirements[0]
+                  : request.translation_requirements;
                 return (
                   <Link
                     key={request.id}
@@ -66,8 +70,13 @@ async function PmRequestsContent({
                     className="grid gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[1.2fr_1fr_180px_120px_140px]"
                   >
                     <span>
-                      <span className="block text-base font-semibold text-foreground">
-                        {request.title ?? "Untitled request"}
+                      <span className="flex items-center gap-2">
+                        <span className="block text-base font-semibold text-foreground">
+                          {request.title ?? "Untitled request"}
+                        </span>
+                        {requirement?.is_urgent ? (
+                          <UrgentBadge className="shrink-0" />
+                        ) : null}
                       </span>
                       <span className="block text-xs text-muted-foreground">
                         {request.request_no}
@@ -88,11 +97,13 @@ async function PmRequestsContent({
           )}
         </CardContent>
       </Card>
-      <PaginationNav
-        currentPage={result.page}
-        totalPages={result.totalPages}
-        buildHref={(pageNumber) => buildPageHref(pageNumber, normalizedStatus, params.q)}
-      />
+      <div className="shrink-0 pt-2">
+        <PaginationNav
+          currentPage={result.page}
+          totalPages={result.totalPages}
+          buildHref={(pageNumber) => buildPageHref(pageNumber, normalizedStatus, params.q)}
+        />
+      </div>
     </div>
   );
 }

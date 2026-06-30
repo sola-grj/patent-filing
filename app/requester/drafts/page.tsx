@@ -35,14 +35,14 @@ async function DraftsContent({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
       <RequesterHeader title="My drafts" description="Drafts do not have a detail page. Open one to continue editing the request wizard." />
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="shrink-0 flex items-center justify-between text-sm text-muted-foreground">
         <span>{totalCount} drafts found</span>
         <span>Page {Math.min(Math.max(1, page || 1), totalPages)} of {totalPages}</span>
       </div>
-      <Card>
-        <CardContent className="p-0">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CardContent className="min-h-0 flex-1 overflow-y-auto p-0">
           {drafts.length ? (
             <div className="divide-y">
               {drafts.map((draft) => (
@@ -68,11 +68,13 @@ async function DraftsContent({
           )}
         </CardContent>
       </Card>
-      <PaginationNav
-        currentPage={Math.min(Math.max(1, page || 1), totalPages)}
-        totalPages={totalPages}
-        buildHref={buildPageHref}
-      />
+      <div className="shrink-0 pt-2">
+        <PaginationNav
+          currentPage={Math.min(Math.max(1, page || 1), totalPages)}
+          totalPages={totalPages}
+          buildHref={buildPageHref}
+        />
+      </div>
     </div>
   );
 }

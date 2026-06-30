@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PaginationNav } from "@/components/ui/pagination";
 import { RequestFilterForm } from "@/features/requester/components/request-filter-form";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
+import { UrgentBadge } from "@/features/requester/components/urgent-badge";
 import { formatCurrency, formatDate } from "@/features/requester/format";
 import {
   sourceLanguageOptions,
@@ -45,15 +46,15 @@ async function RequestsContent({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
       <RequesterHeader title="My requests" description="Track patent translation requests from draft through quote and order." />
       <RequestFilterForm status={params.status} query={params.q} />
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="shrink-0 flex items-center justify-between text-sm text-muted-foreground">
         <span>{totalCount} requests found</span>
         <span>Page {Math.min(Math.max(1, page || 1), totalPages)} of {totalPages}</span>
       </div>
-      <Card>
-        <CardContent className="p-0">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CardContent className="min-h-0 flex-1 overflow-y-auto p-0">
           {requests.length ? (
             <div className="divide-y">
               {requests.map((request) => {
@@ -71,8 +72,13 @@ async function RequestsContent({
                 return (
                   <Link key={request.id} href={`/requester/requests/${request.id}`} className="grid gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
                     <span>
-                      <span className="block text-base font-semibold text-foreground">
-                        {request.title ?? "Untitled request"}
+                      <span className="flex items-center gap-2">
+                        <span className="block text-base font-semibold text-foreground">
+                          {request.title ?? "Untitled request"}
+                        </span>
+                        {requirement?.is_urgent ? (
+                          <UrgentBadge className="shrink-0" />
+                        ) : null}
                       </span>
                       <span className="block text-xs font-normal text-muted-foreground">
                         {request.request_no}
@@ -97,11 +103,13 @@ async function RequestsContent({
           )}
         </CardContent>
       </Card>
-      <PaginationNav
-        currentPage={Math.min(Math.max(1, page || 1), totalPages)}
-        totalPages={totalPages}
-        buildHref={(pageNumber) => buildPageHref(pageNumber, params.status, params.q)}
-      />
+      <div className="shrink-0 pt-2">
+        <PaginationNav
+          currentPage={Math.min(Math.max(1, page || 1), totalPages)}
+          totalPages={totalPages}
+          buildHref={(pageNumber) => buildPageHref(pageNumber, params.status, params.q)}
+        />
+      </div>
     </div>
   );
 }

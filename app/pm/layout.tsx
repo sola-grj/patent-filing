@@ -1,4 +1,6 @@
-import Link from "next/link";
+import { Suspense } from "react";
+
+import { AppTopNav, AppTopNavFallback } from "@/components/app-top-nav";
 
 export default function PmLayout({
   children,
@@ -6,23 +8,13 @@ export default function PmLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="grid min-h-dvh grid-rows-[auto_1fr] bg-background">
-      <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 text-sm">
-          <Link href="/pm" className="font-semibold tracking-tight">
-            Patentia
-          </Link>
-          <div className="flex items-center gap-5">
-            <Link href="/pm/requests" className="text-muted-foreground hover:text-foreground">
-              Requests
-            </Link>
-            <Link href="/requester" className="text-muted-foreground hover:text-foreground">
-              Requester portal
-            </Link>
-          </div>
-        </nav>
+    <main className="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background">
+      <Suspense fallback={<AppTopNavFallback />}>
+        <AppTopNav />
+      </Suspense>
+      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-col overflow-hidden px-6 py-8">
+        {children}
       </div>
-      <div className="mx-auto w-full max-w-7xl px-6 py-8">{children}</div>
     </main>
   );
 }

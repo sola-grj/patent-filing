@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PmAccessDenied } from "@/features/pm/components/pm-access-denied";
 import { PmHeader } from "@/features/pm/components/pm-header";
 import { getPmDashboard } from "@/features/pm/queries";
+import { UrgentBadge } from "@/features/requester/components/urgent-badge";
 import { formatCurrency, formatDate } from "@/features/requester/format";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
@@ -62,6 +63,9 @@ async function PmDashboardContent() {
             <div className="divide-y">
               {dashboard.recentRequests.map((request) => {
                 const quote = latestBy(request.quotes ?? [], "created_at");
+                const requirement = Array.isArray(request.translation_requirements)
+                  ? request.translation_requirements[0]
+                  : request.translation_requirements;
                 return (
                   <Link
                     key={request.id}
@@ -69,7 +73,12 @@ async function PmDashboardContent() {
                     className="grid gap-3 py-4 text-sm hover:bg-muted/30 md:grid-cols-[1fr_180px_140px_120px]"
                   >
                     <span>
-                      <span className="block font-semibold">{request.title ?? "Untitled request"}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="block font-semibold">{request.title ?? "Untitled request"}</span>
+                        {requirement?.is_urgent ? (
+                          <UrgentBadge className="shrink-0" />
+                        ) : null}
+                      </span>
                       <span className="text-xs text-muted-foreground">{request.request_no}</span>
                     </span>
                     <RequesterStatusBadge status={request.pm_status} size="compact" />

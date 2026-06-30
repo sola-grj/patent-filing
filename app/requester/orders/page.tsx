@@ -22,10 +22,10 @@ async function OrdersContent() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
       <RequesterHeader title="My orders" description="Track accepted quotes and delivery status." />
-      <Card>
-        <CardContent className="p-0">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CardContent className="min-h-0 flex-1 overflow-y-auto p-0">
           {orders.length ? (
             <div className="divide-y">
               {orders.map((order) => (

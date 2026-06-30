@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusPill } from "@/components/ui/status-pill";
 import { cn } from "@/lib/utils";
 import { RequesterCreateRequestButton } from "@/features/requester/components/requester-create-request-button";
+import { UrgentBadge } from "@/features/requester/components/urgent-badge";
 import { WorkspaceSetupForm } from "@/features/requester/components/workspace-setup-form";
 import { formatDate } from "@/features/requester/format";
 import { getRequesterDashboard } from "@/features/requester/queries";
@@ -57,9 +58,16 @@ async function DashboardContent() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-8 overflow-hidden">
       <section className="border-b pb-6">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          {organization.name}&apos;s Workspace
-        </h1>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              {organization.name}&apos;s Workspace
+            </h1>
+          </div>
+          <div className="shrink-0">
+            <RequesterCreateRequestButton />
+          </div>
+        </div>
       </section>
       <div className="grid gap-4 md:grid-cols-5">
         <Metric
@@ -91,11 +99,13 @@ async function DashboardContent() {
       {showEmptyState ? (
         <DashboardEmptyState />
       ) : (
-        <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-hidden pb-px">
           <div
             className={cn(
-              "grid min-h-full gap-6",
-              hasRecentRequests && hasDrafts ? "lg:grid-cols-2" : "grid-cols-1",
+              "grid h-full min-h-0 gap-6",
+              hasRecentRequests && hasDrafts
+                ? "grid-cols-1 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]"
+                : "grid-cols-1",
             )}
           >
             {hasRecentRequests ? (
@@ -166,28 +176,39 @@ function RecentRequestsPanel({
       </CardHeader>
       <CardContent className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
         <div className="divide-y">
-          {requests.map((request) => (
-            <Link
-              key={request.id}
-              href={`/requester/requests/${request.id}`}
-              className="flex items-center justify-between gap-4 py-3 text-sm"
-            >
-              <span className="min-w-0">
-                <span className="block truncate font-semibold text-foreground">
-                  {request.title ?? "Untitled request"}
+          {requests.map((request) => {
+            const requirement = Array.isArray(request.translation_requirements)
+              ? request.translation_requirements[0]
+              : request.translation_requirements;
+
+            return (
+              <Link
+                key={request.id}
+                href={`/requester/requests/${request.id}`}
+                className="flex items-center justify-between gap-4 py-3 text-sm"
+              >
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className="block truncate font-semibold text-foreground">
+                      {request.title ?? "Untitled request"}
+                    </span>
+                    {requirement?.is_urgent ? (
+                      <UrgentBadge className="shrink-0" />
+                    ) : null}
+                  </span>
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {request.request_no}
+                  </span>
                 </span>
-                <span className="block text-xs font-normal text-muted-foreground">
-                  {request.request_no}
+                <span className="flex shrink-0 items-center gap-3">
+                  <RequesterStatusBadge status={request.requester_status} />
+                  <span className="text-muted-foreground">
+                    {formatDate(request.updated_at)}
+                  </span>
                 </span>
-              </span>
-              <span className="flex shrink-0 items-center gap-3">
-                <RequesterStatusBadge status={request.requester_status} />
-                <span className="text-muted-foreground">
-                  {formatDate(request.updated_at)}
-                </span>
-              </span>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       </CardContent>
     </Card>
@@ -214,11 +235,13 @@ function DraftsPanel({
           <Link href="/requester/drafts">Open drafts</Link>
         </Button>
       </CardHeader>
-      <CardContent className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-3">
+      <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0 pb-3">
           <p className="text-sm text-muted-foreground">
             {draftCount} draft requests saved.
           </p>
+        </div>
+        <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto">
           <div className="divide-y">
             {drafts.map((draft) => (
               <Link

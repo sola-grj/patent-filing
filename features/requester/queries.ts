@@ -110,7 +110,7 @@ export async function getRequesterDashboard() {
 
   const { data: requests } = await supabase
     .from("translation_requests")
-    .select("id, request_no, title, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload")
+    .select("id, request_no, title, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent)")
     .eq("requester_id", userId)
     .order("updated_at", { ascending: false });
 
@@ -127,8 +127,8 @@ export async function getRequesterDashboard() {
       rejected: activeRequests.filter((request) => request.requester_status === "rejected").length,
       completed: activeRequests.filter((request) => request.requester_status === "completed").length,
     },
-    recentRequests: activeRequests.slice(0, 3),
-    recentDrafts: drafts.slice(0, 3),
+    recentRequests: activeRequests.slice(0, 8),
+    recentDrafts: drafts.slice(0, 8),
     draftCount: drafts.length,
     orders: [],
   };
@@ -145,13 +145,13 @@ export async function getRequesterRequests(filters?: {
     return { organization: null, requests: [], totalCount: 0, totalPages: 0, page: 1, pageSize: 10 };
   }
 
-  const pageSize = 5;
+  const pageSize = 10;
   const page = Math.max(1, filters?.page ?? 1);
 
   let query = supabase
     .from("translation_requests")
     .select(
-      "id, request_no, title, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
+      "id, request_no, title, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language, is_urgent), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
     )
     .eq("requester_id", userId)
     .neq("workflow_stage", "draft")
