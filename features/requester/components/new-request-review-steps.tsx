@@ -175,17 +175,6 @@ export function ConfigStep({
             options={qualityOptions}
             onChange={onConfigValueChange(config, onChange, "qualityLevel")}
           />
-          <SelectField
-            name="deliveryOption"
-            label="Delivery"
-            value={config.deliveryOption}
-            options={[
-              { value: "standard", label: "Standard" },
-              { value: "expedited", label: "Expedited" },
-              { value: "custom", label: "Custom" },
-            ]}
-            onChange={onConfigValueChange(config, onChange, "deliveryOption")}
-          />
           <Field label="Due date">
             <Input
               className={requesterFieldClassName}
@@ -200,15 +189,6 @@ export function ConfigStep({
               }
             />
           </Field>
-          <label className="flex items-center gap-2 pt-8 text-sm">
-            <Checkbox
-              checked={config.isUrgent}
-              onCheckedChange={(checked) =>
-                onChange({ ...config, isUrgent: checked === true })
-              }
-            />
-            Urgent
-          </label>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="customScope">
               Custom pages / paragraphs or special requirements
@@ -223,6 +203,15 @@ export function ConfigStep({
               placeholder="Pages 1-20, claim set A..."
             />
           </div>
+          <label className="flex items-center gap-2 text-sm md:col-span-2">
+            <Checkbox
+              checked={config.isUrgent}
+              onCheckedChange={(checked) =>
+                onChange({ ...config, isUrgent: checked === true })
+              }
+            />
+            Urgent
+          </label>
         </div>
       </div>
     </div>
@@ -265,10 +254,7 @@ export function QuoteStepContent({
           value={`$${total.toLocaleString()}`}
           action={action}
         />
-        <Metric
-          title="Delivery"
-          value={payload.config.deliveryOption || "standard"}
-        />
+        <Metric title="Due date" value={payload.config.dueAt || "-"} />
       </div>
       <div className="rounded-md border p-4 text-sm text-muted-foreground mt-2">
         Based on {payload.config.sourceLanguage} to{" "}

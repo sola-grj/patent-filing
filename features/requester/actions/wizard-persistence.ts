@@ -23,6 +23,7 @@ import {
 } from "./helpers";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
+const DEFAULT_DELIVERY_OPTION = "standard";
 
 export async function persistWizardRequest(
   formData: FormData,
@@ -385,7 +386,7 @@ async function createRequirement(
     scope_details: { customScope: config.customScope },
     purpose: config.purpose,
     quality_level: config.qualityLevel,
-    delivery_option: config.deliveryOption,
+    delivery_option: DEFAULT_DELIVERY_OPTION,
     due_at: config.dueAt || null,
     is_urgent: config.isUrgent,
     terminology_notes: null,
@@ -437,7 +438,7 @@ async function createInitialQuote(
     wordCount,
     qualityLevel: payload.config.qualityLevel,
     urgent: payload.config.isUrgent,
-    deliveryOption: payload.config.deliveryOption,
+    deliveryOption: DEFAULT_DELIVERY_OPTION,
   };
 
   const { data: quote, error: quoteError } = await supabase

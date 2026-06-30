@@ -12,7 +12,6 @@ import {
   StatusBadge,
   formatCurrency,
   formatDate,
-  titleCaseStatus,
 } from "@/features/requester/format";
 import {
   purposeOptions,
@@ -255,10 +254,9 @@ export function PmRequestDetail({
                 { label: "Scope", value: labelFor(scopeOptions, requirement?.scope_type) },
                 { label: "Purpose", value: labelFor(purposeOptions, requirement?.purpose) },
                 { label: "Quality", value: labelFor(qualityOptions, requirement?.quality_level) },
-                { label: "Delivery", value: titleCaseStatus(requirement?.delivery_option) },
                 { label: "Due date", value: formatDate(requirement?.due_at) },
-                { label: "Urgent", value: requirement?.is_urgent ? "Yes" : "No" },
                 { label: "Notes", value: requirement?.scope_details?.customScope ?? "-" },
+                { label: "Urgent", value: requirement?.is_urgent ? "Yes" : "No" },
               ]}
             />
           </Section>

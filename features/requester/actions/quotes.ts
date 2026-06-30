@@ -16,6 +16,7 @@ import {
 } from "./quote-negotiation";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
+const DEFAULT_DELIVERY_OPTION = "standard";
 type SelectedRequestFile = { id: string; file_parse_results?: unknown };
 type QuoteSeed = {
   amount: number;
@@ -320,6 +321,7 @@ function buildRequirementInput(requestId: string, formData: FormData) {
   const dueAt = validateFutureDateString(optionalString(formData.get("dueAt")), "Due date");
   const configSnapshot = {
     customScope: optionalString(formData.get("customScope")),
+    deliveryOption: DEFAULT_DELIVERY_OPTION,
     todo: "Quote engine should consume this snapshot.",
   };
 
@@ -331,7 +333,7 @@ function buildRequirementInput(requestId: string, formData: FormData) {
     scope_details: configSnapshot,
     purpose: requiredString(formData.get("purpose"), "Translation purpose"),
     quality_level: requiredString(formData.get("qualityLevel"), "Quality level"),
-    delivery_option: requiredString(formData.get("deliveryOption"), "Delivery option"),
+    delivery_option: DEFAULT_DELIVERY_OPTION,
     due_at: dueAt,
     is_urgent: formData.get("isUrgent") === "on",
     terminology_notes: null,

@@ -8,7 +8,6 @@ import {
   StatusBadge,
   formatCurrency,
   formatDate,
-  titleCaseStatus,
 } from "@/features/requester/format";
 import {
   purposeOptions,
@@ -116,6 +115,17 @@ type Order = {
     pm_names?: string | null;
     linguist_names?: string | null;
   } | null;
+  translation_tasks?: Array<{
+    id: string;
+    task_deliverables?: Array<{
+      id: string;
+      version_no?: number | null;
+      status?: string | null;
+      storage_path?: string | null;
+      created_at?: string | null;
+      language?: string | null;
+    }> | null;
+  }> | null;
 };
 
 type RequestDetail = {
@@ -151,6 +161,13 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
   )[0] ?? null;
   const order = firstRelation(request.orders);
+  const latestDeliverable =
+    ((((order?.translation_tasks ?? []) as NonNullable<Order["translation_tasks"]>) ?? [])
+      .flatMap((task) => task.task_deliverables ?? [])
+      .filter((deliverable) => deliverable.status && deliverable.status !== "draft")
+      .sort((left, right) =>
+        new Date(right.created_at ?? 0).getTime() - new Date(left.created_at ?? 0).getTime(),
+      )[0] ?? null);
   const latestQuoteAmount =
     request.requester_status === "negotiation"
       ? getLatestNegotiationAmount(latestNegotiation) ?? latestQuote?.total_amount
@@ -190,10 +207,6 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       label: "Files",
       value: `${files.length} file${files.length === 1 ? "" : "s"}`,
     },
-    {
-      label: "Urgent",
-      value: (requirement?.is_urgent ?? config?.isUrgent) ? "Yes" : "No",
-    },
     ...(showAssignees
       ? [
           {
@@ -206,6 +219,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           },
         ]
       : []),
+    {
+      label: "Urgent",
+      value: (requirement?.is_urgent ?? config?.isUrgent) ? "Yes" : "No",
+    },
   ];
   const patentItems: DetailItem[] = [
     {
@@ -230,18 +247,8 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       ),
     },
     {
-      label: "Delivery",
-      value: formatEnumLabel(
-        requirement?.delivery_option ?? config?.deliveryOption,
-      ),
-    },
-    {
       label: "Due date",
       value: formatDate(requirement?.due_at ?? config?.dueAt),
-    },
-    {
-      label: "Urgent",
-      value: (requirement?.is_urgent ?? config?.isUrgent) ? "Yes" : "No",
     },
     {
       label: "Other notes",
@@ -251,6 +258,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
         "-",
       className: "md:col-span-2",
     },
+    {
+      label: "Urgent",
+      value: (requirement?.is_urgent ?? config?.isUrgent) ? "Yes" : "No",
+    },
   ];
 
   return (
@@ -258,6 +269,15 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       <RequesterHeader
         title={request.title ?? request.request_no}
         description={`Request ${request.request_no}`}
+        action={
+          request.requester_status === "completed" && order?.id && latestDeliverable?.id ? (
+            <Button asChild variant="secondary" size="sm">
+              <a href={`/requester/orders/${order.id}/deliverables/${latestDeliverable.id}`}>
+                Download ZIP
+              </a>
+            </Button>
+          ) : null
+        }
       />
       <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <Section
@@ -347,10 +367,6 @@ function formatConfigLabel(
   }
 
   return options.find((option) => option.value === value)?.label ?? value;
-}
-
-function formatEnumLabel(value?: string | null) {
-  return value ? titleCaseStatus(value) : "-";
 }
 
 function getLatestNegotiationAmount(

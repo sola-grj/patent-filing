@@ -177,6 +177,15 @@ export function NewRequestWizard({
     });
   }
 
+  function handleCancel() {
+    if (!isDirty) {
+      router.push("/requester");
+      return;
+    }
+
+    setCancelOpen(true);
+  }
+
   function resetWizard() {
     setRequestId(undefined);
     setStep(0);
@@ -332,7 +341,7 @@ export function NewRequestWizard({
       <WizardFooter
         step={step}
         isPending={isPending}
-        onCancel={() => setCancelOpen(true)}
+        onCancel={handleCancel}
         onPrevious={() => setStep((current) => current - 1)}
         onNext={goNext}
         onSubmit={() => {
