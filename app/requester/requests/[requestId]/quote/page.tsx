@@ -92,119 +92,126 @@ async function QuoteContent({
   const comparisonDeliveryAt = previousPmPoint?.deliveryAt ?? quote?.estimated_delivery_at ?? null;
 
   return (
-    <div className="space-y-8">
-      <RequesterHeader title="Quote review" description={request.request_no} />
-      {!quote ? (
-        <Card><CardContent className="p-6 text-sm text-muted-foreground">No quote has been generated yet.</CardContent></Card>
-      ) : (
-        <div className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-            <Card>
-              <CardHeader><CardTitle>Quote details</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div className="space-y-2">
+    <div className="flex h-full min-h-0 flex-col gap-8 overflow-hidden">
+      <div className="shrink-0">
+        <RequesterHeader title="Quote review" description={request.request_no} />
+      </div>
+      <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+        {!quote ? (
+          <Card>
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              No quote has been generated yet.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6 pb-px">
+            <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+              <Card>
+                <CardHeader><CardTitle>Quote details</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="space-y-2">
+                      {showNegotiatedComparison ? (
+                        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                          Negotiated quote
+                        </p>
+                      ) : null}
+                      <p className="text-4xl font-semibold">
+                        {formatCurrency(primaryAmount, quote.currency ?? "USD")}
+                      </p>
+                    </div>
                     {showNegotiatedComparison ? (
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        Negotiated quote
-                      </p>
+                      <div className="min-w-[220px] rounded-xl border bg-muted/20 px-4 py-3 md:text-right">
+                        <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                          Previous quote
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-muted-foreground">
+                          {formatCurrency(comparisonAmount, comparisonCurrency)}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Delivery {formatDate(comparisonDeliveryAt)}
+                        </p>
+                      </div>
                     ) : null}
-                    <p className="text-4xl font-semibold">
-                      {formatCurrency(primaryAmount, quote.currency ?? "USD")}
-                    </p>
                   </div>
-                  {showNegotiatedComparison ? (
-                    <div className="min-w-[220px] rounded-xl border bg-muted/20 px-4 py-3 md:text-right">
-                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        Previous quote
-                      </p>
-                      <p className="mt-2 text-2xl font-semibold text-muted-foreground">
-                        {formatCurrency(comparisonAmount, comparisonCurrency)}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Delivery {formatDate(comparisonDeliveryAt)}
-                      </p>
+                  <div className="grid gap-3 text-sm md:grid-cols-3 md:items-center">
+                    <div className="flex items-center gap-2 md:justify-self-start">
+                      <span className="font-semibold text-foreground">Status</span>
+                      {shouldShowLifecycleStatus ? (
+                        <RequesterStatusBadge size="compact" status={request.requester_status} />
+                      ) : (
+                        <StatusBadge status={quote.status} />
+                      )}
                     </div>
-                  ) : null}
-                </div>
-                <div className="grid gap-3 text-sm md:grid-cols-3 md:items-center">
-                  <div className="flex items-center gap-2 md:justify-self-start">
-                    <span className="font-semibold text-foreground">Status</span>
-                    {shouldShowLifecycleStatus ? (
-                      <RequesterStatusBadge size="compact" status={request.requester_status} />
-                    ) : (
-                      <StatusBadge status={quote.status} />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 md:justify-self-center">
-                    <span className="font-semibold text-foreground">Delivery</span>
-                    <span>{formatDate(primaryDeliveryAt)}</span>
-                  </div>
-                  <div className="flex items-center gap-2 md:justify-self-end">
-                    <span className="font-semibold text-foreground">Valid until</span>
-                    <span>{formatDate(quote.valid_until)}</span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {items.map((item) => (
-                    <div key={item.id} className="flex justify-between rounded-md border p-3 text-sm">
-                      <span>{item.label}<span className="block text-muted-foreground">{item.description}</span></span>
-                      <span>{formatCurrency(item.amount, quote.currency ?? "USD")}</span>
+                    <div className="flex items-center gap-2 md:justify-self-center">
+                      <span className="font-semibold text-foreground">Delivery</span>
+                      <span>{formatDate(primaryDeliveryAt)}</span>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle>Actions</CardTitle></CardHeader>
-              <CardContent>
-                {isWaitingForPmFeedback ? (
-                  <div className="rounded-xl border border-dashed px-4 py-5">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="gap-1.5">
-                        <CircleEllipsis className="size-3.5" />
-                        Pending
-                      </Badge>
+                    <div className="flex items-center gap-2 md:justify-self-end">
+                      <span className="font-semibold text-foreground">Valid until</span>
+                      <span>{formatDate(quote.valid_until)}</span>
                     </div>
-                    <p className="mt-3 text-sm font-medium">Waiting for PM feedback</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Your negotiation request has been sent. Actions will be available again after the PM responds.
-                    </p>
                   </div>
-                ) : isPmInitiatedNegotiation ? (
-                  <div className="space-y-4">
+                  <div className="space-y-2">
+                    {items.map((item) => (
+                      <div key={item.id} className="flex justify-between rounded-md border p-3 text-sm">
+                        <span>{item.label}<span className="block text-muted-foreground">{item.description}</span></span>
+                        <span>{formatCurrency(item.amount, quote.currency ?? "USD")}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle>Actions</CardTitle></CardHeader>
+                <CardContent>
+                  {isWaitingForPmFeedback ? (
                     <div className="rounded-xl border border-dashed px-4 py-5">
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary" className="gap-1.5">
                           <CircleEllipsis className="size-3.5" />
-                          Negotiating
+                          Pending
                         </Badge>
                       </div>
-                      <p className="mt-3 text-sm font-medium">PM requested quote adjustments</p>
+                      <p className="mt-3 text-sm font-medium">Waiting for PM feedback</p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Review the latest negotiation request and choose to accept, reject, or continue negotiating from this page.
+                        Your negotiation request has been sent. Actions will be available again after the PM responds.
                       </p>
                     </div>
-                    <QuoteActions
-                      acceptLabel="Accept"
-                      acceptMode="pm-negotiation"
-                      negotiationId={latestNegotiation?.id}
-                      requestId={request.id}
-                      quoteId={quote.id}
-                    />
-                  </div>
+                  ) : isPmInitiatedNegotiation ? (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-dashed px-4 py-5">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="gap-1.5">
+                            <CircleEllipsis className="size-3.5" />
+                            Negotiating
+                          </Badge>
+                        </div>
+                        <p className="mt-3 text-sm font-medium">PM requested quote adjustments</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Review the latest negotiation request and choose to accept, reject, or continue negotiating from this page.
+                        </p>
+                      </div>
+                      <QuoteActions
+                        acceptLabel="Accept"
+                        acceptMode="pm-negotiation"
+                        negotiationId={latestNegotiation?.id}
+                        requestId={request.id}
+                        quoteId={quote.id}
+                      />
+                    </div>
                 ) : isAcceptedQuote ? (
                   <div className="rounded-xl border border-dashed px-4 py-5">
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary">
                         {request.requester_status === "in_progress" ? "In progress" : "Quote accepted"}
-                      </Badge>
-                    </div>
-                    <p className="mt-3 text-sm font-medium">
-                      {request.requester_status === "in_progress"
-                        ? "Negotiated quote accepted"
-                        : "Quote accepted"}
-                    </p>
+                        </Badge>
+                      </div>
+                      <p className="mt-3 text-sm font-medium">
+                        {request.requester_status === "in_progress"
+                          ? "Negotiated quote accepted"
+                          : "Quote accepted"}
+                      </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {request.requester_status === "in_progress"
                         ? "PM accepted the negotiated terms. The request is now in progress."
@@ -212,17 +219,37 @@ async function QuoteContent({
                     </p>
                   </div>
                 ) : (
-                  <QuoteActions requestId={request.id} quoteId={quote.id} />
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-dashed px-4 py-5">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">
+                          {isNegotiationActive ? "Negotiating" : "Quote review"}
+                        </Badge>
+                      </div>
+                      <p className="mt-3 text-sm font-medium">
+                        {isNegotiationActive
+                          ? "Review the updated quote"
+                          : "Choose how to respond to this quote"}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {isNegotiationActive
+                          ? "PM has responded to the current negotiation round. You can accept this updated quote, reject the request, or continue negotiating with another counteroffer."
+                          : "Accept the current quote to continue, reject it to close the request, or start a negotiation if pricing or delivery needs adjustment."}
+                      </p>
+                    </div>
+                    <QuoteActions requestId={request.id} quoteId={quote.id} />
+                  </div>
                 )}
               </CardContent>
             </Card>
           </div>
-          <QuoteNegotiationHistory
-            currency={quote.currency}
-            items={negotiationHistory}
-          />
-        </div>
-      )}
+            <QuoteNegotiationHistory
+              currency={quote.currency}
+              items={negotiationHistory}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

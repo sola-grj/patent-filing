@@ -282,7 +282,8 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
         <Section
           title="Request Information"
-          cardClassName="h-full min-h-0"
+          cardClassName="flex h-full min-h-0 flex-col overflow-hidden"
+          contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
           action={
             <div className="flex flex-wrap items-center justify-end gap-2">
               {latestQuote ? (

@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils";
 
+const REQUESTER_HOME_PATH = "/requester";
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -59,6 +61,23 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (user?.sub && requiresRequesterWorkspace(request.nextUrl.pathname)) {
+    const { data: requesterMembership, error: membershipError } = await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", user.sub)
+      .eq("role", "requester")
+      .limit(1)
+      .maybeSingle();
+
+    if (membershipError || !requesterMembership?.organization_id) {
+      const url = request.nextUrl.clone();
+      url.pathname = REQUESTER_HOME_PATH;
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
   // IMPORTANT: You *must* return the supabaseResponse object as it is.
   // If you're creating a new response object with NextResponse.next() make sure to:
   // 1. Pass the request in it, like so:
@@ -73,4 +92,8 @@ export async function updateSession(request: NextRequest) {
   // of sync and terminate the user's session prematurely!
 
   return supabaseResponse;
+}
+
+function requiresRequesterWorkspace(pathname: string) {
+  return pathname.startsWith(`${REQUESTER_HOME_PATH}/`);
 }

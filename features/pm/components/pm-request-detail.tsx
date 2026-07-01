@@ -206,125 +206,129 @@ export function PmRequestDetail({
   );
 
   return (
-    <div className="flex flex-col gap-8 xl:min-h-[calc(100dvh-9rem)] xl:overflow-hidden">
-      <PmHeader
-        title={request.title ?? request.request_no}
-        description={`${request.request_no} · ${organization?.name ?? "Customer organization"}`}
-        action={<PmCloseRequestDialog requestId={request.id} />}
-      />
-      <div className="grid gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)] xl:items-start">
-        <div className="hide-scrollbar flex flex-col gap-6 xl:min-h-0 xl:h-full xl:overflow-y-auto xl:pr-2">
-          <Section title="Request overview">
-            <InfoGrid
-              items={[
-                { label: "Current status", value: <RequesterStatusBadge status={request.pm_status} size="compact" /> },
-                { label: "Submitted", value: formatDate(request.submitted_at) },
-                { label: "Updated", value: formatDate(request.updated_at) },
-                { label: "Organization", value: organization?.name ?? "-" },
-              ]}
-            />
-          </Section>
-          <Section
-            title="Files and parsing"
-            cardClassName="flex min-h-0 max-h-[32rem] flex-col overflow-hidden"
-            headerClassName="sticky top-0 z-10 flex flex-row items-center justify-between gap-3 space-y-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-            contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-            action={
-              files.length ? (
-                <Button asChild variant="outline" size="sm">
-                  <a href={`/pm/requests/${request.id}/download`}>Download zip</a>
-                </Button>
-              ) : null
-            }
-          >
-            {files.length ? (
-              <div className="space-y-3">
-                {files.map((file) => (
-                  <FileRow key={file.id} file={file} />
-                ))}
-              </div>
-            ) : (
-              <EmptyState>No files attached.</EmptyState>
-            )}
-          </Section>
-          <Section title="Translation configuration">
-            <InfoGrid
-              items={[
-                { label: "Language pair", value: `${labelFor(sourceLanguageOptions, requirement?.source_language)} -> ${labelFor(targetLanguageOptions, requirement?.target_language)}` },
-                { label: "Scope", value: labelFor(scopeOptions, requirement?.scope_type) },
-                { label: "Purpose", value: labelFor(purposeOptions, requirement?.purpose) },
-                { label: "Quality", value: labelFor(qualityOptions, requirement?.quality_level) },
-                { label: "Due date", value: formatDate(requirement?.due_at) },
-                { label: "Notes", value: requirement?.scope_details?.customScope ?? "-" },
-                { label: "Urgent", value: requirement?.is_urgent ? "Yes" : "No" },
-              ]}
-            />
-          </Section>
-          {negotiationHistory.length ? (
-            <QuoteNegotiationHistory
-              cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
-              contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-              currency={latestQuote?.currency ?? "USD"}
-              headerClassName="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-              items={negotiationHistory}
-            />
-          ) : (
-            <Section
-              title="Negotiation history"
-              cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
-              headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-            >
-              <EmptyState>No negotiation rounds yet.</EmptyState>
+    <div className="flex h-full min-h-0 flex-col gap-8 overflow-hidden">
+      <div className="shrink-0">
+        <PmHeader
+          title={request.title ?? request.request_no}
+          description={`${request.request_no} · ${organization?.name ?? "Customer organization"}`}
+          action={<PmCloseRequestDialog requestId={request.id} />}
+        />
+      </div>
+      <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)] xl:items-start">
+          <div className="flex flex-col gap-6 xl:pr-2">
+            <Section title="Request overview">
+              <InfoGrid
+                items={[
+                  { label: "Current status", value: <RequesterStatusBadge status={request.pm_status} size="compact" /> },
+                  { label: "Submitted", value: formatDate(request.submitted_at) },
+                  { label: "Updated", value: formatDate(request.updated_at) },
+                  { label: "Organization", value: organization?.name ?? "-" },
+                ]}
+              />
             </Section>
-          )}
-          <Section
-            title="Event timeline"
-            cardClassName="flex min-h-0 max-h-[24rem] flex-col overflow-hidden"
-            headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-            contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-          >
-            {events.length ? (
-              <div className="divide-y rounded-md border">
-                {events.map((event) => (
-                  <div key={event.id} className="flex items-center justify-between gap-4 p-3 text-sm">
-                    <span>
-                      <span className="font-medium">{event.event_type}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {`${event.from_status ?? "-"} -> ${event.to_status ?? "-"}`}
-                      </span>
-                    </span>
-                    <span className="text-muted-foreground">{formatDate(event.created_at)}</span>
-                  </div>
-                ))}
-              </div>
+            <Section
+              title="Files and parsing"
+              cardClassName="flex min-h-0 max-h-[32rem] flex-col overflow-hidden"
+              headerClassName="sticky top-0 z-10 flex flex-row items-center justify-between gap-3 space-y-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+              contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
+              action={
+                files.length ? (
+                  <Button asChild variant="outline" size="sm">
+                    <a href={`/pm/requests/${request.id}/download`}>Download zip</a>
+                  </Button>
+                ) : null
+              }
+            >
+              {files.length ? (
+                <div className="space-y-3">
+                  {files.map((file) => (
+                    <FileRow key={file.id} file={file} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState>No files attached.</EmptyState>
+              )}
+            </Section>
+            <Section title="Translation configuration">
+              <InfoGrid
+                items={[
+                  { label: "Language pair", value: `${labelFor(sourceLanguageOptions, requirement?.source_language)} -> ${labelFor(targetLanguageOptions, requirement?.target_language)}` },
+                  { label: "Scope", value: labelFor(scopeOptions, requirement?.scope_type) },
+                  { label: "Purpose", value: labelFor(purposeOptions, requirement?.purpose) },
+                  { label: "Quality", value: labelFor(qualityOptions, requirement?.quality_level) },
+                  { label: "Due date", value: formatDate(requirement?.due_at) },
+                  { label: "Notes", value: requirement?.scope_details?.customScope ?? "-" },
+                  { label: "Urgent", value: requirement?.is_urgent ? "Yes" : "No" },
+                ]}
+              />
+            </Section>
+            {negotiationHistory.length ? (
+              <QuoteNegotiationHistory
+                cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
+                contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
+                currency={latestQuote?.currency ?? "USD"}
+                headerClassName="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+                items={negotiationHistory}
+              />
             ) : (
-              <EmptyState>No events recorded.</EmptyState>
+              <Section
+                title="Negotiation history"
+                cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
+                headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+              >
+                <EmptyState>No negotiation rounds yet.</EmptyState>
+              </Section>
             )}
-          </Section>
+            <Section
+              title="Event timeline"
+              cardClassName="flex min-h-0 max-h-[24rem] flex-col overflow-hidden"
+              headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+              contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
+            >
+              {events.length ? (
+                <div className="divide-y rounded-md border">
+                  {events.map((event) => (
+                    <div key={event.id} className="flex items-center justify-between gap-4 p-3 text-sm">
+                      <span>
+                        <span className="font-medium">{event.event_type}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {`${event.from_status ?? "-"} -> ${event.to_status ?? "-"}`}
+                        </span>
+                      </span>
+                      <span className="text-muted-foreground">{formatDate(event.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState>No events recorded.</EmptyState>
+              )}
+            </Section>
+          </div>
+          <aside className="flex flex-col gap-6 xl:pr-2">
+            <PmTaskPanel
+              requestId={request.id}
+              order={order}
+              canStartTask={Boolean(acceptedQuote)}
+              quoteStatus={latestQuote?.status}
+              files={files
+                .filter((file) => file.confirmed_for_translation)
+                .map((file) => ({ id: file.id, original_filename: file.original_filename }))}
+              translators={translators}
+            />
+            <PmDeliveryPanel requestId={request.id} order={order} />
+            <QuotePanel
+              quote={latestQuote}
+              sourceQuote={activeSourceQuote}
+              latestNegotiation={latestOpenNegotiation}
+              latestNegotiationHistory={latestNegotiationHistory}
+              negotiationHistory={negotiationHistory}
+              currentUserId={currentUserId}
+              requestId={request.id}
+              requestStatus={request.pm_status}
+            />
+          </aside>
         </div>
-        <aside className="hide-scrollbar flex flex-col gap-6 xl:min-h-0 xl:h-full xl:overflow-y-auto xl:pr-2">
-          <PmTaskPanel
-            requestId={request.id}
-            order={order}
-            canStartTask={Boolean(acceptedQuote)}
-            quoteStatus={latestQuote?.status}
-            files={files
-              .filter((file) => file.confirmed_for_translation)
-              .map((file) => ({ id: file.id, original_filename: file.original_filename }))}
-            translators={translators}
-          />
-          <PmDeliveryPanel requestId={request.id} order={order} />
-          <QuotePanel
-            quote={latestQuote}
-            sourceQuote={activeSourceQuote}
-            latestNegotiation={latestOpenNegotiation}
-            latestNegotiationHistory={latestNegotiationHistory}
-            negotiationHistory={negotiationHistory}
-            currentUserId={currentUserId}
-            requestId={request.id}
-            requestStatus={request.pm_status}
-          />
-        </aside>
       </div>
     </div>
   );
@@ -481,12 +485,10 @@ function QuotePanel({
                   label="Target delivery"
                   name="estimatedDeliveryAt"
                   type="date"
-                  defaultValue={latestNegotiation.expected_delivery_at ?? undefined}
                 />
                 <Field
                   label="Negotiation notes"
                   name="message"
-                  defaultValue={latestNegotiation.adjustment_notes ?? undefined}
                 />
               </form>
               <div className="flex flex-wrap gap-2">
