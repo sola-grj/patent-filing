@@ -38,6 +38,8 @@ import {
 } from "@/features/requester/actions";
 import { rejectReasonOptions } from "@/features/requester/options";
 
+type QuoteActionType = "accept" | "reject" | "negotiate" | null;
+
 export function QuoteActions({
   acceptLabel = "Accept quote",
   acceptMode = "quote",
@@ -54,13 +56,22 @@ export function QuoteActions({
   quoteId: string;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [activeAction, setActiveAction] = useState<QuoteActionType>(null);
   const [isPending, startTransition] = useTransition();
 
-  function run(action: (formData: FormData) => Promise<{ success: boolean; error?: string }>, formData: FormData) {
+  function run(
+    actionType: QuoteActionType,
+    action: (formData: FormData) => Promise<{ success: boolean; error?: string }>,
+    formData: FormData,
+  ) {
     setError(null);
+    setActiveAction(actionType);
     startTransition(async () => {
       const result = await action(formData);
       setError(result.error ?? null);
+      if (!result.success) {
+        setActiveAction(null);
+      }
       if (result.success) window.location.reload();
     });
   }
@@ -80,18 +91,29 @@ export function QuoteActions({
                 }
 
                 formData.set("negotiationId", negotiationId);
-                run(acceptPmNegotiationQuote, formData);
+                run("accept", acceptPmNegotiationQuote, formData);
                 return;
               }
 
-              run(acceptQuote, formData);
+              run("accept", acceptQuote, formData);
             }}
           >
-            {acceptLabel}
+            {isPending && activeAction === "accept" ? "Accepting..." : acceptLabel}
           </Button>
         ) : null}
-        <RejectDialog disabled={isPending} onSubmit={(formData) => run(rejectQuote, formData)} quoteId={quoteId} requestId={requestId} />
-        <NegotiateDialog disabled={isPending} onSubmit={(formData) => run(negotiateQuote, formData)} quoteId={quoteId} requestId={requestId} />
+        <RejectDialog
+          disabled={isPending}
+          onSubmit={(formData) => run("reject", rejectQuote, formData)}
+          quoteId={quoteId}
+          requestId={requestId}
+        />
+        <NegotiateDialog
+          disabled={isPending}
+          isPending={isPending && activeAction === "negotiate"}
+          onSubmit={(formData) => run("negotiate", negotiateQuote, formData)}
+          quoteId={quoteId}
+          requestId={requestId}
+        />
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
@@ -152,11 +174,13 @@ function RejectDialog({
 
 function NegotiateDialog({
   disabled,
+  isPending,
   requestId,
   quoteId,
   onSubmit,
 }: {
   disabled: boolean;
+  isPending: boolean;
   requestId: string;
   quoteId: string;
   onSubmit: (formData: FormData) => void;
@@ -185,7 +209,9 @@ function NegotiateDialog({
             <Label htmlFor="adjustmentNotes">Adjustment notes</Label>
             <Input id="adjustmentNotes" name="adjustmentNotes" placeholder="Scope, delivery, or pricing adjustment" />
           </div>
-          <Button type="submit">Submit negotiation</Button>
+          <Button type="submit" disabled={disabled || isPending}>
+            {isPending ? "Submitting..." : "Submit negotiation"}
+          </Button>
         </form>
       </DialogContent>
     </Dialog>

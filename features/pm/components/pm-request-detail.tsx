@@ -14,6 +14,10 @@ import {
   formatDate,
 } from "@/features/requester/format";
 import {
+  formatRequestEventTitle,
+  formatRequestEventTransition,
+} from "@/features/pm/request-event-copy";
+import {
   purposeOptions,
   qualityOptions,
   scopeOptions,
@@ -24,7 +28,9 @@ import type { RequesterQuoteHistoryEntry } from "@/features/requester/queries";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
 import { PmCloseRequestDialog } from "./pm-close-request-dialog";
+import { ClickableDateInput } from "./clickable-date-input";
 import { PmDeliveryPanel } from "./pm-delivery-panel";
+import { PmFormSubmitButton } from "./pm-form-submit-button";
 import { PmHeader } from "./pm-header";
 import { PmTaskPanel } from "./pm-task-panel";
 
@@ -132,6 +138,7 @@ type RequestEvent = {
   event_type: string;
   from_status?: string | null;
   to_status?: string | null;
+  payload?: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -291,12 +298,14 @@ export function PmRequestDetail({
                   {events.map((event) => (
                     <div key={event.id} className="flex items-center justify-between gap-4 p-3 text-sm">
                       <span>
-                        <span className="font-medium">{event.event_type}</span>
+                        <span className="font-medium">
+                          {formatRequestEventTitle(event.event_type, event.payload)}
+                        </span>
                         <span className="block text-xs text-muted-foreground">
-                          {`${event.from_status ?? "-"} -> ${event.to_status ?? "-"}`}
+                          {formatRequestEventTransition(event.from_status, event.to_status)}
                         </span>
                       </span>
-                      <span className="text-muted-foreground">{formatDate(event.created_at)}</span>
+                      <span className="text-muted-foreground">{formatEventDateTime(event.created_at)}</span>
                     </div>
                   ))}
                 </div>
@@ -490,22 +499,30 @@ function QuotePanel({
                   label="Negotiation notes"
                   name="message"
                 />
+                <div className="flex flex-wrap gap-2">
+                  <PmFormSubmitButton
+                    type="submit"
+                    name="decision"
+                    value="accept"
+                    pendingLabel="Accepting..."
+                    watchField="decision"
+                    watchValue="accept"
+                  >
+                    Accept
+                  </PmFormSubmitButton>
+                  <PmFormSubmitButton
+                    type="submit"
+                    name="decision"
+                    value="counter"
+                    variant="outline"
+                    pendingLabel="Re-quoting..."
+                    watchField="decision"
+                    watchValue="counter"
+                  >
+                    Re-quote
+                  </PmFormSubmitButton>
+                </div>
               </form>
-              <div className="flex flex-wrap gap-2">
-                <form
-                  action={async (formData) => {
-                    "use server";
-                    await respondToNegotiation(formData);
-                  }}
-                >
-                  <input type="hidden" name="requestId" value={requestId} />
-                  <input type="hidden" name="negotiationId" value={latestNegotiation.id} />
-                  <Button type="submit" name="decision" value="accept">Accept</Button>
-                </form>
-                <Button form={reQuoteFormId} type="submit" name="decision" value="counter" variant="outline">
-                  Re-quote
-                </Button>
-              </div>
             </>
           )}
         </div>
@@ -624,14 +641,23 @@ function Field({
   return (
     <label className="block space-y-2 text-sm">
       <span className="font-medium">{label}</span>
-      <input
-        name={name}
-        type={type}
-        defaultValue={defaultValue}
-        min={min}
-        step={step}
-        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-      />
+      {type === "date" ? (
+        <ClickableDateInput
+          name={name}
+          defaultValue={defaultValue}
+          min={min}
+          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+        />
+      ) : (
+        <input
+          name={name}
+          type={type}
+          defaultValue={defaultValue}
+          min={min}
+          step={step}
+          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+        />
+      )}
     </label>
   );
 }
@@ -662,6 +688,22 @@ function labelFor(options: Array<{ value: string; label: string }>, value?: stri
   }
 
   return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function formatEventDateTime(value?: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
 }
 
 function mapPmNegotiationHistoryEntry(
