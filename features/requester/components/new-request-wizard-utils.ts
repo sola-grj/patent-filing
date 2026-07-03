@@ -11,8 +11,7 @@ import { validateFutureDateString } from "@/lib/validators/requester";
 export const wizardSteps = [
   { title: "Basics", description: "Name the request and choose the source." },
   { title: "Source", description: "Search patents or stage upload files." },
-  { title: "Patent Detail", description: "Review patent data and choose files." },
-  { title: "Parse", description: "Preview parser output and document metrics." },
+  { title: "Patent Detail", description: "Review patent data, choose files, and preview document metrics." },
   { title: "Configure", description: "Set languages, scope, quality, and timing." },
   { title: "Quote", description: "Review the mock quote before submission." },
 ];
@@ -21,7 +20,7 @@ export const defaultWizardConfig: WizardConfig = {
   sourceLanguage: "en",
   targetLanguage: "de",
   scopeType: "full_text",
-  purpose: "european_validation",
+  purpose: "pct_national_phase",
   qualityLevel: "patent_translator_review",
   deliveryOption: "standard",
   dueAt: "",
@@ -67,7 +66,7 @@ export function validateWizardStep(step: number, payload: WizardPayload) {
   if (step === 2 && payload.sourceMode === "patent_search" && !payload.selectedPatentFileIds.length) {
     return "Select at least one downloadable patent file.";
   }
-  if (step === 4) {
+  if (step === 3) {
     try {
       validateFutureDateString(payload.config.dueAt, "Due date");
     } catch (error) {
@@ -101,6 +100,7 @@ export function parsePreviewFiles(payload: WizardPayload): WizardPatentFile[] {
     pageCount: 24 + index * 3,
     wordCount: 12000 + index * 1500,
     claimCount: 18,
+    drawingCount: 6 + index,
   }));
 }
 

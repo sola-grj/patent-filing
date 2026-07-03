@@ -50,10 +50,12 @@ export function Metric({
   title,
   value,
   action,
+  detail,
 }: {
   title: string;
   value: number | string;
   action?: ReactNode;
+  detail?: ReactNode;
 }) {
   return (
     <div className="rounded-md border p-4">
@@ -64,6 +66,9 @@ export function Metric({
       <p className="mt-2 text-2xl font-semibold">
         {typeof value === "number" ? value.toLocaleString() : value}
       </p>
+      {detail ? (
+        <p className="mt-2 text-sm text-muted-foreground">{detail}</p>
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { searchPatentCandidates } from "@/features/requester/actions";
 import type {
+  WizardPayload,
   WizardPatentCandidate,
   WizardPatentFile,
   WizardSourceMode,
@@ -152,6 +155,7 @@ export function SourceStep(props: {
 
 export function PatentDetailStep(props: {
   sourceMode: WizardSourceMode;
+  payload: WizardPayload;
   patent?: WizardPatentCandidate;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
@@ -163,6 +167,13 @@ export function PatentDetailStep(props: {
   const allSelected =
     selectableFileIds.length > 0 &&
     selectableFileIds.every((id) => props.selectedFileIds.includes(id));
+  const activeFiles = props.patent?.downloadableFiles.filter((file) =>
+    props.selectedFileIds.includes(file.id),
+  ) ?? [];
+  const metricFiles =
+    activeFiles.length > 0 ? activeFiles : props.patent?.downloadableFiles ?? [];
+  const totalClaims = metricFiles.reduce((total, file) => total + file.claimCount, 0);
+  const totalDrawings = metricFiles.reduce((total, file) => total + file.drawingCount, 0);
 
   if (props.sourceMode === "upload") {
     return (
@@ -186,53 +197,86 @@ export function PatentDetailStep(props: {
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 space-y-5">
+      <div className="shrink-0 border-b pb-5">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">
             {props.patent.title}
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {props.patent.patentNumber} · {props.patent.legalStatus}
-          </p>
-        </div>
-        <div className="grid gap-4 rounded-md border p-4 text-sm md:grid-cols-3">
-          <Info label="Jurisdiction" value={props.patent.jurisdiction} />
-          <Info label="Application no." value={props.patent.applicationNo} />
-          <Info label="Publication no." value={props.patent.publicationNo} />
-          <Info label="Applicants" value={props.patent.applicants.join(", ")} />
-          <Info label="Filing date" value={props.patent.filingDate} />
-          <Info label="Publication date" value={props.patent.publicationDate} />
-        </div>
-        <p className="text-sm text-muted-foreground">{props.patent.abstract}</p>
-        <div className="flex items-center justify-between gap-4">
-          <h3 className="font-medium">Downloadable files</h3>
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox
-              checked={allSelected}
-              onCheckedChange={(checked) =>
-                props.onSelectionChange(
-                  checked === true ? selectableFileIds : [],
-                )
-              }
-            />
-            Select all
-          </label>
         </div>
       </div>
-      <div className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="space-y-2">
-          {props.patent.downloadableFiles.map((file) => (
-            <FileChoice
-              key={file.id}
-              file={file}
-              checked={props.selectedFileIds.includes(file.id)}
-              onCheckedChange={(checked) =>
-                props.onSelectionChange(
-                  toggleId(props.selectedFileIds, file.id, checked),
-                )
-              }
-            />
-          ))}
+
+      <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+        <div className="space-y-6">
+          <SectionBlock label="Bibliographic data">
+            <div className="grid gap-4 rounded-xl border bg-card p-5 text-sm md:grid-cols-2 xl:grid-cols-3">
+              <Info label="Applicants" value={props.patent.applicants.join(", ")} />
+              <Info label="Inventors" value={props.patent.inventors.join(", ")} />
+              <Info label="Application Date" value={props.patent.filingDate} />
+              <Info label="Allpication No" value={props.patent.applicationNo} />
+              <Info label="Publication Date" value={props.patent.publicationDate} />
+              <Info label="Publication No" value={props.patent.publicationNo} />
+            </div>
+          </SectionBlock>
+
+          <SectionBlock label="Description">
+            <div className="rounded-xl border bg-card p-5">
+              <p className="max-w-5xl text-sm leading-7 text-muted-foreground">
+                {props.patent.description}
+              </p>
+            </div>
+          </SectionBlock>
+
+          <SectionBlock
+            label="Original Document"
+            action={
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(checked) =>
+                    props.onSelectionChange(
+                      checked === true ? selectableFileIds : [],
+                    )
+                  }
+                />
+                Select all
+              </label>
+            }
+          >
+            <div className="rounded-xl border bg-card p-5">
+              <div className="space-y-2">
+                {props.patent.downloadableFiles.map((file) => (
+                  <FileChoice
+                    key={file.id}
+                    file={file}
+                    checked={props.selectedFileIds.includes(file.id)}
+                    onCheckedChange={(checked) =>
+                      props.onSelectionChange(
+                        toggleId(props.selectedFileIds, file.id, checked),
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          </SectionBlock>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <SectionBlock label="Claims Count">
+              <SummaryCard
+                value={totalClaims}
+                unit="claims"
+                detail="Mock data includes the total number of independent and dependent claims extracted from the selected original document."
+              />
+            </SectionBlock>
+
+            <SectionBlock label="Drawings">
+              <SummaryCard
+                value={totalDrawings}
+                unit="sheets"
+                detail="Mock data includes eight drawing sheets covering interface flow, translation routing, terminology alignment, and output assembly figures."
+              />
+            </SectionBlock>
+          </div>
         </div>
       </div>
     </div>
@@ -254,11 +298,7 @@ function PatentCard({
       <CardContent className="flex flex-1 flex-col space-y-4 text-sm">
         <p className="font-medium">{candidate.title}</p>
         <div className="space-y-1 text-muted-foreground">
-          <p>
-            {candidate.jurisdiction} · {candidate.legalStatus}
-          </p>
           <p>{candidate.applicants.join(", ")}</p>
-          <p>{candidate.downloadableFiles.length} downloadable files</p>
         </div>
       </CardContent>
       <CardFooter>
@@ -280,7 +320,7 @@ function FileChoice({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center justify-between rounded-md border p-3 text-sm">
+    <label className="flex items-center rounded-lg border bg-background p-4 text-sm transition-colors hover:bg-muted/30">
       <span className="flex items-center gap-3">
         <Checkbox
           checked={checked}
@@ -293,9 +333,48 @@ function FileChoice({
           </span>
         </span>
       </span>
-      <span className="text-muted-foreground">
-        {file.wordCount.toLocaleString()} words · {file.pageCount} pages
-      </span>
     </label>
+  );
+}
+
+function SectionBlock({
+  label,
+  action,
+  children,
+}: {
+  label: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </h3>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SummaryCard({
+  value,
+  unit,
+  detail,
+}: {
+  value: number;
+  unit: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-5">
+      <div className="flex items-end gap-2">
+        <p className="text-3xl font-semibold tracking-tight">{value.toLocaleString()}</p>
+        <p className="pb-1 text-sm text-muted-foreground">{unit}</p>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">{detail}</p>
+    </div>
   );
 }

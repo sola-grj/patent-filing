@@ -32,26 +32,15 @@ export const scopeOptions = [
   { value: "description_and_claims", label: "Description + claims" },
   { value: "description_claims_abstract", label: "Description + claims + abstract" },
   { value: "drawing_text", label: "Drawing text" },
-  { value: "office_action", label: "Office action" },
-  { value: "response_file", label: "Response file" },
-  { value: "custom_pages", label: "Custom pages" },
-  { value: "custom_paragraphs", label: "Custom paragraphs" },
 ];
 
 export const purposeOptions = [
-  { value: "overseas_filing", label: "Overseas filing" },
-  { value: "pct_national_phase", label: "PCT national phase" },
+  { value: "pct_national_phase", label: "PCT" },
   { value: "paris_convention", label: "Paris convention" },
-  { value: "european_validation", label: "European validation" },
-  { value: "agent_review", label: "Agent review" },
-  { value: "internal_evaluation", label: "Internal evaluation" },
-  { value: "litigation_or_invalidity", label: "Litigation or invalidity" },
-  { value: "technical_reference", label: "Technical reference" },
 ];
 
 export const qualityOptions = [
   { value: "machine_pretranslation", label: "Machine pre-translation" },
-  { value: "standard_human", label: "Standard human translation" },
   { value: "patent_translator", label: "Patent translator" },
   { value: "patent_translator_review", label: "Patent translator + review" },
   { value: "patent_translator_native_review", label: "Patent translator + native review" },

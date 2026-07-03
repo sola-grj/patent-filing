@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleHelp } from "lucide-react";
+import { CircleHelp, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import type { CSSProperties, ReactNode } from "react";
@@ -47,7 +47,7 @@ import type {
   WizardSourceMode,
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
-import { ConfigStep, ParseStep, QuoteStepContent } from "./new-request-review-steps";
+import { ConfigStep, QuoteStepContent } from "./new-request-review-steps";
 import { BasicsStep, PatentDetailStep, SourceStep } from "./new-request-source-steps";
 import {
   buildWizardPayload,
@@ -96,7 +96,9 @@ export function NewRequestWizard({
     expectedDeliveryAt: "",
   });
   const [error, setError] = useState<string | null>(null);
+  const [stepLoadingMessage, setStepLoadingMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const isBusy = isPending || stepLoadingMessage !== null;
   const payload = buildPayload();
   const isDirty = step > 0
     || title.trim().length > 0
@@ -126,7 +128,7 @@ export function NewRequestWizard({
   function handleConfigChange(nextConfig: WizardConfig) {
     setConfig(nextConfig);
 
-    if (!error || step !== 4) {
+    if (!error || step !== 3) {
       return;
     }
 
@@ -155,7 +157,26 @@ export function NewRequestWizard({
       return;
     }
     setError(null);
+
+    if (step === 3) {
+      void runStepTransition("Parsing quote details", () => {
+        setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
+      });
+      return;
+    }
+
     setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
+  }
+
+  async function runStepTransition(message: string, action: () => void) {
+    setStepLoadingMessage(message);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      action();
+    } finally {
+      setStepLoadingMessage(null);
+    }
   }
 
   function buildNegotiationFormData() {
@@ -294,12 +315,19 @@ export function NewRequestWizard({
               uploadedFileSnapshots={uploadedFileSnapshots}
               config={config}
               payload={payload}
-              isPending={isPending}
+              isPending={isBusy}
               setTitle={setTitle}
               setSourceMode={setSourceMode}
               setPatentQuery={setPatentQuery}
               setCandidates={setCandidates}
               setSelectedPatent={setSelectedPatent}
+              setPatentTransition={async (candidate) => {
+                await runStepTransition("Retrieving patent information", () => {
+                  setSelectedPatent(candidate);
+                  setSelectedPatentFileIds([]);
+                  setStep(2);
+                });
+              }}
               setSelectedPatentFileIds={setSelectedPatentFileIds}
               setUploadedFiles={(files) => {
                 setUploadedFiles(files);
@@ -340,7 +368,7 @@ export function NewRequestWizard({
       </Card>
       <WizardFooter
         step={step}
-        isPending={isPending}
+        isPending={isBusy}
         onCancel={handleCancel}
         onPrevious={() => setStep((current) => current - 1)}
         onNext={goNext}
@@ -350,7 +378,7 @@ export function NewRequestWizard({
       />
       <NegotiationDialog
         open={negotiationOpen}
-        isPending={isPending}
+        isPending={isBusy}
         value={negotiationDraft}
         onOpenChange={setNegotiationOpen}
         onChange={setNegotiationDraft}
@@ -358,7 +386,7 @@ export function NewRequestWizard({
       />
       <CancelDialog
         open={cancelOpen}
-        isPending={isPending}
+        isPending={isBusy}
         onOpenChange={setCancelOpen}
         onDiscard={() => router.push("/requester")}
         onSaveDraft={() => {
@@ -370,6 +398,7 @@ export function NewRequestWizard({
           });
         }}
       />
+      <StepLoadingOverlay message={stepLoadingMessage} />
     </div>
   );
 }
@@ -379,7 +408,8 @@ function resolveInitialStep(lastStep?: string) {
     return 0;
   }
 
-  const index = wizardSteps.findIndex((item) => item.title === lastStep);
+  const normalizedStep = lastStep === "Parse" ? "Patent Detail" : lastStep;
+  const index = wizardSteps.findIndex((item) => item.title === normalizedStep);
   return index >= 0 ? index : 0;
 }
 
@@ -402,6 +432,7 @@ function StepContent(props: {
   setPatentQuery: (value: string) => void;
   setCandidates: (value: WizardPatentCandidate[]) => void;
   setSelectedPatent: (value: WizardPatentCandidate) => void;
+  setPatentTransition: (value: WizardPatentCandidate) => Promise<void>;
   setSelectedPatentFileIds: (value: string[]) => void;
   setUploadedFiles: (value: File[]) => void;
   setConfig: (value: WizardConfig) => void;
@@ -422,9 +453,7 @@ function StepContent(props: {
         onPatentQueryChange={props.setPatentQuery}
         onPatentSearch={props.setCandidates}
         onPatentSelect={(candidate) => {
-          props.setSelectedPatent(candidate);
-          props.setSelectedPatentFileIds([]);
-          props.setStep(2);
+          void props.setPatentTransition(candidate);
         }}
         onFilesChange={props.setUploadedFiles}
       />
@@ -434,6 +463,7 @@ function StepContent(props: {
     return (
       <PatentDetailStep
         sourceMode={props.sourceMode}
+        payload={props.payload}
         patent={props.selectedPatent}
         uploadedFiles={props.uploadedFiles}
         uploadedFileSnapshots={props.uploadedFileSnapshots}
@@ -442,8 +472,7 @@ function StepContent(props: {
       />
     );
   }
-  if (props.step === 3) return <ParseStep payload={props.payload} />;
-  if (props.step === 4) return <ConfigStep config={props.config} onChange={props.setConfig} />;
+  if (props.step === 3) return <ConfigStep config={props.config} onChange={props.setConfig} />;
   return <QuoteStepContent payload={props.payload} action={props.quoteAction} />;
 }
 
@@ -491,16 +520,31 @@ function WizardFooter(props: {
 }) {
   return (
     <div className="flex shrink-0 items-center justify-between bg-background/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <Button type="button" variant="outline" onClick={props.onCancel}>Cancel</Button>
+      <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onCancel}>Cancel</Button>
       <div className="flex gap-2">
-        {props.step > 0 ? <Button type="button" variant="outline" onClick={props.onPrevious}>Previous</Button> : null}
+        {props.step > 0 ? <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onPrevious}>Previous</Button> : null}
         {props.step < wizardSteps.length - 1 ? (
-          <Button type="button" onClick={props.onNext}>Next</Button>
+          <Button type="button" disabled={props.isPending} onClick={props.onNext}>Next</Button>
         ) : (
           <Button type="button" disabled={props.isPending} onClick={props.onSubmit}>
             {props.isPending ? "Submitting..." : "Submit Request"}
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function StepLoadingOverlay({ message }: { message: string | null }) {
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+      <div className="flex min-w-[320px] items-center gap-4 rounded-2xl border bg-card px-6 py-5 shadow-lg">
+        <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+        <p className="text-sm font-medium text-foreground">{message}</p>
       </div>
     </div>
   );

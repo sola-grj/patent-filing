@@ -31,71 +31,90 @@ import {
 import { Field, Metric, StepShell } from "./new-request-wizard-shared";
 
 export function ParseStep({ payload }: { payload: WizardPayload }) {
+  return (
+    <ParsePreviewPanel
+      payload={payload}
+      title="Parse preview"
+      description="Mock parser output shown before the request is persisted."
+    />
+  );
+}
+
+export function ParsePreviewPanel({
+  payload,
+  title,
+  description,
+  embedded = false,
+}: {
+  payload: WizardPayload;
+  title: string;
+  description: string;
+  embedded?: boolean;
+}) {
   const files = parsePreviewFiles(payload);
   const findings = buildParseFindings(files);
+  const metrics = buildParseMetrics(files);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className={embedded ? "rounded-xl border bg-muted/20 p-5 md:p-6" : "flex min-h-0 flex-1 flex-col"}>
       <div className="shrink-0 space-y-5">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Parse preview
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Mock parser output shown before the request is persisted.
-          </p>
+          <h3 className={embedded ? "text-lg font-semibold tracking-tight" : "text-2xl font-semibold tracking-tight"}>
+            {title}
+          </h3>
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         </div>
-        <div className="grid gap-4 md:grid-cols-4">
-          <Metric title="Files" value={files.length} />
-          <Metric
-            title="Words"
-            value={files.reduce((total, file) => total + file.wordCount, 0)}
-          />
-          <Metric
-            title="Pages"
-            value={files.reduce((total, file) => total + file.pageCount, 0)}
-          />
-          <Metric title="Parser findings" value={findings.length} />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric title="Files" value={metrics.fileCount} />
+          <Metric title="Words" value={metrics.wordCount} />
+          <Metric title="Claims" value={metrics.claimCount} />
+          <Metric title="Drawings" value={metrics.drawingCount} />
         </div>
       </div>
-      <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="space-y-5">
+      <div className={embedded ? "mt-5" : "mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain"}>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <Section title="Parsed files">
-            <div className="divide-y rounded-md border">
-              {files.map((file) => (
-                <div
-                  key={file.id}
-                  className="grid gap-3 p-4 text-sm md:grid-cols-[1.4fr_repeat(4,auto)]"
-                >
-                  <strong>{file.label}</strong>
-                  <span>{file.wordCount.toLocaleString()} words</span>
-                  <span>{file.pageCount} pages</span>
-                  <span>{file.claimCount} claims</span>
-                  <span className="text-muted-foreground">
-                    OCR no · Review no
-                  </span>
-                </div>
-              ))}
-            </div>
+            {files.length ? (
+              <div className="divide-y rounded-md border bg-background">
+                {files.map((file) => (
+                  <div
+                    key={file.id}
+                    className="grid gap-3 p-4 text-sm md:grid-cols-[1.4fr_repeat(4,auto)]"
+                  >
+                    <strong>{file.label}</strong>
+                    <span>{file.wordCount.toLocaleString()} words</span>
+                    <span>{file.pageCount} pages</span>
+                    <span>{file.claimCount} claims</span>
+                    <span>{file.drawingCount} drawings</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState message="Select at least one file to preview the parsed metrics." />
+            )}
           </Section>
           <Section title="Mock parser findings">
-            <div className="space-y-2.5">
-              {findings.map((finding) => (
-                <div key={finding.id} className="rounded-md border p-4 text-sm">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-medium">{finding.title}</p>
-                      <p className="mt-1 text-muted-foreground">
-                        {finding.detail}
-                      </p>
+            {findings.length ? (
+              <div className="space-y-2.5">
+                {findings.map((finding) => (
+                  <div key={finding.id} className="rounded-md border bg-background p-4 text-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-medium">{finding.title}</p>
+                        <p className="mt-1 text-muted-foreground">
+                          {finding.detail}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                        {finding.status}
+                      </span>
                     </div>
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                      {finding.status}
-                    </span>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState message="Parser findings will appear after at least one file is selected." />
+            )}
           </Section>
         </div>
       </div>
@@ -229,10 +248,13 @@ export function QuoteStepContent({
   payload: WizardPayload;
   action?: ReactNode;
 }) {
-  const wordCount = parsePreviewFiles(payload).reduce(
+  const files = parsePreviewFiles(payload);
+  const fileCount = files.length;
+  const wordCount = files.reduce(
     (total, file) => total + file.wordCount,
     0,
   );
+  const pageCount = files.reduce((total, file) => total + file.pageCount, 0);
   const base = Math.round(wordCount * 0.12);
   const quality = payload.config.qualityLevel.includes("review")
     ? 1.65
@@ -248,7 +270,11 @@ export function QuoteStepContent({
       description="This mock quote will become a persisted quote after submission."
     >
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric title="Word count" value={wordCount} />
+        <Metric
+          title="File Count"
+          value={fileCount}
+          detail={`${wordCount.toLocaleString()} words · ${pageCount.toLocaleString()} pages`}
+        />
         <Metric
           title="Estimated total"
           value={`$${total.toLocaleString()}`}
@@ -302,10 +328,27 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="rounded-md border border-dashed bg-background px-4 py-6 text-sm text-muted-foreground">
+      {message}
+    </div>
+  );
+}
+
+function buildParseMetrics(files: ReturnType<typeof parsePreviewFiles>) {
+  return {
+    fileCount: files.length,
+    wordCount: files.reduce((total, file) => total + file.wordCount, 0),
+    claimCount: files.reduce((total, file) => total + file.claimCount, 0),
+    drawingCount: files.reduce((total, file) => total + file.drawingCount, 0),
+  };
+}
+
 function buildParseFindings(files: ReturnType<typeof parsePreviewFiles>) {
   const statuses = [
     "Parsed",
-    "OCR review",
+    "Analyzed",
     "Structure mapped",
     "Ready for quote",
   ];
@@ -314,7 +357,7 @@ function buildParseFindings(files: ReturnType<typeof parsePreviewFiles>) {
     {
       id: `${file.id}-layout`,
       title: `${file.label} layout map`,
-      detail: `Detected ${Math.max(3, Math.ceil(file.pageCount / 4))} sections, ${Math.max(1, Math.ceil(file.claimCount / 6) || 1)} claim groups, and ${Math.max(1, Math.ceil(file.wordCount / 3200))} review batches.`,
+      detail: `Detected ${Math.max(3, Math.ceil(file.pageCount / 4))} sections and ${Math.max(1, Math.ceil(file.claimCount / 6) || 1)} claim groups.`,
       status: statuses[index % statuses.length],
     },
     {

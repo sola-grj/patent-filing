@@ -9,6 +9,7 @@ export type WizardPatentFile = {
   pageCount: number;
   wordCount: number;
   claimCount: number;
+  drawingCount: number;
 };
 
 export type WizardPatentCandidate = {
@@ -19,7 +20,8 @@ export type WizardPatentCandidate = {
   applicationNo: string;
   publicationNo: string;
   applicants: string[];
-  abstract: string;
+  inventors: string[];
+  description: string;
   filingDate: string;
   publicationDate: string;
   legalStatus: string;
