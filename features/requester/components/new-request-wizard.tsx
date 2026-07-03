@@ -302,7 +302,7 @@ export function NewRequestWizard({
       <StepNav currentStep={step} />
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-          <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain p-6">
+          <div className="flex min-h-0 flex-1 flex-col p-6">
             <StepContent
               step={step}
               title={title}
@@ -362,10 +362,10 @@ export function NewRequestWizard({
                 </TooltipProvider>
               }
             />
-            {error ? <p className="mt-6 text-sm text-destructive">{error}</p> : null}
           </div>
         </CardContent>
       </Card>
+      {error ? <p className="shrink-0 text-sm text-destructive">{error}</p> : null}
       <WizardFooter
         step={step}
         isPending={isBusy}

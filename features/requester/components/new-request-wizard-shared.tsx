@@ -15,15 +15,17 @@ export function StepShell({
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      {children}
+      <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {children}
+      </div>
     </div>
   );
 }
