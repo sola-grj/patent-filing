@@ -74,12 +74,14 @@ async function PmDashboardContent() {
                   >
                     <span>
                       <span className="flex items-center gap-2">
-                        <span className="block font-semibold">{request.title ?? "Untitled request"}</span>
+                        <span className="block font-semibold">{request.request_no}</span>
                         {requirement?.is_urgent ? (
                           <UrgentBadge className="shrink-0" />
                         ) : null}
                       </span>
-                      <span className="text-xs text-muted-foreground">{request.request_no}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {request.title?.trim() || "Patent translation request"}
+                      </span>
                     </span>
                     <RequesterStatusBadge status={request.pm_status} size="compact" />
                     <span>{quote ? formatCurrency(quote.total_amount, quote.currency ?? "USD") : "-"}</span>

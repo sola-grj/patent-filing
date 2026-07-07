@@ -88,7 +88,13 @@ export async function submitNegotiationFromWizard(
     revalidatePath("/pm/requests");
     revalidatePath(`/pm/requests/${requestId}`);
 
-    return { success: true, data: { requestId } };
+    return {
+      success: true,
+      data: {
+        requestId,
+        requestNo: submitResult.data.requestNo,
+      },
+    };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
   }

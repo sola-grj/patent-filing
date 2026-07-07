@@ -388,14 +388,13 @@ function mapDraftRowToWizardState(draft: DraftRow) {
     requestId: draft.id,
     requestNo: draft.request_no,
     payload: {
-      title: payload.title ?? draft.title ?? "",
       sourceMode: payload.sourceMode ?? draft.source_mode,
       patentQuery: payload.patentQuery ?? "",
       selectedPatent: payload.selectedPatent,
       selectedPatentFileIds: payload.selectedPatentFileIds ?? [],
       uploadedFiles,
       config: payload.config,
-      lastStep: payload.lastStep ?? draft.last_draft_step ?? "Basics",
+      lastStep: payload.lastStep ?? draft.last_draft_step ?? "Source",
     } satisfies Partial<WizardPayload>,
   };
 }

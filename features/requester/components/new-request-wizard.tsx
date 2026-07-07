@@ -3,7 +3,7 @@
 import { CircleHelp, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useState, useTransition } from "react";
 
 import {
@@ -48,7 +48,7 @@ import type {
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import { ConfigStep, QuoteStepContent } from "./new-request-review-steps";
-import { BasicsStep, PatentDetailStep, SourceStep } from "./new-request-source-steps";
+import { SourceStep } from "./new-request-source-steps";
 import {
   buildWizardPayload,
   defaultWizardConfig,
@@ -79,11 +79,18 @@ export function NewRequestWizard({
   };
   const [requestId, setRequestId] = useState<string | undefined>(initialDraft?.requestId);
   const [step, setStep] = useState(resolveInitialStep(initialPayload?.lastStep));
-  const [title, setTitle] = useState(initialPayload?.title ?? "");
   const [sourceMode, setSourceMode] = useState<WizardSourceMode>(initialPayload?.sourceMode ?? "patent_search");
   const [patentQuery, setPatentQuery] = useState(initialPayload?.patentQuery ?? "");
   const [candidates, setCandidates] = useState<WizardPatentCandidate[]>([]);
   const [selectedPatent, setSelectedPatent] = useState<WizardPatentCandidate | undefined>(initialPayload?.selectedPatent);
+  const [parsedPatentId, setParsedPatentId] = useState<string | null>(
+    initialPayload?.selectedPatent && initialPayload?.selectedPatentFileIds?.length
+      ? initialPayload.selectedPatent.id
+      : null,
+  );
+  const [showParsedDetail, setShowParsedDetail] = useState(
+    Boolean(initialPayload?.selectedPatent && initialPayload?.selectedPatentFileIds?.length),
+  );
   const [selectedPatentFileIds, setSelectedPatentFileIds] = useState<string[]>(initialPayload?.selectedPatentFileIds ?? []);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploadedFileSnapshots, setUploadedFileSnapshots] = useState<WizardUploadedFile[]>(initialPayload?.uploadedFiles ?? []);
@@ -101,7 +108,6 @@ export function NewRequestWizard({
   const isBusy = isPending || stepLoadingMessage !== null;
   const payload = buildPayload();
   const isDirty = step > 0
-    || title.trim().length > 0
     || patentQuery.trim().length > 0
     || candidates.length > 0
     || selectedPatent !== undefined
@@ -110,10 +116,73 @@ export function NewRequestWizard({
     || uploadedFileSnapshots.length > 0
     || JSON.stringify(config) !== JSON.stringify(defaultWizardConfig);
 
+  function applyUploadedFiles(nextFiles: File[]) {
+    setUploadedFiles(nextFiles);
+    setUploadedFileSnapshots(nextFiles.map((file) => ({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    })));
+  }
+
+  function clearSourceState() {
+    setPatentQuery("");
+    setCandidates([]);
+    setSelectedPatent(undefined);
+    setParsedPatentId(null);
+    setShowParsedDetail(false);
+    setSelectedPatentFileIds([]);
+    setUploadedFiles([]);
+    setUploadedFileSnapshots([]);
+    clearStepError(0);
+  }
+
+  function applyPatentCandidates(nextCandidates: WizardPatentCandidate[]) {
+    setCandidates(nextCandidates);
+    setParsedPatentId(null);
+    setShowParsedDetail(false);
+
+    if (!nextCandidates.length) {
+      setSelectedPatent(undefined);
+      setSelectedPatentFileIds([]);
+      return;
+    }
+
+    setSelectedPatent(nextCandidates[0]);
+    setSelectedPatentFileIds([]);
+  }
+
+  function applySelectedPatent(candidate: WizardPatentCandidate | undefined) {
+    setSelectedPatent(candidate);
+    setParsedPatentId(null);
+    setShowParsedDetail(false);
+    setSelectedPatentFileIds([]);
+  }
+
+  function markPatentParsed(candidate: WizardPatentCandidate) {
+    setSelectedPatent(candidate);
+    setParsedPatentId(candidate.id);
+    setShowParsedDetail(true);
+    setSelectedPatentFileIds(candidate.downloadableFiles.map((file) => file.id));
+  }
+
+  async function parsePatent(candidate: WizardPatentCandidate) {
+    await runStepTransition("Retrieving patent information", () => {
+      markPatentParsed(candidate);
+    });
+  }
+
+  async function handlePatentSearchResults(nextCandidates: WizardPatentCandidate[]) {
+    applyPatentCandidates(nextCandidates);
+
+    if (nextCandidates.length === 1) {
+      await parsePatent(nextCandidates[0]);
+    }
+  }
+
   function buildPayload(): WizardPayload {
     return buildWizardPayload({
       requestId,
-      title,
       sourceMode,
       patentQuery,
       selectedPatent,
@@ -125,16 +194,27 @@ export function NewRequestWizard({
     });
   }
 
+  function clearStepError(targetStep?: number) {
+    if (!error) {
+      return;
+    }
+
+    if (targetStep !== undefined && step !== targetStep) {
+      return;
+    }
+
+    setError(null);
+  }
+
   function handleConfigChange(nextConfig: WizardConfig) {
     setConfig(nextConfig);
 
-    if (!error || step !== 3) {
+    if (!error || step !== 1) {
       return;
     }
 
     const nextPayload = buildWizardPayload({
       requestId,
-      title,
       sourceMode,
       patentQuery,
       selectedPatent,
@@ -151,6 +231,19 @@ export function NewRequestWizard({
   }
 
   function goNext() {
+    if (step === 0 && sourceMode === "patent_search") {
+      if (!selectedPatent) {
+        setError("Search and select a patent before continuing.");
+        return;
+      }
+
+      if (parsedPatentId !== selectedPatent.id) {
+        setError(null);
+        void parsePatent(selectedPatent);
+        return;
+      }
+    }
+
     const validationError = validateWizardStep(step, payload);
     if (validationError) {
       setError(validationError);
@@ -158,7 +251,7 @@ export function NewRequestWizard({
     }
     setError(null);
 
-    if (step === 3) {
+    if (step === 1) {
       void runStepTransition("Parsing quote details", () => {
         setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
       });
@@ -210,11 +303,12 @@ export function NewRequestWizard({
   function resetWizard() {
     setRequestId(undefined);
     setStep(0);
-    setTitle("");
     setSourceMode("patent_search");
     setPatentQuery("");
     setCandidates([]);
     setSelectedPatent(undefined);
+    setParsedPatentId(null);
+    setShowParsedDetail(false);
     setSelectedPatentFileIds([]);
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
@@ -289,9 +383,10 @@ export function NewRequestWizard({
     patentQuery,
     candidates,
     selectedPatent,
+    parsedPatentId,
+    showParsedDetail,
     selectedPatentFileIds,
     step,
-    title,
     uploadedFiles,
     uploadedFileSnapshots,
     registerController,
@@ -299,83 +394,113 @@ export function NewRequestWizard({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-5 overflow-hidden">
-      <StepNav currentStep={step} />
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-          <div className="flex min-h-0 flex-1 flex-col p-6">
-            <StepContent
-              step={step}
-              title={title}
-              sourceMode={sourceMode}
-              patentQuery={patentQuery}
-              candidates={candidates}
-              selectedPatent={selectedPatent}
-              selectedPatentFileIds={selectedPatentFileIds}
-              uploadedFiles={uploadedFiles}
-              uploadedFileSnapshots={uploadedFileSnapshots}
-              config={config}
-              payload={payload}
-              isPending={isBusy}
-              setTitle={setTitle}
-              setSourceMode={setSourceMode}
-              setPatentQuery={setPatentQuery}
-              setCandidates={setCandidates}
-              setSelectedPatent={setSelectedPatent}
-              setPatentTransition={async (candidate) => {
-                await runStepTransition("Retrieving patent information", () => {
-                  setSelectedPatent(candidate);
-                  setSelectedPatentFileIds([]);
-                  setStep(2);
-                });
-              }}
-              setSelectedPatentFileIds={setSelectedPatentFileIds}
-              setUploadedFiles={(files) => {
-                setUploadedFiles(files);
-                setUploadedFileSnapshots(files.map((file) => ({
-                  name: file.name,
-                  size: file.size,
-                  type: file.type,
-                })));
-              }}
-              setConfig={handleConfigChange}
-              setStep={setStep}
-              quoteAction={
-                <TooltipProvider delayDuration={120}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                        onClick={() => {
-                          setError(null);
-                          setNegotiationOpen(true);
-                        }}
-                      >
-                        <CircleHelp className="h-4 w-4" />
-                        <span className="sr-only">Start negotiation</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Start negotiation</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              }
-            />
-          </div>
-        </CardContent>
-      </Card>
-      {error ? <p className="shrink-0 text-sm text-destructive">{error}</p> : null}
-      <WizardFooter
-        step={step}
-        isPending={isBusy}
-        onCancel={handleCancel}
-        onPrevious={() => setStep((current) => current - 1)}
-        onNext={goNext}
-        onSubmit={() => {
-          void persist(submitRequestFromWizard);
-        }}
-      />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <Card className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+          <CardContent className="grid h-full min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden p-0">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+              <StepContent
+                step={step}
+                sourceMode={sourceMode}
+                patentQuery={patentQuery}
+                candidates={candidates}
+                selectedPatent={selectedPatent}
+                parsedPatentId={parsedPatentId}
+                showParsedDetail={showParsedDetail}
+                selectedPatentFileIds={selectedPatentFileIds}
+                uploadedFiles={uploadedFiles}
+                uploadedFileSnapshots={uploadedFileSnapshots}
+                config={config}
+                payload={payload}
+                isPending={isBusy}
+                setSourceMode={(value) => {
+                  clearStepError(0);
+                  setSourceMode(value);
+                }}
+                setPatentQuery={(value) => {
+                  clearStepError(0);
+                  setPatentQuery(value);
+                }}
+                setCandidates={(value) => {
+                  clearStepError(0);
+                  void handlePatentSearchResults(value);
+                }}
+                clearSourceState={clearSourceState}
+                setSelectedPatent={(value) => {
+                  clearStepError(0);
+                  applySelectedPatent(value);
+                }}
+                setShowParsedDetail={setShowParsedDetail}
+                setPatentTransition={async (candidate) => {
+                  clearStepError(0);
+                  await parsePatent(candidate);
+                }}
+                setSelectedPatentFileIds={(value) => {
+                  clearStepError(0);
+                  setSelectedPatentFileIds(value);
+                }}
+                setUploadedFiles={(value) => {
+                  clearStepError(0);
+                  applyUploadedFiles(value);
+                }}
+                removeUploadedFile={(index) => {
+                  if (uploadedFiles.length) {
+                    const nextFiles = uploadedFiles.filter((_, fileIndex) => fileIndex !== index);
+                    applyUploadedFiles(nextFiles);
+                    return;
+                  }
+
+                  setUploadedFileSnapshots((current) =>
+                    current.filter((_, fileIndex) => fileIndex !== index),
+                  );
+                }}
+                setConfig={handleConfigChange}
+                quoteAction={
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setError(null);
+                            setNegotiationOpen(true);
+                          }}
+                        >
+                          <CircleHelp className="h-4 w-4" />
+                          <span className="sr-only">Start negotiation</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Start negotiation</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                }
+              />
+            </div>
+            <div className="shrink-0 px-6 py-4">
+              {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
+              <WizardFooter
+                step={step}
+                nextLabel={
+                  step === 0
+                  && sourceMode === "patent_search"
+                  && parsedPatentId !== selectedPatent?.id
+                    ? "Parse patent"
+                    : "Next"
+                }
+                isPending={isBusy}
+                onCancel={handleCancel}
+                onPrevious={() => setStep((current) => current - 1)}
+                onNext={goNext}
+                onSubmit={() => {
+                  void persist(submitRequestFromWizard);
+                }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
       <NegotiationDialog
         open={negotiationOpen}
         isPending={isBusy}
@@ -408,18 +533,23 @@ function resolveInitialStep(lastStep?: string) {
     return 0;
   }
 
-  const normalizedStep = lastStep === "Parse" ? "Patent Detail" : lastStep;
+  const normalizedStep = lastStep === "Basics" || lastStep === "Source"
+    ? "Source"
+    : lastStep === "Parse" || lastStep === "Patent Detail"
+      ? "Source"
+      : lastStep;
   const index = wizardSteps.findIndex((item) => item.title === normalizedStep);
   return index >= 0 ? index : 0;
 }
 
 function StepContent(props: {
   step: number;
-  title: string;
   sourceMode: WizardSourceMode;
   patentQuery: string;
   candidates: WizardPatentCandidate[];
   selectedPatent?: WizardPatentCandidate;
+  parsedPatentId: string | null;
+  showParsedDetail: boolean;
   selectedPatentFileIds: string[];
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
@@ -427,91 +557,74 @@ function StepContent(props: {
   payload: WizardPayload;
   quoteAction?: ReactNode;
   isPending: boolean;
-  setTitle: (value: string) => void;
   setSourceMode: (value: WizardSourceMode) => void;
   setPatentQuery: (value: string) => void;
   setCandidates: (value: WizardPatentCandidate[]) => void;
-  setSelectedPatent: (value: WizardPatentCandidate) => void;
+  clearSourceState: () => void;
+  setSelectedPatent: (value: WizardPatentCandidate | undefined) => void;
+  setShowParsedDetail: (value: boolean) => void;
   setPatentTransition: (value: WizardPatentCandidate) => Promise<void>;
   setSelectedPatentFileIds: (value: string[]) => void;
   setUploadedFiles: (value: File[]) => void;
+  removeUploadedFile: (index: number) => void;
   setConfig: (value: WizardConfig) => void;
-  setStep: (value: number) => void;
 }) {
   if (props.step === 0) {
-    return <BasicsStep title={props.title} sourceMode={props.sourceMode} onTitleChange={props.setTitle} onSourceModeChange={props.setSourceMode} />;
-  }
-  if (props.step === 1) {
     return (
       <SourceStep
         sourceMode={props.sourceMode}
+        purpose={props.config.purpose}
         patentQuery={props.patentQuery}
         candidates={props.candidates}
+        selectedPatentId={props.selectedPatent?.id}
+        parsedPatent={props.parsedPatentId === props.selectedPatent?.id ? props.selectedPatent : undefined}
+        showParsedDetail={props.showParsedDetail}
         uploadedFiles={props.uploadedFiles}
         uploadedFileSnapshots={props.uploadedFileSnapshots}
         isPending={props.isPending}
+        onPurposeChange={(value) => {
+          if (props.sourceMode !== "patent_search" || props.config.purpose !== value) {
+            props.clearSourceState();
+          }
+          props.setConfig({ ...props.config, purpose: value });
+        }}
+        onSourceModeChange={(value) => {
+          const activeRoute = props.sourceMode === "upload"
+            ? "upload"
+            : props.config.purpose;
+          const nextRoute = value === "upload" ? "upload" : props.config.purpose;
+          if (activeRoute !== nextRoute) {
+            props.clearSourceState();
+          }
+          props.setSourceMode(value);
+        }}
         onPatentQueryChange={props.setPatentQuery}
         onPatentSearch={props.setCandidates}
         onPatentSelect={(candidate) => {
+          if (props.parsedPatentId === candidate.id) {
+            props.setShowParsedDetail(true);
+            return;
+          }
+          props.setSelectedPatent(candidate);
+        }}
+        onPatentParse={(candidate) => {
           void props.setPatentTransition(candidate);
         }}
+        onBackToResults={() => {
+          props.setShowParsedDetail(false);
+        }}
         onFilesChange={props.setUploadedFiles}
+        onRemoveFile={props.removeUploadedFile}
       />
     );
   }
-  if (props.step === 2) {
-    return (
-      <PatentDetailStep
-        sourceMode={props.sourceMode}
-        payload={props.payload}
-        patent={props.selectedPatent}
-        uploadedFiles={props.uploadedFiles}
-        uploadedFileSnapshots={props.uploadedFileSnapshots}
-        selectedFileIds={props.selectedPatentFileIds}
-        onSelectionChange={props.setSelectedPatentFileIds}
-      />
-    );
-  }
-  if (props.step === 3) return <ConfigStep config={props.config} onChange={props.setConfig} />;
+  if (props.step === 1) return <ConfigStep config={props.config} onChange={props.setConfig} />;
   return <QuoteStepContent payload={props.payload} action={props.quoteAction} />;
-}
-
-function StepNav({ currentStep }: { currentStep: number }) {
-  const current = wizardSteps[currentStep];
-  const progress = ((currentStep + 1) / wizardSteps.length) * 100;
-
-  return (
-    <div className="shrink-0 rounded-md border bg-card p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em]">
-            Step {currentStep + 1} of {wizardSteps.length}
-          </p>
-          <p className="mt-2 text-lg font-medium">{current.title}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{current.description}</p>
-        </div>
-        <p className="text-sm font-medium text-muted-foreground">
-          {Math.round(progress)}%
-        </p>
-      </div>
-      <div
-        className="mt-4 h-2 overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(progress)}
-      >
-        <div
-          className="h-full origin-left rounded-full bg-primary transition-[width] duration-200 ease-out"
-          style={{ "--wizard-progress": `${progress}%`, width: "var(--wizard-progress)" } as CSSProperties}
-        />
-      </div>
-    </div>
-  );
 }
 
 function WizardFooter(props: {
   step: number;
+  nextLabel?: string;
   isPending: boolean;
   onCancel: () => void;
   onPrevious: () => void;
@@ -519,12 +632,12 @@ function WizardFooter(props: {
   onSubmit: () => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-between bg-background/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <div className="flex shrink-0 items-center justify-between">
       <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onCancel}>Cancel</Button>
       <div className="flex gap-2">
         {props.step > 0 ? <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onPrevious}>Previous</Button> : null}
         {props.step < wizardSteps.length - 1 ? (
-          <Button type="button" disabled={props.isPending} onClick={props.onNext}>Next</Button>
+          <Button type="button" disabled={props.isPending} onClick={props.onNext}>{props.nextLabel ?? "Next"}</Button>
         ) : (
           <Button type="button" disabled={props.isPending} onClick={props.onSubmit}>
             {props.isPending ? "Submitting..." : "Submit Request"}

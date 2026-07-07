@@ -23,7 +23,7 @@ export function RequestFilterForm({
       <Input
         name="q"
         defaultValue={query}
-        placeholder="Search request number, title, or patent number"
+        placeholder="Search request number or patent number"
       />
       <Select name="status" defaultValue={status ?? "all"}>
         <SelectTrigger className="md:w-56">

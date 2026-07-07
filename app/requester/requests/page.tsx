@@ -74,14 +74,14 @@ async function RequestsContent({
                     <span>
                       <span className="flex items-center gap-2">
                         <span className="block text-base font-semibold text-foreground">
-                          {request.title ?? "Untitled request"}
+                          {request.request_no}
                         </span>
                         {requirement?.is_urgent ? (
                           <UrgentBadge className="shrink-0" />
                         ) : null}
                       </span>
                       <span className="block text-xs font-normal text-muted-foreground">
-                        {request.request_no}
+                        {request.title?.trim() || "Patent translation request"}
                       </span>
                     </span>
                     <RequesterStatusBadge status={request.requester_status} />

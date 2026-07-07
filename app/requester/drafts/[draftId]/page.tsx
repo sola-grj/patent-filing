@@ -29,7 +29,7 @@ async function DraftEditorContent({
   }
 
   return (
-    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[calc(100dvh-8.5rem)] max-h-[calc(100dvh-8.5rem)] flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <NewRequestWizard initialDraft={draft} />
     </div>
   );

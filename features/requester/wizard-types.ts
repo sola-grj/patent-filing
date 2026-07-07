@@ -49,7 +49,6 @@ export type WizardUploadedFile = {
 
 export type WizardPayload = {
   requestId?: string;
-  title: string;
   sourceMode: WizardSourceMode;
   patentQuery?: string;
   selectedPatent?: WizardPatentCandidate;
@@ -67,4 +66,5 @@ export type WizardDraftSession = {
 
 export type WizardPersistResult = {
   requestId: string;
+  requestNo: string;
 };

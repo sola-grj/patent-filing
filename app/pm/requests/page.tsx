@@ -72,14 +72,14 @@ async function PmRequestsContent({
                     <span>
                       <span className="flex items-center gap-2">
                         <span className="block text-base font-semibold text-foreground">
-                          {request.title ?? "Untitled request"}
+                          {request.request_no}
                         </span>
                         {requirement?.is_urgent ? (
                           <UrgentBadge className="shrink-0" />
                         ) : null}
                       </span>
                       <span className="block text-xs text-muted-foreground">
-                        {request.request_no}
+                        {request.title?.trim() || "Patent translation request"}
                       </span>
                     </span>
                     <span>{organization?.name ?? "-"}</span>

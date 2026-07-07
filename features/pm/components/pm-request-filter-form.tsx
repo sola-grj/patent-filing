@@ -32,7 +32,7 @@ export function PmRequestFilterForm({
       <input
         name="q"
         defaultValue={query ?? ""}
-        placeholder="Search request, title, or organization"
+        placeholder="Search request number, patent number, or organization"
         className="h-10 rounded-md border border-input bg-background px-3 text-sm md:flex-1"
       />
       <Button type="submit">Filter</Button>

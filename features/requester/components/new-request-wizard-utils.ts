@@ -9,9 +9,7 @@ import type {
 import { validateFutureDateString } from "@/lib/validators/requester";
 
 export const wizardSteps = [
-  { title: "Basics", description: "Name the request and choose the source." },
-  { title: "Source", description: "Search patents or stage upload files." },
-  { title: "Patent Detail", description: "Review patent data, choose files, and preview document metrics." },
+  { title: "Source", description: "Search by patent number or upload source files." },
   { title: "Configure", description: "Set languages, scope, quality, and timing." },
   { title: "Quote", description: "Review the mock quote before submission." },
 ];
@@ -20,7 +18,7 @@ export const defaultWizardConfig: WizardConfig = {
   sourceLanguage: "en",
   targetLanguage: "de",
   scopeType: "full_text",
-  purpose: "pct_national_phase",
+  purpose: "paris_convention",
   qualityLevel: "patent_translator_review",
   deliveryOption: "standard",
   dueAt: "",
@@ -30,7 +28,6 @@ export const defaultWizardConfig: WizardConfig = {
 
 export function buildWizardPayload(input: {
   requestId?: string;
-  title: string;
   sourceMode: WizardSourceMode;
   patentQuery: string;
   selectedPatent?: WizardPatentCandidate;
@@ -42,7 +39,6 @@ export function buildWizardPayload(input: {
 }): WizardPayload {
   return {
     requestId: input.requestId,
-    title: input.title,
     sourceMode: input.sourceMode,
     patentQuery: input.patentQuery,
     selectedPatent: input.selectedPatent,
@@ -56,17 +52,13 @@ export function buildWizardPayload(input: {
 }
 
 export function validateWizardStep(step: number, payload: WizardPayload) {
-  if (step === 0 && !payload.title.trim()) return "Enter a request title.";
-  if (step === 1 && payload.sourceMode === "patent_search" && !payload.selectedPatent) {
+  if (step === 0 && payload.sourceMode === "patent_search" && !payload.selectedPatent) {
     return "Search and select a patent before continuing.";
   }
-  if (step === 1 && payload.sourceMode === "upload" && !payload.uploadedFiles.length) {
-    return "Choose at least one file before continuing.";
+  if (step === 0 && payload.sourceMode === "upload" && !payload.uploadedFiles.length) {
+    return "Upload at least one file before continuing.";
   }
-  if (step === 2 && payload.sourceMode === "patent_search" && !payload.selectedPatentFileIds.length) {
-    return "Select at least one downloadable patent file.";
-  }
-  if (step === 3) {
+  if (step === 1) {
     try {
       validateFutureDateString(payload.config.dueAt, "Due date");
     } catch (error) {
@@ -86,9 +78,12 @@ export function validateWizardPayload(payload: WizardPayload) {
 
 export function parsePreviewFiles(payload: WizardPayload): WizardPatentFile[] {
   if (payload.sourceMode === "patent_search" && payload.selectedPatent) {
-    return payload.selectedPatent.downloadableFiles.filter((file) =>
+    const selectedPatentFiles = payload.selectedPatent.downloadableFiles.filter((file) =>
       payload.selectedPatentFileIds.includes(file.id),
     );
+    return selectedPatentFiles.length > 0
+      ? selectedPatentFiles
+      : payload.selectedPatent.downloadableFiles;
   }
 
   return payload.uploadedFiles.map((file, index) => ({

@@ -50,7 +50,14 @@ export async function persistWizardRequest(
       }
     }
 
-    await upsertRequest(supabase, requestId, organization.id, userId, payload, mode);
+    const requestNo = await upsertRequest(
+      supabase,
+      requestId,
+      organization.id,
+      userId,
+      payload,
+      mode,
+    );
     const requestFileIds = await persistSourceFiles(
       supabase,
       requestId,
@@ -87,7 +94,7 @@ export async function persistWizardRequest(
     revalidatePath("/pm");
     revalidatePath("/pm/requests");
     revalidatePath(`/pm/requests/${requestId}`);
-    return { success: true, data: { requestId } };
+    return { success: true, data: { requestId, requestNo } };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
   }
@@ -95,7 +102,6 @@ export async function persistWizardRequest(
 
 function parseWizardPayload(formData: FormData): WizardPayload {
   const payload = JSON.parse(String(formData.get("payload") ?? "")) as WizardPayload;
-  if (!payload.title?.trim()) throw new Error("Request title is required.");
   if (!["patent_search", "upload"].includes(payload.sourceMode)) {
     throw new Error("Choose a valid file source.");
   }
@@ -114,7 +120,7 @@ async function upsertRequest(
     organization_id: organizationId,
     requester_id: userId,
     source_mode: payload.sourceMode,
-    title: payload.title.trim(),
+    title: null,
     workflow_stage: mode === "draft" ? "draft" : "configured",
     requester_status: mode === "draft" ? "responding" : "responding",
     pm_status: mode === "draft" ? "responding" : "responding",
@@ -123,14 +129,18 @@ async function upsertRequest(
     submitted_at: mode === "draft" ? null : new Date().toISOString(),
   };
 
-  const { error } = payload.requestId
-    ? await supabase.from("translation_requests").update(requestInput).eq("id", requestId)
-    : await supabase.from("translation_requests").insert({
+  const query = payload.requestId
+    ? supabase.from("translation_requests").update(requestInput).eq("id", requestId)
+    : supabase.from("translation_requests").insert({
         id: requestId,
         ...requestInput,
       });
 
+  const { data, error } = await query.select("request_no").single();
+
   if (error) throw new Error(error.message);
+
+  return data.request_no;
 }
 
 async function persistSourceFiles(
@@ -216,9 +226,7 @@ async function persistPatentSelection(
 
   const searchId = randomUUID();
   const candidateId = randomUUID();
-  const selectedFiles = patent.downloadableFiles.filter((file) =>
-    payload.selectedPatentFileIds.includes(file.id),
-  );
+  const selectedFiles = resolvePatentFiles(payload);
 
   await supabase.from("patent_searches").insert({
     id: searchId,
@@ -342,9 +350,7 @@ async function createParseResults(
   requestFileIds: string[],
   payload: WizardPayload,
 ) {
-  const selectedPatentFiles = payload.selectedPatent?.downloadableFiles.filter((file) =>
-    payload.selectedPatentFileIds.includes(file.id),
-  ) ?? [];
+  const selectedPatentFiles = resolvePatentFiles(payload);
 
   for (const [index, fileId] of requestFileIds.entries()) {
     const patentFile = selectedPatentFiles[index];
@@ -368,6 +374,15 @@ async function createParseResults(
       manual_review_required: false,
     });
   }
+}
+
+function resolvePatentFiles(payload: WizardPayload) {
+  const patentFiles = payload.selectedPatent?.downloadableFiles ?? [];
+  const selectedPatentFiles = patentFiles.filter((file) =>
+    payload.selectedPatentFileIds.includes(file.id),
+  );
+
+  return selectedPatentFiles.length > 0 ? selectedPatentFiles : patentFiles;
 }
 
 async function createRequirement(

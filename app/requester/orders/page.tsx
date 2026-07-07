@@ -31,7 +31,12 @@ async function OrdersContent() {
               {orders.map((order) => (
                 <Link key={order.id} href={`/requester/orders/${order.id}`} className="grid gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[1fr_1fr_1fr_1fr]">
                   <strong>{order.order_no}</strong>
-                  <span>{order.translation_requests?.request_no} · {order.translation_requests?.title}</span>
+                  <span>
+                    {order.translation_requests?.request_no}
+                    {order.translation_requests?.title?.trim()
+                      ? ` · ${order.translation_requests.title}`
+                      : ""}
+                  </span>
                   <StatusBadge status={order.status} />
                   <span className="text-right">{formatCurrency(order.quotes?.total_amount, order.quotes?.currency)}<span className="block text-muted-foreground">{formatDate(order.quotes?.estimated_delivery_at)}</span></span>
                 </Link>

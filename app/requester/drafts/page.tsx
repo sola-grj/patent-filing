@@ -53,10 +53,12 @@ async function DraftsContent({
                 >
                   <span>
                     <strong>{draft.request_no}</strong>
-                    <span className="block text-muted-foreground">{draft.title ?? "Untitled draft"}</span>
+                    <span className="block text-muted-foreground">
+                      {draft.title?.trim() || "Draft request"}
+                    </span>
                   </span>
                   <span>{draft.source_mode === "upload" ? "Upload files" : "Patent search"}</span>
-                  <span>{draft.last_draft_step ?? "Basics"}</span>
+                  <span>{draft.last_draft_step ?? "Source"}</span>
                   <span className="text-right text-muted-foreground">{formatDate(draft.updated_at)}</span>
                 </Link>
               ))}

@@ -37,6 +37,7 @@ export const scopeOptions = [
 export const purposeOptions = [
   { value: "pct_national_phase", label: "PCT" },
   { value: "paris_convention", label: "Paris convention" },
+  { value: "european_validation", label: "EP validation" },
 ];
 
 export const qualityOptions = [

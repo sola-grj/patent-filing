@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
+import { X } from "lucide-react";
 
 import type { WizardUploadedFile } from "@/features/requester/wizard-types";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 export function StepShell({
@@ -15,15 +17,15 @@ export function StepShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 flex items-start justify-between gap-4">
+    <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
+      <div className="flex shrink-0 items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="mt-5 min-h-0 overflow-hidden">
         {children}
       </div>
     </div>
@@ -75,19 +77,42 @@ export function Metric({
   );
 }
 
-export function FileList({ files }: { files: WizardUploadedFile[] }) {
+export function FileList({
+  files,
+  onRemove,
+  className,
+}: {
+  files: WizardUploadedFile[];
+  onRemove?: (index: number) => void;
+  className?: string;
+}) {
   if (!files.length) {
     return <p className="text-sm text-muted-foreground">No files selected yet.</p>;
   }
 
   return (
-    <div className="divide-y rounded-md border">
-      {files.map((file) => (
-        <div key={`${file.name}-${file.size}`} className="flex items-center justify-between p-3 text-sm">
-          <span>{file.name}</span>
-          <span className="text-muted-foreground">
+    <div className={`rounded-md border bg-background ${className ?? ""}`}>
+      {files.map((file, index) => (
+        <div
+          key={`${file.name}-${file.size}-${index}`}
+          className="flex items-center gap-3 border-b p-3 text-sm last:border-b-0"
+        >
+          <span className="min-w-0 flex-1 truncate">{file.name}</span>
+          <span className="shrink-0 text-muted-foreground">
             {Math.ceil(file.size / 1024)} KB · {file.type || "unknown"}
           </span>
+          {onRemove ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => onRemove(index)}
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Remove file</span>
+            </Button>
+          ) : null}
         </div>
       ))}
     </div>

@@ -49,12 +49,12 @@ export function RecentRequestsPanel({
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-base font-semibold text-foreground">
-                        {request.title ?? "Untitled request"}
+                        {request.request_no}
                       </span>
                       {requirement?.is_urgent ? <UrgentBadge /> : null}
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-                      <span>{request.request_no}</span>
+                      <span>{request.title?.trim() || "Patent translation request"}</span>
                       <span className="h-1 w-1 rounded-full bg-slate-300" />
                       <span>Updated {formatDate(request.updated_at)}</span>
                     </div>
@@ -109,10 +109,12 @@ export function DraftsPanel({
               >
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-foreground">
-                    {draft.title ?? "Untitled draft"}
+                    {draft.request_no}
                   </p>
                   <p className="mt-1 text-muted-foreground">
-                    Resume from {draft.last_draft_step ?? "Basics"}
+                    {draft.title?.trim() || "Draft request"}
+                    {" · "}
+                    Resume from {draft.last_draft_step ?? "Source"}
                   </p>
                 </div>
                 <span className="shrink-0 text-muted-foreground">
