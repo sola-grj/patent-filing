@@ -14,7 +14,7 @@ export default function RequesterLayout({
         <Suspense fallback={<AppTopNavFallback />}>
           <AppTopNav />
         </Suspense>
-        <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-col overflow-hidden px-6 py-8">
+        <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-col overflow-visible px-6 py-8">
           {children}
         </div>
       </main>

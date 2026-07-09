@@ -35,9 +35,48 @@ export const scopeOptions = [
 ];
 
 export const purposeOptions = [
+  { value: "european_validation", label: "EP validation" },
   { value: "pct_national_phase", label: "PCT" },
   { value: "paris_convention", label: "Paris convention" },
-  { value: "european_validation", label: "EP validation" },
+];
+
+export const channelOptions = [
+  { value: "european_validation", label: "EP" },
+  { value: "pct_national_phase", label: "PCT" },
+  { value: "paris_convention", label: "Paris Convention" },
+];
+
+export const serviceTypeOptions = [
+  { value: "translation", label: "Translation" },
+  { value: "filing", label: "Filing" },
+  {
+    value: "european_patent_grant_registration",
+    label: "European Patent Grant Registration",
+  },
+  { value: "epv", label: "EPV" },
+];
+
+export const entityTypeOptions = [
+  { value: "large_entity", label: "Large" },
+  { value: "small_entity", label: "Small" },
+  { value: "micro_entity", label: "Micro" },
+];
+
+export const filingTypeOptions = [
+  { value: "submission", label: "Submission" },
+  { value: "annuity", label: "Annuity" },
+];
+
+export const filingApplicationTypeOptions = [
+  { value: "invention", label: "Invention" },
+  { value: "utility_model", label: "Utility Model" },
+  { value: "design", label: "Industrial Design" },
+  { value: "trademark", label: "Trademark" },
+];
+
+export const epvTypeOptions = [
+  { value: "traditional_validation", label: "Traditional Validation" },
+  { value: "unitary_effect", label: "Unitary Effect" },
 ];
 
 export const qualityOptions = [

@@ -52,7 +52,10 @@ import { SourceStep } from "./new-request-source-steps";
 import {
   buildWizardPayload,
   defaultWizardConfig,
+  normalizeWizardConfig,
   toWizardFormData,
+  type WizardConfigFieldErrors,
+  validateWizardConfigFields,
   validateWizardPayload,
   validateWizardStep,
   wizardSteps,
@@ -73,10 +76,7 @@ export function NewRequestWizard({
   const router = useRouter();
   const { registerController } = useRequestWizardController();
   const initialPayload = initialDraft?.payload;
-  const initialConfig = {
-    ...defaultWizardConfig,
-    ...initialPayload?.config,
-  };
+  const initialConfig = normalizeWizardConfig(initialPayload?.config);
   const [requestId, setRequestId] = useState<string | undefined>(initialDraft?.requestId);
   const [step, setStep] = useState(resolveInitialStep(initialPayload?.lastStep));
   const [sourceMode, setSourceMode] = useState<WizardSourceMode>(initialPayload?.sourceMode ?? "patent_search");
@@ -102,11 +102,14 @@ export function NewRequestWizard({
     expectedAmount: "",
     expectedDeliveryAt: "",
   });
+  const [showConfigValidation, setShowConfigValidation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stepLoadingMessage, setStepLoadingMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const isBusy = isPending || stepLoadingMessage !== null;
   const payload = buildPayload();
+  const configFieldErrors =
+    step === 1 && showConfigValidation ? validateWizardConfigFields(config) : {};
   const isDirty = step > 0
     || patentQuery.trim().length > 0
     || candidates.length > 0
@@ -208,26 +211,6 @@ export function NewRequestWizard({
 
   function handleConfigChange(nextConfig: WizardConfig) {
     setConfig(nextConfig);
-
-    if (!error || step !== 1) {
-      return;
-    }
-
-    const nextPayload = buildWizardPayload({
-      requestId,
-      sourceMode,
-      patentQuery,
-      selectedPatent,
-      selectedPatentFileIds,
-      uploadedFiles,
-      uploadedFileSnapshots,
-      config: nextConfig,
-      lastStep: wizardSteps[step].title,
-    });
-
-    if (!validateWizardStep(step, nextPayload)) {
-      setError(null);
-    }
   }
 
   function goNext() {
@@ -246,9 +229,15 @@ export function NewRequestWizard({
 
     const validationError = validateWizardStep(step, payload);
     if (validationError) {
-      setError(validationError);
+      if (step === 1) {
+        setShowConfigValidation(true);
+        setError(null);
+      } else {
+        setError(validationError);
+      }
       return;
     }
+    setShowConfigValidation(false);
     setError(null);
 
     if (step === 1) {
@@ -313,6 +302,7 @@ export function NewRequestWizard({
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
     setConfig(defaultWizardConfig);
+    setShowConfigValidation(false);
     setCancelOpen(false);
     setNegotiationOpen(false);
     setNegotiationDraft({
@@ -410,6 +400,7 @@ export function NewRequestWizard({
                 uploadedFiles={uploadedFiles}
                 uploadedFileSnapshots={uploadedFileSnapshots}
                 config={config}
+                configFieldErrors={configFieldErrors}
                 payload={payload}
                 isPending={isBusy}
                 setSourceMode={(value) => {
@@ -483,11 +474,13 @@ export function NewRequestWizard({
               <WizardFooter
                 step={step}
                 nextLabel={
-                  step === 0
-                  && sourceMode === "patent_search"
-                  && parsedPatentId !== selectedPatent?.id
-                    ? "Parse patent"
-                    : "Next"
+                  step === 1
+                    ? "Generate Estimate"
+                    : step === 0
+                      && sourceMode === "patent_search"
+                      && parsedPatentId !== selectedPatent?.id
+                      ? "Parse patent"
+                      : "Next"
                 }
                 isPending={isBusy}
                 onCancel={handleCancel}
@@ -554,6 +547,7 @@ function StepContent(props: {
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
   config: WizardConfig;
+  configFieldErrors: WizardConfigFieldErrors;
   payload: WizardPayload;
   quoteAction?: ReactNode;
   isPending: boolean;
@@ -596,6 +590,9 @@ function StepContent(props: {
           if (activeRoute !== nextRoute) {
             props.clearSourceState();
           }
+          if (value === "upload" && props.sourceMode !== "upload") {
+            props.setConfig({ ...props.config, purpose: "" });
+          }
           props.setSourceMode(value);
         }}
         onPatentQueryChange={props.setPatentQuery}
@@ -618,7 +615,21 @@ function StepContent(props: {
       />
     );
   }
-  if (props.step === 1) return <ConfigStep config={props.config} onChange={props.setConfig} />;
+  if (props.step === 1) {
+    return (
+      <ConfigStep
+        config={props.config}
+        configFieldErrors={props.configFieldErrors}
+        sourceMode={props.sourceMode}
+        patentNumber={
+          props.sourceMode === "patent_search"
+            ? props.selectedPatent?.patentNumber ?? props.patentQuery
+            : undefined
+        }
+        onChange={props.setConfig}
+      />
+    );
+  }
   return <QuoteStepContent payload={props.payload} action={props.quoteAction} />;
 }
 

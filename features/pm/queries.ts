@@ -87,7 +87,7 @@ export async function getPmRequests(filters?: {
   let query = context.supabase
     .from("translation_requests")
     .select(
-      "id, request_no, title, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations(id, name), request_files(id), translation_requirements(source_language, target_language, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
+      "id, request_no, title, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations(id, name), request_files(id), translation_requirements(source_language, target_language, target_languages, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
     )
     .neq("workflow_stage", "draft")
     .order("updated_at", { ascending: false });

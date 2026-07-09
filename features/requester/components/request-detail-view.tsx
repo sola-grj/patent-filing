@@ -10,8 +10,10 @@ import {
   formatDate,
 } from "@/features/requester/format";
 import {
+  entityTypeOptions,
   purposeOptions,
   qualityOptions,
+  serviceTypeOptions,
   scopeOptions,
   sourceLanguageOptions,
   targetLanguageOptions,
@@ -61,9 +63,12 @@ type TranslationRequirement = {
   id: string;
   source_language?: string | null;
   target_language?: string | null;
+  target_languages?: string[] | null;
   scope_type?: string | null;
   scope_details?: { customScope?: string } | null;
   purpose?: string | null;
+  service_types?: string[] | null;
+  entity_type?: string | null;
   quality_level?: string | null;
   delivery_option?: string | null;
   due_at?: string | null;
@@ -72,8 +77,11 @@ type TranslationRequirement = {
     customScope?: string;
     sourceLanguage?: string;
     targetLanguage?: string;
+    targetLanguages?: string[];
     scopeType?: string;
     purpose?: string;
+    serviceTypes?: string[];
+    entityType?: string;
     qualityLevel?: string;
     deliveryOption?: string;
     dueAt?: string;
@@ -183,9 +191,13 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     sourceLanguageOptions,
     requirement?.source_language ?? config?.sourceLanguage,
   );
-  const targetLanguage = formatConfigLabel(
+  const targetLanguage = formatConfigLabels(
     targetLanguageOptions,
-    requirement?.target_language ?? config?.targetLanguage,
+    requirement?.target_languages?.length
+      ? requirement.target_languages
+      : requirement?.target_language
+        ? [requirement.target_language]
+        : toTargetLanguageArray(config),
   );
   const patentNumber = patent?.patent_number ?? null;
   const requestItems: DetailItem[] = [
@@ -237,6 +249,20 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       value: formatConfigLabel(
         purposeOptions,
         requirement?.purpose ?? config?.purpose,
+      ),
+    },
+    {
+      label: "Service type",
+      value: formatConfigLabels(
+        serviceTypeOptions,
+        requirement?.service_types ?? config?.serviceTypes,
+      ),
+    },
+    {
+      label: "Entity type",
+      value: formatConfigLabel(
+        entityTypeOptions,
+        requirement?.entity_type ?? config?.entityType,
       ),
     },
     {
@@ -368,6 +394,31 @@ function formatConfigLabel(
   }
 
   return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function formatConfigLabels(
+  options: Array<{ value: string; label: string }>,
+  values?: string[] | null,
+) {
+  if (!values?.length) {
+    return "-";
+  }
+
+  return values
+    .map((value) => options.find((option) => option.value === value)?.label ?? value)
+    .join(", ");
+}
+
+function toTargetLanguageArray(
+  config?: TranslationRequirement["config_snapshot"] | null,
+) {
+  if (config?.targetLanguages?.length) {
+    return config.targetLanguages;
+  }
+  if (config?.targetLanguage) {
+    return [config.targetLanguage];
+  }
+  return [];
 }
 
 function getLatestNegotiationAmount(

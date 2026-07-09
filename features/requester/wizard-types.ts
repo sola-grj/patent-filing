@@ -31,9 +31,14 @@ export type WizardPatentCandidate = {
 
 export type WizardConfig = {
   sourceLanguage: string;
-  targetLanguage: string;
+  targetLanguages: string[];
   scopeType: string;
   purpose: string;
+  serviceTypes: string[];
+  filingType?: string;
+  filingApplicationType?: string;
+  entityType?: string;
+  epvType?: string;
   qualityLevel: string;
   deliveryOption: string;
   dueAt?: string;

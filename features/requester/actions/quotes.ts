@@ -319,19 +319,39 @@ export async function negotiateQuote(formData: FormData): Promise<ActionResult> 
 
 function buildRequirementInput(requestId: string, formData: FormData) {
   const dueAt = validateFutureDateString(optionalString(formData.get("dueAt")), "Due date");
+  const targetLanguages = formData
+    .getAll("targetLanguage")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+  if (!targetLanguages.length) {
+    throw new Error("Jurisdictions are required.");
+  }
+  const serviceTypes = formData
+    .getAll("serviceType")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+  if (!serviceTypes.length) {
+    throw new Error("Service type is required.");
+  }
   const configSnapshot = {
     customScope: optionalString(formData.get("customScope")),
     deliveryOption: DEFAULT_DELIVERY_OPTION,
+    targetLanguages,
+    serviceTypes,
+    entityType: optionalString(formData.get("entityType")),
     todo: "Quote engine should consume this snapshot.",
   };
 
   return {
     request_id: requestId,
     source_language: requiredString(formData.get("sourceLanguage"), "Source language"),
-    target_language: requiredString(formData.get("targetLanguage"), "Target language"),
+    target_language: targetLanguages[0],
+    target_languages: targetLanguages,
     scope_type: requiredString(formData.get("scopeType"), "Translation scope"),
     scope_details: configSnapshot,
     purpose: requiredString(formData.get("purpose"), "Translation purpose"),
+    service_types: serviceTypes,
+    entity_type: optionalString(formData.get("entityType")),
     quality_level: requiredString(formData.get("qualityLevel"), "Quality level"),
     delivery_option: DEFAULT_DELIVERY_OPTION,
     due_at: dueAt,

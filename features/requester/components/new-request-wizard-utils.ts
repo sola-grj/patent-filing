@@ -15,16 +15,34 @@ export const wizardSteps = [
 ];
 
 export const defaultWizardConfig: WizardConfig = {
-  sourceLanguage: "en",
-  targetLanguage: "de",
+  sourceLanguage: "",
+  targetLanguages: [],
   scopeType: "full_text",
-  purpose: "paris_convention",
+  purpose: "european_validation",
+  serviceTypes: [],
+  filingType: "",
+  filingApplicationType: "",
+  entityType: "",
+  epvType: "",
   qualityLevel: "patent_translator_review",
   deliveryOption: "standard",
   dueAt: "",
   isUrgent: false,
   customScope: "",
 };
+
+export type WizardConfigFieldErrors = Partial<Record<
+  | "purpose"
+  | "serviceTypes"
+  | "filingType"
+  | "filingApplicationType"
+  | "entityType"
+  | "epvType"
+  | "sourceLanguage"
+  | "targetLanguages"
+  | "dueAt",
+  string
+>>;
 
 export function buildWizardPayload(input: {
   requestId?: string;
@@ -59,10 +77,10 @@ export function validateWizardStep(step: number, payload: WizardPayload) {
     return "Upload at least one file before continuing.";
   }
   if (step === 1) {
-    try {
-      validateFutureDateString(payload.config.dueAt, "Due date");
-    } catch (error) {
-      return error instanceof Error ? error.message : "Due date is invalid.";
+    const fieldErrors = validateWizardConfigFields(payload.config);
+    const firstError = Object.values(fieldErrors)[0];
+    if (firstError) {
+      return firstError;
     }
   }
   return null;
@@ -121,4 +139,74 @@ export function onConfigValueChange<K extends keyof WizardConfig>(
   key: K,
 ) {
   return (value: string) => onChange({ ...config, [key]: value });
+}
+
+export function normalizeWizardConfig(
+  config?: Partial<WizardConfig> & { targetLanguage?: string },
+): WizardConfig {
+  const merged = {
+    ...defaultWizardConfig,
+    ...config,
+  };
+
+  const rawTargetLanguages = Array.isArray(config?.targetLanguages)
+    ? config.targetLanguages
+    : typeof config?.targetLanguage === "string" && config.targetLanguage.trim()
+      ? [config.targetLanguage]
+      : merged.targetLanguages;
+
+  return {
+    ...merged,
+    targetLanguages: rawTargetLanguages.filter(Boolean),
+  };
+}
+
+export function validateWizardConfigFields(
+  config: WizardConfig,
+): WizardConfigFieldErrors {
+  const errors: WizardConfigFieldErrors = {};
+  const hasFilingService = config.serviceTypes.includes("filing");
+  const hasEpvService = config.serviceTypes.includes("epv");
+
+  if (!config.purpose) {
+    errors.purpose = "Select a channel before continuing.";
+  }
+
+  if (!config.serviceTypes.length) {
+    errors.serviceTypes = "Select at least one service type before continuing.";
+  }
+
+  if (hasFilingService) {
+    if (!config.filingType) {
+      errors.filingType = "Select a filing type before continuing.";
+    }
+
+    if (!config.filingApplicationType) {
+      errors.filingApplicationType = "Select an application type before continuing.";
+    }
+
+    if (!config.entityType) {
+      errors.entityType = "Select an entity type before continuing.";
+    }
+  }
+
+  if (hasEpvService && !config.epvType) {
+    errors.epvType = "Select an EPV type before continuing.";
+  }
+
+  if (!config.sourceLanguage) {
+    errors.sourceLanguage = "Select a patent language before continuing.";
+  }
+
+  if (!config.targetLanguages.length) {
+    errors.targetLanguages = "Select at least one jurisdiction before continuing.";
+  }
+
+  try {
+    validateFutureDateString(config.dueAt, "Due date");
+  } catch (error) {
+    errors.dueAt = error instanceof Error ? error.message : "Due date is invalid.";
+  }
+
+  return errors;
 }

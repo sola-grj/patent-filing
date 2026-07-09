@@ -151,7 +151,7 @@ export async function getRequesterRequests(filters?: {
   let query = supabase
     .from("translation_requests")
     .select(
-      "id, request_no, title, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language, is_urgent), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
+      "id, request_no, title, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language, target_languages, is_urgent), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
     )
     .eq("requester_id", userId)
     .neq("workflow_stage", "draft")

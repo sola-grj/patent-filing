@@ -1,7 +1,6 @@
-import { cn } from "@/lib/utils";
 import type { getRequesterDashboard } from "@/features/requester/queries";
 import { WorkspaceSetupForm } from "./workspace-setup-form";
-import { DashboardEmptyState, DraftsPanel, RecentRequestsPanel } from "./requester-dashboard-panels";
+import { DashboardEmptyState, RecentRequestsPanel } from "./requester-dashboard-panels";
 import { HeroSection, MetricCard } from "./requester-dashboard-hero";
 
 type DashboardData = Awaited<ReturnType<typeof getRequesterDashboard>>;
@@ -11,7 +10,7 @@ export function RequesterDashboardHome({
 }: {
   dashboard: DashboardData;
 }) {
-  const { organization, stats, recentRequests, recentDrafts, draftCount } =
+  const { organization, stats, recentRequests, draftCount } =
     dashboard;
 
   if (!organization || !stats) {
@@ -41,10 +40,8 @@ export function RequesterDashboardHome({
     stats.rejected +
     stats.completed;
   const showEmptyState = activeRequestCount === 0 && draftCount === 0;
-  const showRightRail = draftCount > 0;
-
   return (
-    <div className="flex min-h-[calc(100dvh-9rem)] flex-col gap-8">
+    <div className="flex min-h-full flex-col gap-8 pb-2">
       <HeroSection organizationName={organization.name} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -78,20 +75,8 @@ export function RequesterDashboardHome({
       {showEmptyState ? (
         <DashboardEmptyState />
       ) : (
-        <section
-          className={cn(
-            "grid min-h-[27rem] flex-1 items-stretch gap-6 pb-px",
-            showRightRail
-              ? "grid-cols-1 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]"
-              : "grid-cols-1",
-          )}
-        >
+        <section className="grid min-h-[27rem] flex-1 grid-cols-1 items-stretch gap-6 pb-px">
           <RecentRequestsPanel requests={recentRequests} />
-          {showRightRail ? (
-            <div className="grid h-full min-h-[27rem] gap-6">
-              <DraftsPanel drafts={recentDrafts} draftCount={draftCount} />
-            </div>
-          ) : null}
         </section>
       )}
     </div>

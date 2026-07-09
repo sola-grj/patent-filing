@@ -66,7 +66,7 @@ async function RequestsContent({
                   : request.translation_requirements;
                 const languagePair = formatLanguagePair(
                   requirement?.source_language,
-                  requirement?.target_language,
+                  requirement?.target_languages ?? toArray(requirement?.target_language),
                 );
 
                 return (
@@ -130,10 +130,13 @@ function buildPageHref(page: number, status?: string, query?: string) {
 
 function formatLanguagePair(
   sourceLanguage?: string | null,
-  targetLanguage?: string | null,
+  targetLanguages?: string[] | null,
 ) {
   const source = findLanguageLabel(sourceLanguage, sourceLanguageOptions);
-  const target = findLanguageLabel(targetLanguage, targetLanguageOptions);
+  const target = (targetLanguages ?? [])
+    .map((value) => findLanguageLabel(value, targetLanguageOptions))
+    .filter(Boolean)
+    .join(", ");
 
   if (!source && !target) {
     return "-";
@@ -157,4 +160,8 @@ function findLanguageLabel(
   }
 
   return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function toArray(value?: string | null) {
+  return value ? [value] : [];
 }

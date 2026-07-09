@@ -18,8 +18,10 @@ import {
   formatRequestEventTransition,
 } from "@/features/pm/request-event-copy";
 import {
+  entityTypeOptions,
   purposeOptions,
   qualityOptions,
+  serviceTypeOptions,
   scopeOptions,
   sourceLanguageOptions,
   targetLanguageOptions,
@@ -99,8 +101,11 @@ type Negotiation = {
 type Requirement = {
   source_language?: string | null;
   target_language?: string | null;
+  target_languages?: string[] | null;
   scope_type?: string | null;
   purpose?: string | null;
+  service_types?: string[] | null;
+  entity_type?: string | null;
   quality_level?: string | null;
   delivery_option?: string | null;
   due_at?: string | null;
@@ -260,9 +265,11 @@ export function PmRequestDetail({
             <Section title="Translation configuration">
               <InfoGrid
                 items={[
-                  { label: "Language pair", value: `${labelFor(sourceLanguageOptions, requirement?.source_language)} -> ${labelFor(targetLanguageOptions, requirement?.target_language)}` },
+                  { label: "Language pair", value: `${labelFor(sourceLanguageOptions, requirement?.source_language)} -> ${labelForMany(targetLanguageOptions, requirement?.target_languages ?? toArray(requirement?.target_language))}` },
                   { label: "Scope", value: labelFor(scopeOptions, requirement?.scope_type) },
                   { label: "Purpose", value: labelFor(purposeOptions, requirement?.purpose) },
+                  { label: "Service type", value: labelForMany(serviceTypeOptions, requirement?.service_types) },
+                  { label: "Entity type", value: labelFor(entityTypeOptions, requirement?.entity_type) },
                   { label: "Quality", value: labelFor(qualityOptions, requirement?.quality_level) },
                   { label: "Due date", value: formatDate(requirement?.due_at) },
                   { label: "Notes", value: requirement?.scope_details?.customScope ?? "-" },
@@ -688,6 +695,23 @@ function labelFor(options: Array<{ value: string; label: string }>, value?: stri
   }
 
   return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function labelForMany(
+  options: Array<{ value: string; label: string }>,
+  values?: string[] | null,
+) {
+  if (!values?.length) {
+    return "-";
+  }
+
+  return values
+    .map((value) => options.find((option) => option.value === value)?.label ?? value)
+    .join(", ");
+}
+
+function toArray(value?: string | null) {
+  return value ? [value] : [];
 }
 
 function formatEventDateTime(value?: string | null) {

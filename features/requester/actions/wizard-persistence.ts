@@ -392,14 +392,18 @@ async function createRequirement(
   payload: WizardPayload,
 ) {
   const config = payload.config;
+  const primaryTargetLanguage = config.targetLanguages[0] ?? null;
   await supabase.from("translation_requirements").insert({
     id: requirementId,
     request_id: requestId,
     source_language: config.sourceLanguage,
-    target_language: config.targetLanguage,
+    target_language: primaryTargetLanguage,
+    target_languages: config.targetLanguages,
     scope_type: config.scopeType,
     scope_details: { customScope: config.customScope },
     purpose: config.purpose,
+    service_types: config.serviceTypes,
+    entity_type: config.entityType || null,
     quality_level: config.qualityLevel,
     delivery_option: DEFAULT_DELIVERY_OPTION,
     due_at: config.dueAt || null,

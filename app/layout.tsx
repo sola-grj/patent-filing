@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import { Theme } from "@radix-ui/themes";
 import { ThemeProvider } from "next-themes";
+import "@radix-ui/themes/styles.css";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -33,7 +35,15 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <Theme
+            appearance="inherit"
+            accentColor="gray"
+            grayColor="sand"
+            radius="medium"
+            hasBackground={false}
+          >
+            {children}
+          </Theme>
         </ThemeProvider>
       </body>
     </html>

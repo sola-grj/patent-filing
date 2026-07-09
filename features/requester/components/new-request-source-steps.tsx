@@ -23,9 +23,9 @@ import { FileList, Info, StepShell } from "./new-request-wizard-shared";
 
 const searchEntryCards = [
   {
-    id: "paris_convention",
-    title: "Paris Convention",
-    className: "bg-[linear-gradient(135deg,#0f766e,#14b8a6)] text-white",
+    id: "european_validation",
+    title: "EP",
+    className: "bg-[linear-gradient(135deg,#d946ef,#ec4899)] text-white",
   },
   {
     id: "pct_national_phase",
@@ -33,9 +33,9 @@ const searchEntryCards = [
     className: "bg-[linear-gradient(135deg,#1d4ed8,#1e3a8a)] text-white",
   },
   {
-    id: "european_validation",
-    title: "EP",
-    className: "bg-[linear-gradient(135deg,#d946ef,#ec4899)] text-white",
+    id: "paris_convention",
+    title: "Paris Convention",
+    className: "bg-[linear-gradient(135deg,#0f766e,#14b8a6)] text-white",
   },
   {
     id: "upload",
@@ -70,7 +70,7 @@ export function SourceStep(props: {
   const activeCardId = props.sourceMode === "upload"
     ? "upload"
     : resolveSearchCardId(props.purpose);
-  const activeCard = searchEntryCards.find((card) => card.id === activeCardId) ?? searchEntryCards[1];
+  const activeCard = searchEntryCards.find((card) => card.id === activeCardId) ?? searchEntryCards[0];
   const patentSearchMode = props.sourceMode === "patent_search";
   const showCandidateGrid = !props.parsedPatent || !props.showParsedDetail;
 
@@ -307,15 +307,15 @@ function EntryModeCard({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-[22px] border p-1 text-left transition-all duration-200 ${
+      className={`rounded-[22px] border p-[4px] text-left transition-all duration-200 ${
         active
-          ? "border-foreground/30 bg-foreground/5 shadow-[0_14px_36px_rgba(15,23,42,0.14)]"
+          ? "border-[#64748b] bg-[#64748b] shadow-[0_18px_44px_rgba(15,23,42,0.16)]"
           : "border-border hover:border-foreground/15 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
       }`}
     >
       <div
-        className={`flex min-h-[144px] items-center justify-center rounded-[18px] px-6 py-8 text-center transition-transform duration-200 ${
-          active ? "scale-[0.985] ring-2 ring-white/95 ring-offset-2 ring-offset-transparent" : ""
+        className={`flex min-h-[144px] items-center justify-center rounded-[18px] px-6 py-8 text-center transition-all duration-200 ${
+          active ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.92)]" : ""
         } ${card.className}`}
       >
         <p className="max-w-[11ch] text-[1.5rem] font-semibold leading-[1.15] tracking-[-0.03em]">
