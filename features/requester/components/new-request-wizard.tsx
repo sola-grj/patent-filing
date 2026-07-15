@@ -81,16 +81,7 @@ export function NewRequestWizard({
   const [step, setStep] = useState(resolveInitialStep(initialPayload?.lastStep));
   const [sourceMode, setSourceMode] = useState<WizardSourceMode>(initialPayload?.sourceMode ?? "patent_search");
   const [patentQuery, setPatentQuery] = useState(initialPayload?.patentQuery ?? "");
-  const [candidates, setCandidates] = useState<WizardPatentCandidate[]>([]);
   const [selectedPatent, setSelectedPatent] = useState<WizardPatentCandidate | undefined>(initialPayload?.selectedPatent);
-  const [parsedPatentId, setParsedPatentId] = useState<string | null>(
-    initialPayload?.selectedPatent && initialPayload?.selectedPatentFileIds?.length
-      ? initialPayload.selectedPatent.id
-      : null,
-  );
-  const [showParsedDetail, setShowParsedDetail] = useState(
-    Boolean(initialPayload?.selectedPatent && initialPayload?.selectedPatentFileIds?.length),
-  );
   const [selectedPatentFileIds, setSelectedPatentFileIds] = useState<string[]>(initialPayload?.selectedPatentFileIds ?? []);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploadedFileSnapshots, setUploadedFileSnapshots] = useState<WizardUploadedFile[]>(initialPayload?.uploadedFiles ?? []);
@@ -112,7 +103,6 @@ export function NewRequestWizard({
     step === 1 && showConfigValidation ? validateWizardConfigFields(config) : {};
   const isDirty = step > 0
     || patentQuery.trim().length > 0
-    || candidates.length > 0
     || selectedPatent !== undefined
     || selectedPatentFileIds.length > 0
     || uploadedFiles.length > 0
@@ -130,57 +120,21 @@ export function NewRequestWizard({
 
   function clearSourceState() {
     setPatentQuery("");
-    setCandidates([]);
     setSelectedPatent(undefined);
-    setParsedPatentId(null);
-    setShowParsedDetail(false);
     setSelectedPatentFileIds([]);
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
     clearStepError(0);
   }
 
-  function applyPatentCandidates(nextCandidates: WizardPatentCandidate[]) {
-    setCandidates(nextCandidates);
-    setParsedPatentId(null);
-    setShowParsedDetail(false);
-
-    if (!nextCandidates.length) {
-      setSelectedPatent(undefined);
-      setSelectedPatentFileIds([]);
-      return;
-    }
-
-    setSelectedPatent(nextCandidates[0]);
-    setSelectedPatentFileIds([]);
-  }
-
-  function applySelectedPatent(candidate: WizardPatentCandidate | undefined) {
+  function applyPatentSearchResult(candidate: WizardPatentCandidate) {
     setSelectedPatent(candidate);
-    setParsedPatentId(null);
-    setShowParsedDetail(false);
-    setSelectedPatentFileIds([]);
-  }
-
-  function markPatentParsed(candidate: WizardPatentCandidate) {
-    setSelectedPatent(candidate);
-    setParsedPatentId(candidate.id);
-    setShowParsedDetail(true);
     setSelectedPatentFileIds(candidate.downloadableFiles.map((file) => file.id));
   }
 
-  async function parsePatent(candidate: WizardPatentCandidate) {
-    await runStepTransition("Retrieving patent information", () => {
-      markPatentParsed(candidate);
-    });
-  }
-
-  async function handlePatentSearchResults(nextCandidates: WizardPatentCandidate[]) {
-    applyPatentCandidates(nextCandidates);
-
-    if (nextCandidates.length === 1) {
-      await parsePatent(nextCandidates[0]);
-    }
+  function clearPatentSearchResult() {
+    setSelectedPatent(undefined);
+    setSelectedPatentFileIds([]);
   }
 
   function buildPayload(): WizardPayload {
@@ -216,15 +170,10 @@ export function NewRequestWizard({
   function goNext() {
     if (step === 0 && sourceMode === "patent_search") {
       if (!selectedPatent) {
-        setError("Search and select a patent before continuing.");
+        setError("Search for a patent before continuing.");
         return;
       }
 
-      if (parsedPatentId !== selectedPatent.id) {
-        setError(null);
-        void parsePatent(selectedPatent);
-        return;
-      }
     }
 
     const validationError = validateWizardStep(step, payload);
@@ -294,10 +243,7 @@ export function NewRequestWizard({
     setStep(0);
     setSourceMode("patent_search");
     setPatentQuery("");
-    setCandidates([]);
     setSelectedPatent(undefined);
-    setParsedPatentId(null);
-    setShowParsedDetail(false);
     setSelectedPatentFileIds([]);
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
@@ -371,10 +317,7 @@ export function NewRequestWizard({
     config,
     isDirty,
     patentQuery,
-    candidates,
     selectedPatent,
-    parsedPatentId,
-    showParsedDetail,
     selectedPatentFileIds,
     step,
     uploadedFiles,
@@ -392,11 +335,7 @@ export function NewRequestWizard({
                 step={step}
                 sourceMode={sourceMode}
                 patentQuery={patentQuery}
-                candidates={candidates}
                 selectedPatent={selectedPatent}
-                parsedPatentId={parsedPatentId}
-                showParsedDetail={showParsedDetail}
-                selectedPatentFileIds={selectedPatentFileIds}
                 uploadedFiles={uploadedFiles}
                 uploadedFileSnapshots={uploadedFileSnapshots}
                 config={config}
@@ -411,24 +350,12 @@ export function NewRequestWizard({
                   clearStepError(0);
                   setPatentQuery(value);
                 }}
-                setCandidates={(value) => {
+                setPatentSearchResult={(value) => {
                   clearStepError(0);
-                  void handlePatentSearchResults(value);
+                  applyPatentSearchResult(value);
                 }}
+                clearPatentSearchResult={clearPatentSearchResult}
                 clearSourceState={clearSourceState}
-                setSelectedPatent={(value) => {
-                  clearStepError(0);
-                  applySelectedPatent(value);
-                }}
-                setShowParsedDetail={setShowParsedDetail}
-                setPatentTransition={async (candidate) => {
-                  clearStepError(0);
-                  await parsePatent(candidate);
-                }}
-                setSelectedPatentFileIds={(value) => {
-                  clearStepError(0);
-                  setSelectedPatentFileIds(value);
-                }}
                 setUploadedFiles={(value) => {
                   clearStepError(0);
                   applyUploadedFiles(value);
@@ -476,11 +403,7 @@ export function NewRequestWizard({
                 nextLabel={
                   step === 1
                     ? "Generate Estimate"
-                    : step === 0
-                      && sourceMode === "patent_search"
-                      && parsedPatentId !== selectedPatent?.id
-                      ? "Parse patent"
-                      : "Next"
+                    : "Next"
                 }
                 isPending={isBusy}
                 onCancel={handleCancel}
@@ -539,11 +462,7 @@ function StepContent(props: {
   step: number;
   sourceMode: WizardSourceMode;
   patentQuery: string;
-  candidates: WizardPatentCandidate[];
   selectedPatent?: WizardPatentCandidate;
-  parsedPatentId: string | null;
-  showParsedDetail: boolean;
-  selectedPatentFileIds: string[];
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
   config: WizardConfig;
@@ -553,12 +472,9 @@ function StepContent(props: {
   isPending: boolean;
   setSourceMode: (value: WizardSourceMode) => void;
   setPatentQuery: (value: string) => void;
-  setCandidates: (value: WizardPatentCandidate[]) => void;
+  setPatentSearchResult: (value: WizardPatentCandidate) => void;
+  clearPatentSearchResult: () => void;
   clearSourceState: () => void;
-  setSelectedPatent: (value: WizardPatentCandidate | undefined) => void;
-  setShowParsedDetail: (value: boolean) => void;
-  setPatentTransition: (value: WizardPatentCandidate) => Promise<void>;
-  setSelectedPatentFileIds: (value: string[]) => void;
   setUploadedFiles: (value: File[]) => void;
   removeUploadedFile: (index: number) => void;
   setConfig: (value: WizardConfig) => void;
@@ -569,10 +485,7 @@ function StepContent(props: {
         sourceMode={props.sourceMode}
         purpose={props.config.purpose}
         patentQuery={props.patentQuery}
-        candidates={props.candidates}
-        selectedPatentId={props.selectedPatent?.id}
-        parsedPatent={props.parsedPatentId === props.selectedPatent?.id ? props.selectedPatent : undefined}
-        showParsedDetail={props.showParsedDetail}
+        patent={props.selectedPatent}
         uploadedFiles={props.uploadedFiles}
         uploadedFileSnapshots={props.uploadedFileSnapshots}
         isPending={props.isPending}
@@ -596,20 +509,8 @@ function StepContent(props: {
           props.setSourceMode(value);
         }}
         onPatentQueryChange={props.setPatentQuery}
-        onPatentSearch={props.setCandidates}
-        onPatentSelect={(candidate) => {
-          if (props.parsedPatentId === candidate.id) {
-            props.setShowParsedDetail(true);
-            return;
-          }
-          props.setSelectedPatent(candidate);
-        }}
-        onPatentParse={(candidate) => {
-          void props.setPatentTransition(candidate);
-        }}
-        onBackToResults={() => {
-          props.setShowParsedDetail(false);
-        }}
+        onPatentSearch={props.setPatentSearchResult}
+        onPatentSearchStart={props.clearPatentSearchResult}
         onFilesChange={props.setUploadedFiles}
         onRemoveFile={props.removeUploadedFile}
       />

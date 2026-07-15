@@ -32,10 +32,26 @@ export function StepShell({
   );
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({
+  label,
+  children,
+  required = false,
+}: {
+  label: string;
+  children: ReactNode;
+  required?: boolean;
+}) {
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
+      <Label>
+        {required ? (
+          <span className="text-destructive" aria-hidden="true">
+            *
+          </span>
+        ) : null}
+        {required ? " " : null}
+        {label}
+      </Label>
       {children}
     </div>
   );

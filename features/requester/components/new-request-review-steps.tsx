@@ -237,7 +237,10 @@ export function ConfigStep({
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Channels</Label>
+                <Label>
+                  <span className="text-destructive" aria-hidden="true">*</span>{" "}
+                  Channels
+                </Label>
                 <div className={getFieldClassName(Boolean(configFieldErrors.purpose), "flex min-h-10 items-center bg-muted/20 px-3 text-sm font-medium")}>
                   {channelLabel}
                 </div>
@@ -256,6 +259,7 @@ export function ConfigStep({
                 placeholder="Choose an application channel"
                 disabled={isChannelLocked}
                 error={configFieldErrors.purpose}
+                required
                 onChange={onConfigValueChange(config, onChange, "purpose")}
               />
             </div>
@@ -268,13 +272,14 @@ export function ConfigStep({
             />
           </div>
           {hasFilingService ? (
-            <div className="grid gap-4 md:col-span-2 md:grid-cols-3">
+            <div className="grid gap-4 md:contents">
               <SelectField
                 label="Filing Type"
                 value={config.filingType ?? ""}
                 options={filingTypeOptions}
                 placeholder="Choose a filing type"
                 error={configFieldErrors.filingType}
+                required
                 onChange={onConfigValueChange(config, onChange, "filingType")}
               />
               <SelectField
@@ -283,6 +288,7 @@ export function ConfigStep({
                 options={filingApplicationTypeOptions}
                 placeholder="Choose an application type"
                 error={configFieldErrors.filingApplicationType}
+                required
                 onChange={onConfigValueChange(config, onChange, "filingApplicationType")}
               />
               <SelectField
@@ -291,6 +297,7 @@ export function ConfigStep({
                 options={entityTypeOptions}
                 placeholder="Choose an entity type"
                 error={configFieldErrors.entityType}
+                required
                 onChange={onConfigValueChange(config, onChange, "entityType")}
               />
             </div>
@@ -302,6 +309,7 @@ export function ConfigStep({
               options={epvTypeOptions}
               placeholder="Choose an EPV type"
               error={configFieldErrors.epvType}
+              required
               onChange={onConfigValueChange(config, onChange, "epvType")}
             />
           ) : null}
@@ -311,6 +319,7 @@ export function ConfigStep({
             placeholder="Choose a patent language"
             options={sourceLanguageOptions}
             error={configFieldErrors.sourceLanguage}
+            required
             onChange={onConfigValueChange(config, onChange, "sourceLanguage")}
           />
           <MultiSelectField
@@ -319,6 +328,7 @@ export function ConfigStep({
             options={targetLanguageOptions}
             placeholder="Choose jurisdictions"
             error={configFieldErrors.targetLanguages}
+            required
             onToggle={(targetLanguage, checked) =>
               onChange({
                 ...config,
@@ -334,15 +344,17 @@ export function ConfigStep({
             label="Scope"
             value={config.scopeType}
             options={scopeOptions}
+            required
             onChange={onConfigValueChange(config, onChange, "scopeType")}
           />
           <SelectField
             label="Quality"
             value={config.qualityLevel}
             options={qualityOptions}
+            required
             onChange={onConfigValueChange(config, onChange, "qualityLevel")}
           />
-          <Field label="Due date">
+          <Field label="Due date" required>
             <Input
               aria-invalid={Boolean(configFieldErrors.dueAt)}
               className={getFieldClassName(Boolean(configFieldErrors.dueAt))}
@@ -395,7 +407,7 @@ function ServiceTypeField(props: {
   onToggle: (serviceType: string, checked: boolean) => void;
 }) {
   return (
-    <Field label="Service type">
+    <Field label="Service type" required>
       <div className="grid gap-3 md:grid-cols-2">
         {serviceTypeOptions.map((option) => {
           const checked = props.value.includes(option.value);
@@ -428,10 +440,11 @@ function SelectField(props: {
   disabled?: boolean;
   error?: string;
   placeholder?: string;
+  required?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
-    <Field label={props.label}>
+    <Field label={props.label} required={props.required}>
       <Select
         value={props.value || undefined}
         onValueChange={props.onChange}
@@ -439,6 +452,7 @@ function SelectField(props: {
       >
         <SelectTrigger
           aria-invalid={Boolean(props.error)}
+          aria-required={props.required}
           className={getFieldClassName(Boolean(props.error))}
         >
           <SelectValue placeholder={props.placeholder} />
@@ -462,6 +476,7 @@ function MultiSelectField(props: {
   options: Array<{ value: string; label: string }>;
   placeholder: string;
   error?: string;
+  required?: boolean;
   onToggle: (value: string, checked: boolean) => void;
 }) {
   const valueLabel = props.values.length
@@ -469,13 +484,14 @@ function MultiSelectField(props: {
     : props.placeholder;
 
   return (
-    <Field label={props.label}>
+    <Field label={props.label} required={props.required}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
             variant="outline"
             aria-invalid={Boolean(props.error)}
+            aria-required={props.required}
             className={getFieldClassName(Boolean(props.error), "h-10 w-full justify-between px-3 font-normal")}
           >
             <span className={props.values.length ? "text-foreground" : "text-muted-foreground"}>

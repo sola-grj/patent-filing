@@ -1,18 +1,11 @@
 "use client";
 
-import { ArrowLeft, Upload } from "lucide-react";
-import type { ReactNode } from "react";
+import { Upload } from "lucide-react";
+import { useState, useTransition, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { searchPatentCandidates } from "@/features/requester/actions";
+import { lookupPatentForWizard } from "@/features/requester/actions";
 import type {
   WizardPatentCandidate,
   WizardSourceMode,
@@ -50,29 +43,25 @@ export function SourceStep(props: {
   sourceMode: WizardSourceMode;
   purpose: string;
   patentQuery: string;
-  candidates: WizardPatentCandidate[];
-  selectedPatentId?: string;
-  parsedPatent?: WizardPatentCandidate;
-  showParsedDetail: boolean;
+  patent?: WizardPatentCandidate;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
   isPending: boolean;
   onPurposeChange: (value: string) => void;
   onSourceModeChange: (value: WizardSourceMode) => void;
   onPatentQueryChange: (value: string) => void;
-  onPatentSearch: (candidates: WizardPatentCandidate[]) => Promise<void> | void;
-  onPatentSelect: (candidate: WizardPatentCandidate) => void;
-  onPatentParse: (candidate: WizardPatentCandidate) => void;
-  onBackToResults: () => void;
+  onPatentSearch: (patent: WizardPatentCandidate) => Promise<void> | void;
+  onPatentSearchStart: () => void;
   onFilesChange: (files: File[]) => void;
   onRemoveFile: (index: number) => void;
 }) {
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isSearching, startSearchTransition] = useTransition();
   const activeCardId = props.sourceMode === "upload"
     ? "upload"
     : resolveSearchCardId(props.purpose);
   const activeCard = searchEntryCards.find((card) => card.id === activeCardId) ?? searchEntryCards[0];
   const patentSearchMode = props.sourceMode === "patent_search";
-  const showCandidateGrid = !props.parsedPatent || !props.showParsedDetail;
 
   return (
     <StepShell
@@ -87,6 +76,7 @@ export function SourceStep(props: {
               card={card}
               active={activeCardId === card.id}
               onClick={() => {
+                setSearchError(null);
                 if (card.id === "upload") {
                   props.onSourceModeChange("upload");
                   return;
@@ -101,51 +91,56 @@ export function SourceStep(props: {
 
         {patentSearchMode ? (
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden">
-            <form
-              className="shrink-0 flex flex-col gap-3 md:flex-row"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const formData = new FormData();
-                formData.set("patentQuery", props.patentQuery);
-                searchPatentCandidates(formData).then((result) => {
-                  if (result.data?.candidates) {
-                    void props.onPatentSearch(result.data.candidates);
-                  }
-                });
-              }}
-            >
-              <Input
-                value={props.patentQuery}
-                onChange={(event) => props.onPatentQueryChange(event.target.value)}
-                placeholder={resolvePatentPlaceholder(activeCard)}
-                className="focus-visible:ring-0"
-              />
-              <Button type="submit" disabled={props.isPending} className="md:min-w-32">
-                Search patent
-              </Button>
-            </form>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-              {showCandidateGrid ? (
-                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {props.candidates.map((candidate) => (
-                    <PatentCard
-                      key={candidate.id}
-                      candidate={candidate}
-                      active={props.selectedPatentId === candidate.id}
-                      parsed={props.parsedPatent?.id === candidate.id}
-                      onSelect={() => props.onPatentSelect(candidate)}
-                      onParse={() => props.onPatentParse(candidate)}
-                    />
-                  ))}
-                </div>
+            <div className="shrink-0 space-y-2">
+              <form
+                className="flex flex-col gap-3 md:flex-row"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setSearchError(null);
+                  props.onPatentSearchStart();
+                  startSearchTransition(async () => {
+                    const formData = new FormData();
+                    formData.set("patentQuery", props.patentQuery);
+                    const result = await lookupPatentForWizard(formData);
+
+                    if (result.data?.patent) {
+                      await props.onPatentSearch(result.data.patent);
+                      return;
+                    }
+
+                    setSearchError(
+                      result.error || "No patent data was found. Check the patent number and try again.",
+                    );
+                  });
+                }}
+              >
+                <Input
+                  value={props.patentQuery}
+                  onChange={(event) => {
+                    setSearchError(null);
+                    props.onPatentQueryChange(event.target.value);
+                  }}
+                  placeholder={resolvePatentPlaceholder(activeCard)}
+                  className="focus-visible:ring-0"
+                />
+                <Button
+                  type="submit"
+                  disabled={props.isPending || isSearching}
+                  className="md:min-w-32"
+                >
+                  {isSearching ? "Searching..." : "Search patent"}
+                </Button>
+              </form>
+              {searchError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {searchError}
+                </p>
               ) : null}
-              {props.parsedPatent ? (
-                <div className={`${showCandidateGrid ? "mt-5" : ""} overflow-hidden rounded-2xl border bg-background p-5`}>
-                  <PatentDetailStep
-                    patent={props.parsedPatent}
-                    showBackButton={props.candidates.length > 0}
-                    onBack={props.onBackToResults}
-                  />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+              {props.patent ? (
+                <div className="overflow-hidden rounded-2xl border bg-background p-5">
+                  <PatentDetailStep patent={props.patent} />
                 </div>
               ) : null}
             </div>
@@ -208,36 +203,23 @@ function UploadSourceField({
 
 export function PatentDetailStep(props: {
   patent: WizardPatentCandidate;
-  showBackButton?: boolean;
-  onBack?: () => void;
 }) {
   const metricFiles = props.patent.downloadableFiles;
   const totalWordCount = metricFiles.reduce((total, file) => total + file.wordCount, 0);
-  const abstractWordCount = Math.min(240, Math.max(120, Math.round(totalWordCount * 0.02)));
-  const descriptionWordCount = Math.max(totalWordCount - abstractWordCount, 0);
+  const abstractWordCount = props.patent.abstractWordCount
+    ?? Math.min(240, Math.max(120, Math.round(totalWordCount * 0.02)));
+  const descriptionWordCount = props.patent.descriptionWordCount
+    ?? Math.max(totalWordCount - abstractWordCount, 0);
   const totalClaims = metricFiles.reduce((total, file) => total + file.claimCount, 0);
-  const claimWordCount = Math.max(totalClaims * 45, Math.round(totalWordCount * 0.18));
+  const claimWordCount = props.patent.claimsWordCount
+    ?? Math.max(totalClaims * 45, Math.round(totalWordCount * 0.18));
   const totalDrawings = metricFiles.reduce((total, file) => total + file.drawingCount, 0);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b pb-5">
-        <div className="flex items-start justify-between gap-4">
-          <h2 className="text-2xl font-semibold tracking-tight">
-            {props.patent.title}
-          </h2>
-          {props.showBackButton ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full border border-border"
-              onClick={props.onBack}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="sr-only">Back to patent results</span>
-            </Button>
-          ) : null}
-        </div>
+        <h2 className="text-2xl font-semibold tracking-tight">
+          {props.patent.title}
+        </h2>
       </div>
 
       <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
@@ -323,69 +305,6 @@ function EntryModeCard({
         </p>
       </div>
     </button>
-  );
-}
-
-function PatentCard({
-  candidate,
-  active,
-  parsed,
-  onSelect,
-  onParse,
-}: {
-  candidate: WizardPatentCandidate;
-  active: boolean;
-  parsed: boolean;
-  onSelect: () => void;
-  onParse: () => void;
-}) {
-  return (
-    <Card
-      className={`flex h-full cursor-pointer flex-col border transition-all ${
-        active
-          ? "border-foreground/20 bg-foreground/[0.02] shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
-          : "border-border hover:border-foreground/15 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-      }`}
-      onClick={onSelect}
-    >
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <CardTitle className="text-base">{candidate.patentNumber}</CardTitle>
-          {parsed ? (
-            <span className="rounded-full border border-foreground/15 bg-foreground/[0.04] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground">
-              Parsed
-            </span>
-          ) : active ? (
-            <span className="rounded-full border border-foreground/15 bg-foreground/[0.04] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground">
-              Selected
-            </span>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col space-y-4 text-sm">
-        <p className="font-medium">{candidate.title}</p>
-        <div className="space-y-1 text-muted-foreground">
-          <p>{candidate.applicants.join(", ")}</p>
-        </div>
-      </CardContent>
-      <CardFooter>
-        <Button
-          type="button"
-          variant={active ? "default" : "outline"}
-          className="w-full"
-          onClick={(event) => {
-            event.stopPropagation();
-            if (active) {
-              onParse();
-              return;
-            }
-            onSelect();
-          }}
-        >
-          {active ? (parsed ? "Refresh parsed detail" : "Parse patent") : "Select patent"}
-        </Button>
-      </CardFooter>
-    </Card>
   );
 }
 

@@ -8,22 +8,22 @@ import type {
   WizardPersistResult,
 } from "@/features/requester/wizard-types";
 import { getAuthenticatedUser, toErrorMessage } from "../server-utils";
-import { mockPatentCandidates } from "./wizard-mocks";
+import { lookupPatent } from "./patent-lookup";
 import { persistWizardRequest } from "./wizard-persistence";
 import {
   parseQuoteNegotiationInput,
   startQuoteNegotiation,
 } from "./quote-negotiation";
 
-export async function searchPatentCandidates(
+export async function lookupPatentForWizard(
   formData: FormData,
-): Promise<ActionResult<{ candidates: WizardPatentCandidate[] }>> {
+): Promise<ActionResult<{ patent: WizardPatentCandidate }>> {
   try {
     await getAuthenticatedUser();
     const query = String(formData.get("patentQuery") ?? "").trim();
     if (!query) throw new Error("Enter a patent number to search.");
 
-    return { success: true, data: { candidates: mockPatentCandidates(query) } };
+    return { success: true, data: { patent: await lookupPatent(query) } };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
   }

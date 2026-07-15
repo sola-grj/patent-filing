@@ -27,6 +27,9 @@ export type WizardPatentCandidate = {
   legalStatus: string;
   technicalField: string;
   downloadableFiles: WizardPatentFile[];
+  abstractWordCount?: number;
+  descriptionWordCount?: number;
+  claimsWordCount?: number;
 };
 
 export type WizardConfig = {
