@@ -15,8 +15,9 @@ export const wizardSteps = [
 ];
 
 export const defaultWizardConfig: WizardConfig = {
+  channelCode: "ep",
   sourceLanguage: "",
-  targetLanguages: [],
+  jurisdictionCodes: [],
   scopeType: "full_text",
   purpose: "european_validation",
   serviceTypes: [],
@@ -32,14 +33,14 @@ export const defaultWizardConfig: WizardConfig = {
 };
 
 export type WizardConfigFieldErrors = Partial<Record<
-  | "purpose"
+  | "channelCode"
   | "serviceTypes"
   | "filingType"
   | "filingApplicationType"
   | "entityType"
   | "epvType"
   | "sourceLanguage"
-  | "targetLanguages"
+  | "jurisdictionCodes"
   | "dueAt",
   string
 >>;
@@ -142,22 +143,28 @@ export function onConfigValueChange<K extends keyof WizardConfig>(
 }
 
 export function normalizeWizardConfig(
-  config?: Partial<WizardConfig> & { targetLanguage?: string },
+  config?: Partial<WizardConfig> & {
+    targetLanguage?: string;
+    targetLanguages?: string[];
+  },
 ): WizardConfig {
   const merged = {
     ...defaultWizardConfig,
     ...config,
   };
 
-  const rawTargetLanguages = Array.isArray(config?.targetLanguages)
-    ? config.targetLanguages
-    : typeof config?.targetLanguage === "string" && config.targetLanguage.trim()
-      ? [config.targetLanguage]
-      : merged.targetLanguages;
+  const legacyChannel = config?.purpose === "pct_national_phase"
+    ? "pct"
+    : config?.purpose === "paris_convention"
+      ? "paris_convention"
+      : "ep";
 
   return {
     ...merged,
-    targetLanguages: rawTargetLanguages.filter(Boolean),
+    channelCode: config?.channelCode || legacyChannel,
+    jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
+      ? config.jurisdictionCodes.filter(Boolean)
+      : [],
   };
 }
 
@@ -168,8 +175,8 @@ export function validateWizardConfigFields(
   const hasFilingService = config.serviceTypes.includes("filing");
   const hasEpvService = config.serviceTypes.includes("epv");
 
-  if (!config.purpose) {
-    errors.purpose = "Select a channel before continuing.";
+  if (!config.channelCode) {
+    errors.channelCode = "Select a channel before continuing.";
   }
 
   if (!config.serviceTypes.length) {
@@ -198,8 +205,8 @@ export function validateWizardConfigFields(
     errors.sourceLanguage = "Select a patent language before continuing.";
   }
 
-  if (!config.targetLanguages.length) {
-    errors.targetLanguages = "Select at least one jurisdiction before continuing.";
+  if (!config.jurisdictionCodes.length) {
+    errors.jurisdictionCodes = "Select at least one jurisdiction before continuing.";
   }
 
   try {

@@ -41,9 +41,10 @@ export const purposeOptions = [
 ];
 
 export const channelOptions = [
-  { value: "european_validation", label: "EP" },
-  { value: "pct_national_phase", label: "PCT" },
+  { value: "ep", label: "EP" },
+  { value: "pct", label: "PCT" },
   { value: "paris_convention", label: "Paris Convention" },
+  { value: "upload_files", label: "Upload Files" },
 ];
 
 export const serviceTypeOptions = [

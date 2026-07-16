@@ -3,7 +3,7 @@ import type {
   WizardPatentFile,
 } from "@/features/requester/wizard-types";
 
-const defaultPatentServiceBaseUrl = "http://192.168.9.180:9098";
+const defaultPatentServiceBaseUrl = "http://127.0.0.1:9999";
 
 type PatentLookupResponse = {
   source?: string;
@@ -19,6 +19,12 @@ type PatentLookupResponse = {
   application_no?: string | null;
   publication_date?: string | null;
   publication_no?: string | null;
+  language?: string | null;
+  first_priority_date?: string | null;
+  international_filing_date?: string | null;
+  filing_deadline_30_months?: string | null;
+  filing_deadline_31_months?: string | null;
+  total_pages?: number | null;
   abstract_words?: number | null;
   description_words?: number | null;
   claims_count?: number | null;
@@ -63,13 +69,15 @@ export async function lookupPatent(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         patent_number: patentNumber,
-        include_original_file: false,
+        include_original_file: true,
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(30_000),
     });
   } catch {
-    throw new Error("The patent lookup service is unavailable. Please try again later.");
+    throw new Error(
+      "The patent lookup service is unavailable. Please try again later.",
+    );
   }
   const body = await readJson(response);
 
@@ -95,7 +103,11 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-function throwLookupError(status: number, body: unknown, patentNumber: string): never {
+function throwLookupError(
+  status: number,
+  body: unknown,
+  patentNumber: string,
+): never {
   const lookupError = body as PatentLookupError;
   const code = lookupError.error?.code;
   const message = lookupError.error?.message;
@@ -114,24 +126,28 @@ function toWizardPatent(
   fallbackNumber: string,
 ): WizardPatentCandidate {
   const basicInfo = response.basic_info;
-  const patentNumber = response.display_number || response.normalized_number || fallbackNumber;
+  const patentNumber =
+    response.display_number || response.normalized_number || fallbackNumber;
   const abstractWordCount = response.abstract_words ?? 0;
   const descriptionWordCount = response.description_words ?? 0;
   const claimsWordCount = response.claims_words ?? 0;
   const claimsCount = response.claims_count ?? 0;
-  const drawingCount = response.drawings?.drawing_page_count
-    ?? response.drawings?.drawing_labels?.length
-    ?? 0;
-  const sourceUrl = response.original_file_download_url
-    || response.original_file?.download_url
-    || "";
+  const drawingCount =
+    response.drawings?.drawing_page_count ??
+    response.drawings?.drawing_labels?.length ??
+    0;
+  const sourceUrl =
+    response.original_file_download_url ||
+    response.original_file?.download_url ||
+    "";
 
   return {
     id: response.normalized_number || patentNumber,
     patentNumber,
     title: response.title || basicInfo?.title || patentNumber,
     jurisdiction: resolveJurisdiction(response.source, patentNumber),
-    applicationNo: response.application_no || basicInfo?.application_number || "",
+    applicationNo:
+      response.application_no || basicInfo?.application_number || "",
     publicationNo: response.publication_no || "",
     applicants: response.applicants || basicInfo?.applicants || [],
     inventors: response.inventors || basicInfo?.inventors || [],
@@ -140,8 +156,15 @@ function toWizardPatent(
     publicationDate: formatPatentDate(
       response.publication_date || basicInfo?.publication_date,
     ),
+    language: formatLanguage(response.language),
+    firstPriorityDate: formatPatentDate(response.first_priority_date),
+    internationalFilingDate: formatPatentDate(response.international_filing_date),
+    filingDeadline30Months: formatPatentDate(response.filing_deadline_30_months),
+    filingDeadline31Months: formatPatentDate(response.filing_deadline_31_months),
+    totalPages: response.total_pages ?? response.raw_source_refs?.ops_images?.page_count ?? 0,
     legalStatus: "",
-    technicalField: response.ipc?.[0] || basicInfo?.ipc?.[0] || response.cpc?.[0] || "patent",
+    technicalField:
+      response.ipc?.[0] || basicInfo?.ipc?.[0] || response.cpc?.[0] || "patent",
     downloadableFiles: [
       buildPatentFile(response, patentNumber, sourceUrl, {
         wordCount: abstractWordCount + descriptionWordCount + claimsWordCount,
@@ -152,6 +175,10 @@ function toWizardPatent(
     abstractWordCount,
     descriptionWordCount,
     claimsWordCount,
+    source: response.source,
+    ipcCodes: response.ipc || basicInfo?.ipc || [],
+    cpcCodes: response.cpc || basicInfo?.cpc || [],
+    sourceSnapshot: response as Record<string, unknown>,
   };
 }
 
@@ -179,6 +206,15 @@ function formatPatentDate(value?: string | null) {
   return /^\d{8}$/.test(value)
     ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
     : value;
+}
+
+function formatLanguage(value?: string | null) {
+  if (!value) return "";
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(value.toLowerCase()) ?? value;
+  } catch {
+    return value.toUpperCase();
+  }
 }
 
 function resolveJurisdiction(source: string | undefined, patentNumber: string) {

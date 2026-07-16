@@ -42,6 +42,7 @@ import {
 import type {
   WizardConfig,
   WizardDraftSession,
+  WizardDictionaries,
   WizardPatentCandidate,
   WizardPayload,
   WizardSourceMode,
@@ -70,8 +71,10 @@ type WizardNegotiationDraft = {
 
 export function NewRequestWizard({
   initialDraft,
+  dictionaries,
 }: {
   initialDraft?: WizardDraftSession;
+  dictionaries: WizardDictionaries;
 }) {
   const router = useRouter();
   const { registerController } = useRequestWizardController();
@@ -372,6 +375,7 @@ export function NewRequestWizard({
                   );
                 }}
                 setConfig={handleConfigChange}
+                dictionaries={dictionaries}
                 quoteAction={
                   <TooltipProvider delayDuration={120}>
                     <Tooltip>
@@ -466,6 +470,7 @@ function StepContent(props: {
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
   config: WizardConfig;
+  dictionaries: WizardDictionaries;
   configFieldErrors: WizardConfigFieldErrors;
   payload: WizardPayload;
   quoteAction?: ReactNode;
@@ -483,28 +488,28 @@ function StepContent(props: {
     return (
       <SourceStep
         sourceMode={props.sourceMode}
-        purpose={props.config.purpose}
+        channelCode={props.config.channelCode}
         patentQuery={props.patentQuery}
         patent={props.selectedPatent}
         uploadedFiles={props.uploadedFiles}
         uploadedFileSnapshots={props.uploadedFileSnapshots}
         isPending={props.isPending}
-        onPurposeChange={(value) => {
-          if (props.sourceMode !== "patent_search" || props.config.purpose !== value) {
+        onChannelChange={(value) => {
+          if (props.sourceMode !== "patent_search" || props.config.channelCode !== value) {
             props.clearSourceState();
           }
-          props.setConfig({ ...props.config, purpose: value });
+          props.setConfig({ ...props.config, channelCode: value });
         }}
         onSourceModeChange={(value) => {
           const activeRoute = props.sourceMode === "upload"
-            ? "upload"
-            : props.config.purpose;
-          const nextRoute = value === "upload" ? "upload" : props.config.purpose;
+            ? "upload_files"
+            : props.config.channelCode;
+          const nextRoute = value === "upload" ? "upload_files" : props.config.channelCode;
           if (activeRoute !== nextRoute) {
             props.clearSourceState();
           }
           if (value === "upload" && props.sourceMode !== "upload") {
-            props.setConfig({ ...props.config, purpose: "" });
+            props.setConfig({ ...props.config, channelCode: "upload_files" });
           }
           props.setSourceMode(value);
         }}
@@ -528,10 +533,17 @@ function StepContent(props: {
             : undefined
         }
         onChange={props.setConfig}
+        dictionaries={props.dictionaries}
       />
     );
   }
-  return <QuoteStepContent payload={props.payload} action={props.quoteAction} />;
+  return (
+    <QuoteStepContent
+      payload={props.payload}
+      action={props.quoteAction}
+      dictionaries={props.dictionaries}
+    />
+  );
 }
 
 function WizardFooter(props: {

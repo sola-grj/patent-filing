@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,6 +9,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -22,19 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  channelOptions,
-  entityTypeOptions,
-  epvTypeOptions,
-  filingApplicationTypeOptions,
-  filingTypeOptions,
   qualityOptions,
-  serviceTypeOptions,
   scopeOptions,
   sourceLanguageOptions,
-  targetLanguageOptions,
 } from "@/features/requester/options";
 import type {
   WizardConfig,
+  WizardDictionaries,
   WizardPayload,
   WizardSourceMode,
 } from "@/features/requester/wizard-types";
@@ -166,15 +161,17 @@ export function ConfigStep({
   sourceMode,
   patentNumber,
   onChange,
+  dictionaries,
 }: {
   config: WizardConfig;
   configFieldErrors: WizardConfigFieldErrors;
   sourceMode: WizardSourceMode;
   patentNumber?: string;
   onChange: (config: WizardConfig) => void;
+  dictionaries: WizardDictionaries;
 }) {
   const dueDateRef = useRef<HTMLInputElement | null>(null);
-  const channelLabel = labelForOption(channelOptions, config.purpose);
+  const channelLabel = labelForOption(dictionaries.channels, config.channelCode);
   const isChannelLocked = sourceMode === "patent_search";
   const hasFilingService = config.serviceTypes.includes("filing");
   const hasEpvService = config.serviceTypes.includes("epv");
@@ -241,11 +238,11 @@ export function ConfigStep({
                   <span className="text-destructive" aria-hidden="true">*</span>{" "}
                   Channels
                 </Label>
-                <div className={getFieldClassName(Boolean(configFieldErrors.purpose), "flex min-h-10 items-center bg-muted/20 px-3 text-sm font-medium")}>
+                <div className={getFieldClassName(Boolean(configFieldErrors.channelCode), "flex min-h-10 items-center bg-muted/20 px-3 text-sm font-medium")}>
                   {channelLabel}
                 </div>
-                {configFieldErrors.purpose ? (
-                  <p className="text-sm text-destructive">{configFieldErrors.purpose}</p>
+                {configFieldErrors.channelCode ? (
+                  <p className="text-sm text-destructive">{configFieldErrors.channelCode}</p>
                 ) : null}
               </div>
             </>
@@ -254,13 +251,13 @@ export function ConfigStep({
             <div className="md:col-span-2">
               <SelectField
                 label="Channels"
-                value={config.purpose}
-                options={channelOptions}
+                value={config.channelCode}
+                options={dictionaries.channels}
                 placeholder="Choose an application channel"
                 disabled={isChannelLocked}
-                error={configFieldErrors.purpose}
+                error={configFieldErrors.channelCode}
                 required
-                onChange={onConfigValueChange(config, onChange, "purpose")}
+                onChange={onConfigValueChange(config, onChange, "channelCode")}
               />
             </div>
           ) : null}
@@ -269,6 +266,7 @@ export function ConfigStep({
               error={configFieldErrors.serviceTypes}
               value={config.serviceTypes}
               onToggle={handleServiceTypeToggle}
+              options={dictionaries.serviceTypes}
             />
           </div>
           {hasFilingService ? (
@@ -276,7 +274,7 @@ export function ConfigStep({
               <SelectField
                 label="Filing Type"
                 value={config.filingType ?? ""}
-                options={filingTypeOptions}
+                options={dictionaries.filingTypes}
                 placeholder="Choose a filing type"
                 error={configFieldErrors.filingType}
                 required
@@ -285,7 +283,7 @@ export function ConfigStep({
               <SelectField
                 label="Application Type"
                 value={config.filingApplicationType ?? ""}
-                options={filingApplicationTypeOptions}
+                options={dictionaries.applicationTypes}
                 placeholder="Choose an application type"
                 error={configFieldErrors.filingApplicationType}
                 required
@@ -294,7 +292,7 @@ export function ConfigStep({
               <SelectField
                 label="Entity Type"
                 value={config.entityType ?? ""}
-                options={entityTypeOptions}
+                options={dictionaries.entityTypes}
                 placeholder="Choose an entity type"
                 error={configFieldErrors.entityType}
                 required
@@ -306,14 +304,14 @@ export function ConfigStep({
             <SelectField
               label="EPV Type"
               value={config.epvType ?? ""}
-              options={epvTypeOptions}
+              options={dictionaries.epvTypes}
               placeholder="Choose an EPV type"
               error={configFieldErrors.epvType}
               required
               onChange={onConfigValueChange(config, onChange, "epvType")}
             />
           ) : null}
-          <SelectField
+          <SearchableSingleSelectField
             label="Patent Language"
             value={config.sourceLanguage}
             placeholder="Choose a patent language"
@@ -324,19 +322,19 @@ export function ConfigStep({
           />
           <MultiSelectField
             label="Jurisdictions"
-            values={config.targetLanguages}
-            options={targetLanguageOptions}
+            values={config.jurisdictionCodes}
+            options={dictionaries.jurisdictions}
             placeholder="Choose jurisdictions"
-            error={configFieldErrors.targetLanguages}
+            error={configFieldErrors.jurisdictionCodes}
             required
             onToggle={(targetLanguage, checked) =>
               onChange({
                 ...config,
-                targetLanguages: checked
-                  ? config.targetLanguages.includes(targetLanguage)
-                    ? config.targetLanguages
-                    : [...config.targetLanguages, targetLanguage]
-                  : config.targetLanguages.filter((item) => item !== targetLanguage),
+                jurisdictionCodes: checked
+                  ? config.jurisdictionCodes.includes(targetLanguage)
+                    ? config.jurisdictionCodes
+                    : [...config.jurisdictionCodes, targetLanguage]
+                  : config.jurisdictionCodes.filter((item) => item !== targetLanguage),
               })
             }
           />
@@ -405,11 +403,12 @@ function ServiceTypeField(props: {
   error?: string;
   value: string[];
   onToggle: (serviceType: string, checked: boolean) => void;
+  options: Array<{ value: string; label: string }>;
 }) {
   return (
     <Field label="Service type" required>
       <div className="grid gap-3 md:grid-cols-2">
-        {serviceTypeOptions.map((option) => {
+        {props.options.map((option) => {
           const checked = props.value.includes(option.value);
 
           return (
@@ -470,18 +469,75 @@ function SelectField(props: {
   );
 }
 
+function SearchableSingleSelectField(props: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  placeholder: string;
+  error?: string;
+  required?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedLabel = props.options.find((option) => option.value === props.value)?.label;
+  const filteredOptions = filterOptions(props.options, query);
+
+  return (
+    <Field label={props.label} required={props.required}>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            aria-invalid={Boolean(props.error)}
+            aria-required={props.required}
+            className={getFieldClassName(Boolean(props.error), "h-10 w-full justify-between px-3 font-normal")}
+          >
+            <span className={selectedLabel ? "text-foreground" : "text-muted-foreground"}>
+              {selectedLabel ?? props.placeholder}
+            </span>
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <SearchableDropdownContent query={query} onQueryChange={setQuery}>
+          {filteredOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => {
+                props.onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              {option.label}
+            </DropdownMenuItem>
+          ))}
+          {!filteredOptions.length ? <EmptySearchResult /> : null}
+        </SearchableDropdownContent>
+      </DropdownMenu>
+      {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
+    </Field>
+  );
+}
+
 function MultiSelectField(props: {
   label: string;
   values: string[];
-  options: Array<{ value: string; label: string }>;
+  options: Array<{
+    value: string;
+    label: string;
+    isoCountryCode?: string;
+  }>;
   placeholder: string;
   error?: string;
   required?: boolean;
   onToggle: (value: string, checked: boolean) => void;
 }) {
+  const [query, setQuery] = useState("");
   const valueLabel = props.values.length
     ? joinOptionLabels(props.options, props.values)
     : props.placeholder;
+  const filteredOptions = filterOptions(props.options, query);
 
   return (
     <Field label={props.label} required={props.required}>
@@ -494,14 +550,14 @@ function MultiSelectField(props: {
             aria-required={props.required}
             className={getFieldClassName(Boolean(props.error), "h-10 w-full justify-between px-3 font-normal")}
           >
-            <span className={props.values.length ? "text-foreground" : "text-muted-foreground"}>
+            <span className={`truncate ${props.values.length ? "text-foreground" : "text-muted-foreground"}`}>
               {valueLabel}
             </span>
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)]">
-          {props.options.map((option) => (
+        <SearchableDropdownContent query={query} onQueryChange={setQuery}>
+          {filteredOptions.map((option) => (
             <DropdownMenuCheckboxItem
               key={option.value}
               checked={props.values.includes(option.value)}
@@ -510,14 +566,77 @@ function MultiSelectField(props: {
               }
               onSelect={(event) => event.preventDefault()}
             >
-              {option.label}
+              <CountryOptionLabel option={option} />
             </DropdownMenuCheckboxItem>
           ))}
-        </DropdownMenuContent>
+          {!filteredOptions.length ? <EmptySearchResult /> : null}
+        </SearchableDropdownContent>
       </DropdownMenu>
       {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
     </Field>
   );
+}
+
+function SearchableDropdownContent({
+  query,
+  onQueryChange,
+  children,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] overflow-hidden p-0">
+      <div className="border-b bg-popover p-2">
+        <Input
+          value={query}
+          placeholder="Search..."
+          onChange={(event) => onQueryChange(event.target.value)}
+          onKeyDown={(event) => event.stopPropagation()}
+        />
+      </div>
+      <div className="max-h-64 overflow-y-auto p-1">{children}</div>
+    </DropdownMenuContent>
+  );
+}
+
+function CountryOptionLabel({
+  option,
+}: {
+  option: { value: string; label: string; isoCountryCode?: string };
+}) {
+  const countryCode = (option.isoCountryCode ?? option.value).toLowerCase();
+  return (
+    <span className="flex items-center gap-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`https://flagcdn.com/20x15/${countryCode}.png`}
+        srcSet={`https://flagcdn.com/40x30/${countryCode}.png 2x`}
+        width="20"
+        height="15"
+        alt=""
+        className="shrink-0 rounded-[2px] object-cover"
+      />
+      <span>{option.label}</span>
+    </span>
+  );
+}
+
+function EmptySearchResult() {
+  return <p className="px-3 py-4 text-sm text-muted-foreground">No options found.</p>;
+}
+
+function filterOptions<T extends { value: string; label: string }>(
+  options: T[],
+  query: string,
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+  return normalizedQuery
+    ? options.filter((option) =>
+        `${option.label} ${option.value}`.toLowerCase().includes(normalizedQuery),
+      )
+    : options;
 }
 
 const requesterFieldClassName =

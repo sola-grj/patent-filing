@@ -61,7 +61,7 @@ export function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-      <p className="mt-1 font-medium">{value}</p>
+      <p className="mt-1 font-medium">{value || "-"}</p>
     </div>
   );
 }

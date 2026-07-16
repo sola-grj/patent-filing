@@ -16,12 +16,12 @@ import { FileList, Info, StepShell } from "./new-request-wizard-shared";
 
 const searchEntryCards = [
   {
-    id: "european_validation",
+    id: "ep",
     title: "EP",
     className: "bg-[linear-gradient(135deg,#d946ef,#ec4899)] text-white",
   },
   {
-    id: "pct_national_phase",
+    id: "pct",
     title: "PCT",
     className: "bg-[linear-gradient(135deg,#1d4ed8,#1e3a8a)] text-white",
   },
@@ -31,7 +31,7 @@ const searchEntryCards = [
     className: "bg-[linear-gradient(135deg,#0f766e,#14b8a6)] text-white",
   },
   {
-    id: "upload",
+    id: "upload_files",
     title: "Upload Files",
     className: "bg-[linear-gradient(135deg,#3f3f46,#52525b)] text-white",
   },
@@ -41,13 +41,13 @@ type SearchEntryCard = typeof searchEntryCards[number];
 
 export function SourceStep(props: {
   sourceMode: WizardSourceMode;
-  purpose: string;
+  channelCode: string;
   patentQuery: string;
   patent?: WizardPatentCandidate;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
   isPending: boolean;
-  onPurposeChange: (value: string) => void;
+  onChannelChange: (value: string) => void;
   onSourceModeChange: (value: WizardSourceMode) => void;
   onPatentQueryChange: (value: string) => void;
   onPatentSearch: (patent: WizardPatentCandidate) => Promise<void> | void;
@@ -58,8 +58,8 @@ export function SourceStep(props: {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, startSearchTransition] = useTransition();
   const activeCardId = props.sourceMode === "upload"
-    ? "upload"
-    : resolveSearchCardId(props.purpose);
+    ? "upload_files"
+    : props.channelCode;
   const activeCard = searchEntryCards.find((card) => card.id === activeCardId) ?? searchEntryCards[0];
   const patentSearchMode = props.sourceMode === "patent_search";
 
@@ -77,13 +77,13 @@ export function SourceStep(props: {
               active={activeCardId === card.id}
               onClick={() => {
                 setSearchError(null);
-                if (card.id === "upload") {
+                if (card.id === "upload_files") {
                   props.onSourceModeChange("upload");
                   return;
                 }
 
                 props.onSourceModeChange("patent_search");
-                props.onPurposeChange(card.id);
+                props.onChannelChange(card.id);
               }}
             />
           ))}
@@ -232,6 +232,12 @@ export function PatentDetailStep(props: {
               <Info label="Application No" value={props.patent.applicationNo} />
               <Info label="Publication Date" value={props.patent.publicationDate} />
               <Info label="Publication No" value={props.patent.publicationNo} />
+              <Info label="Language" value={props.patent.language ?? ""} />
+              <Info label="First Priority Date" value={props.patent.firstPriorityDate ?? ""} />
+              <Info label="International Filing Date" value={props.patent.internationalFilingDate ?? ""} />
+              <Info label="30-Month Filing Deadline" value={props.patent.filingDeadline30Months ?? ""} />
+              <Info label="31-Month Filing Deadline" value={props.patent.filingDeadline31Months ?? ""} />
+              <Info label="Total Pages" value={String(props.patent.totalPages ?? 0)} />
             </div>
           </SectionBlock>
 
@@ -362,21 +368,11 @@ function SummaryCard({
   );
 }
 
-function resolveSearchCardId(purpose: string) {
-  if (purpose === "paris_convention") {
-    return "paris_convention";
-  }
-  if (purpose === "european_validation") {
-    return "european_validation";
-  }
-  return "pct_national_phase";
-}
-
 function resolvePatentPlaceholder(card: SearchEntryCard) {
   if (card.id === "paris_convention") {
     return "EP1234567";
   }
-  if (card.id === "european_validation") {
+  if (card.id === "ep") {
     return "EP3987654";
   }
   return "PCT/EP2021/022481";

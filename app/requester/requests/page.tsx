@@ -8,10 +8,6 @@ import { RequestFilterForm } from "@/features/requester/components/request-filte
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import { UrgentBadge } from "@/features/requester/components/urgent-badge";
 import { formatCurrency, formatDate } from "@/features/requester/format";
-import {
-  sourceLanguageOptions,
-  targetLanguageOptions,
-} from "@/features/requester/options";
 import { getRequesterRequests } from "@/features/requester/queries";
 import { buildFreshRequestHref } from "@/features/requester/requester-routes";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
@@ -35,7 +31,7 @@ async function RequestsContent({
 }) {
   const params = await searchParams;
   const page = Number(params.page ?? "1");
-  const { organization, requests, totalCount, totalPages } = await getRequesterRequests({
+  const { organization, requests, totalCount, totalPages, dictionaries } = await getRequesterRequests({
     status: params.status,
     q: params.q,
     page: Number.isFinite(page) ? page : 1,
@@ -64,29 +60,36 @@ async function RequestsContent({
                 const requirement = Array.isArray(request.translation_requirements)
                   ? request.translation_requirements[0]
                   : request.translation_requirements;
-                const languagePair = formatLanguagePair(
-                  requirement?.source_language,
-                  requirement?.target_languages ?? toArray(requirement?.target_language),
+                const patent = Array.isArray(request.request_patents)
+                  ? request.request_patents[0]
+                  : request.request_patents;
+                const channel = dictionaryLabel(
+                  dictionaries?.channels ?? [],
+                  request.channel_code,
                 );
+                const services = (requirement?.service_types ?? [])
+                  .map((value: string) => dictionaryLabel(dictionaries?.serviceTypes ?? [], value))
+                  .join(", ");
 
                 return (
-                  <Link key={request.id} href={`/requester/requests/${request.id}`} className="grid gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
+                  <Link key={request.id} href={`/requester/requests/${request.id}`} className="grid gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[1.4fr_1fr_0.6fr_0.8fr_1.2fr_auto]">
                     <span>
                       <span className="flex items-center gap-2">
                         <span className="block text-base font-semibold text-foreground">
-                          {request.request_no}
+                          {patent?.patent_number || "Request"}
                         </span>
                         {requirement?.is_urgent ? (
                           <UrgentBadge className="shrink-0" />
                         ) : null}
                       </span>
                       <span className="block text-xs font-normal text-muted-foreground">
-                        {request.title?.trim() || "Patent translation request"}
+                        {request.request_no}
                       </span>
                     </span>
                     <RequesterStatusBadge status={request.requester_status} />
                     <span>{request.request_files?.length ?? 0} files</span>
-                    <span>{languagePair}</span>
+                    <span>{channel}</span>
+                    <span className="truncate">{services || "-"}</span>
                     <span className="text-right">
                       {latestQuote ? formatCurrency(latestQuote.total_amount, latestQuote.currency ?? "USD") : "-"}
                       <span className="block text-muted-foreground">{formatDate(request.updated_at)}</span>
@@ -128,40 +131,10 @@ function buildPageHref(page: number, status?: string, query?: string) {
   return `/requester/requests?${searchParams.toString()}`;
 }
 
-function formatLanguagePair(
-  sourceLanguage?: string | null,
-  targetLanguages?: string[] | null,
-) {
-  const source = findLanguageLabel(sourceLanguage, sourceLanguageOptions);
-  const target = (targetLanguages ?? [])
-    .map((value) => findLanguageLabel(value, targetLanguageOptions))
-    .filter(Boolean)
-    .join(", ");
-
-  if (!source && !target) {
-    return "-";
-  }
-  if (!source) {
-    return `- → ${target}`;
-  }
-  if (!target) {
-    return `${source} → -`;
-  }
-
-  return `${source} → ${target}`;
-}
-
-function findLanguageLabel(
-  value: string | null | undefined,
+function dictionaryLabel(
   options: Array<{ value: string; label: string }>,
+  value?: string | null,
 ) {
-  if (!value) {
-    return null;
-  }
-
+  if (!value) return "-";
   return options.find((option) => option.value === value)?.label ?? value;
-}
-
-function toArray(value?: string | null) {
-  return value ? [value] : [];
 }

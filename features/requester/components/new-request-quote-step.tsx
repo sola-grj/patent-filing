@@ -3,13 +3,9 @@
 import type { ReactNode } from "react";
 import { Table } from "@radix-ui/themes";
 
-import {
-  channelOptions,
-  qualityOptions,
-  sourceLanguageOptions,
-  targetLanguageOptions,
-} from "@/features/requester/options";
+import { sourceLanguageOptions } from "@/features/requester/options";
 import type {
+  WizardDictionaries,
   WizardPatentCandidate,
   WizardPayload,
   WizardUploadedFile,
@@ -29,12 +25,14 @@ type EstimateRow = {
 export function QuoteStepContent({
   payload,
   action,
+  dictionaries,
 }: {
   payload: WizardPayload;
   action?: ReactNode;
+  dictionaries: WizardDictionaries;
 }) {
   const files = parsePreviewFiles(payload);
-  const estimateRows = buildEstimateRows(payload);
+  const estimateRows = buildEstimateRows(payload, dictionaries);
   const total = estimateRows.reduce((sum, row) => sum + row.total, 0);
 
   return (
@@ -47,7 +45,7 @@ export function QuoteStepContent({
           <PatentOverviewCard
             patent={payload.selectedPatent}
             payload={payload}
-            files={files}
+            dictionaries={dictionaries}
           />
         ) : (
           <UploadOverviewCard
@@ -67,7 +65,7 @@ export function QuoteStepContent({
               </h3>
               <p className="mt-2 text-sm text-muted-foreground">
                 Filing, official, and translation line items are mocked for now
-                and do not write to the database.
+                and are persisted with the request when it is submitted.
               </p>
             </div>
             {action ? <div className="shrink-0">{action}</div> : null}
@@ -125,57 +123,35 @@ export function QuoteStepContent({
 function PatentOverviewCard({
   patent,
   payload,
-  files,
+  dictionaries,
 }: {
   patent: WizardPatentCandidate;
   payload: WizardPayload;
-  files: ReturnType<typeof parsePreviewFiles>;
+  dictionaries: WizardDictionaries;
 }) {
-  const totalPages = files.reduce((sum, file) => sum + file.pageCount, 0);
-  const applicantSummary = patent.applicants.slice(0, 2).join(", ");
-
   return (
     <section className="rounded-2xl border bg-card">
       <div className="px-6 py-5">
         <p className="text-sm font-bold uppercase tracking-[0.2em] text-foreground">
           Patent Detail
         </p>
-        <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)] lg:items-start">
-          <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
-            <DetailItem label="Patent Number" value={patent.patentNumber} />
-            <DetailItem label="Jurisdiction" value={patent.jurisdiction} />
-            <DetailItem label="Application Number" value={patent.applicationNo} />
-            <DetailItem label="Publication Number" value={patent.publicationNo} />
-            <DetailItem label="Filing Date" value={patent.filingDate} />
-            <DetailItem label="Publication Date" value={patent.publicationDate} />
-            <DetailItem label="Applicant" value={applicantSummary} />
-            <DetailItem
-              label="Source"
-              value={labelFor(sourceLanguageOptions, payload.config.sourceLanguage)}
-            />
-          </div>
-          <div className="grid gap-3 sm:auto-rows-[124px] sm:grid-cols-2">
-            <MetricCard
-              label="Channel"
-              value={labelFor(channelOptions, payload.config.purpose)}
-              className="h-full"
-            />
-            <MetricCard
-              label="Quality"
-              value={labelFor(qualityOptions, payload.config.qualityLevel)}
-              className="h-full"
-            />
-            <MetricCard
-              label="Total Pages"
-              value={String(totalPages)}
-              className="h-full"
-            />
-            <MetricCard
-              label="Due Date"
-              value={payload.config.dueAt || "-"}
-              className="h-full"
-            />
-          </div>
+        <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+          <DetailItem label="Applicants" value={patent.applicants.join(", ")} />
+          <DetailItem label="Inventors" value={patent.inventors.join(", ")} />
+          <DetailItem label="Application Date" value={patent.filingDate} />
+          <DetailItem label="Application No" value={patent.applicationNo} />
+          <DetailItem label="Publication Date" value={patent.publicationDate} />
+          <DetailItem label="Publication No" value={patent.publicationNo} />
+          <DetailItem label="Language" value={patent.language ?? ""} />
+          <DetailItem label="First Priority Date" value={patent.firstPriorityDate ?? ""} />
+          <DetailItem label="International Filing Date" value={patent.internationalFilingDate ?? ""} />
+          <DetailItem label="30-Month Filing Deadline" value={patent.filingDeadline30Months ?? ""} />
+          <DetailItem label="31-Month Filing Deadline" value={patent.filingDeadline31Months ?? ""} />
+          <DetailItem label="Total Pages" value={String(patent.totalPages ?? 0)} />
+          <DetailItem
+            label="Entity"
+            value={labelFor(dictionaries.entityTypes, payload.config.entityType)}
+          />
         </div>
       </div>
     </section>
@@ -260,19 +236,22 @@ function MetricCard({
   );
 }
 
-function buildEstimateRows(payload: WizardPayload): EstimateRow[] {
+function buildEstimateRows(
+  payload: WizardPayload,
+  dictionaries: WizardDictionaries,
+): EstimateRow[] {
   const files = parsePreviewFiles(payload);
   const wordCount = files.reduce((sum, file) => sum + file.wordCount, 0);
   const baseTranslationFee = Math.max(900, Math.round(wordCount * 0.11));
   const sourceLanguage = labelFor(sourceLanguageOptions, payload.config.sourceLanguage);
 
-  return payload.config.targetLanguages.map((targetLanguage, index) => {
+  return payload.config.jurisdictionCodes.map((jurisdictionCode, index) => {
     const filingFee = 320 + index * 90;
     const officialFee = 180 + index * 120;
     const translationFee = Math.round(baseTranslationFee * (1 + index * 0.18));
 
     return {
-      jurisdiction: labelFor(targetLanguageOptions, targetLanguage),
+      jurisdiction: labelFor(dictionaries.jurisdictions, jurisdictionCode),
       sourceLanguage,
       filingFee,
       officialFee,

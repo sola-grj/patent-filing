@@ -1,5 +1,55 @@
 import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
-import type { WizardPayload, WizardUploadedFile } from "./wizard-types";
+import type {
+  DictionaryOption,
+  WizardDictionaries,
+  WizardPayload,
+  WizardUploadedFile,
+} from "./wizard-types";
+
+const dictionaryCategoryMap = {
+  request_channel: "channels",
+  service_type: "serviceTypes",
+  filing_type: "filingTypes",
+  application_type: "applicationTypes",
+  entity_type: "entityTypes",
+  epv_type: "epvTypes",
+  jurisdiction: "jurisdictions",
+} as const;
+
+export async function getRequesterDictionaries(): Promise<WizardDictionaries> {
+  const { supabase } = await getAuthenticatedUser();
+  const { data, error } = await supabase
+    .from("dictionary_items")
+    .select("category, code, label, iso_country_code, country_group")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const result: WizardDictionaries = {
+    channels: [],
+    serviceTypes: [],
+    filingTypes: [],
+    applicationTypes: [],
+    entityTypes: [],
+    epvTypes: [],
+    jurisdictions: [],
+  };
+
+  for (const item of data ?? []) {
+    const key = dictionaryCategoryMap[item.category as keyof typeof dictionaryCategoryMap];
+    if (!key) continue;
+    const option: DictionaryOption = {
+      value: item.code,
+      label: item.label,
+      isoCountryCode: item.iso_country_code ?? undefined,
+      countryGroup: item.country_group ?? undefined,
+    };
+    result[key].push(option);
+  }
+
+  return result;
+}
 
 type DraftRow = {
   id: string;
@@ -105,14 +155,17 @@ export async function getRequesterDashboard() {
   const { supabase, userId, organization } = await getRequesterOrganization();
 
   if (!organization) {
-    return { organization: null, stats: null, recentRequests: [], recentDrafts: [], draftCount: 0, orders: [] };
+    return { organization: null, stats: null, recentRequests: [], recentDrafts: [], draftCount: 0, orders: [], dictionaries: null };
   }
 
-  const { data: requests } = await supabase
-    .from("translation_requests")
-    .select("id, request_no, title, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent)")
-    .eq("requester_id", userId)
-    .order("updated_at", { ascending: false });
+  const [{ data: requests }, dictionaries] = await Promise.all([
+    supabase
+      .from("translation_requests")
+      .select("id, request_no, title, channel_code, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types), request_patents(patent_number)")
+      .eq("requester_id", userId)
+      .order("updated_at", { ascending: false }),
+    getRequesterDictionaries(),
+  ]);
 
   const requestRows = requests ?? [];
   const activeRequests = requestRows.filter((request) => request.workflow_stage !== "draft");
@@ -131,6 +184,7 @@ export async function getRequesterDashboard() {
     recentDrafts: drafts.slice(0, 8),
     draftCount: drafts.length,
     orders: [],
+    dictionaries,
   };
 }
 
@@ -142,7 +196,7 @@ export async function getRequesterRequests(filters?: {
   const { supabase, userId, organization } = await getRequesterOrganization();
 
   if (!organization) {
-    return { organization: null, requests: [], totalCount: 0, totalPages: 0, page: 1, pageSize: 10 };
+    return { organization: null, requests: [], totalCount: 0, totalPages: 0, page: 1, pageSize: 10, dictionaries: null };
   }
 
   const pageSize = 10;
@@ -151,7 +205,7 @@ export async function getRequesterRequests(filters?: {
   let query = supabase
     .from("translation_requests")
     .select(
-      "id, request_no, title, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language, target_languages, is_urgent), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
+      "id, request_no, title, channel_code, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language, target_languages, jurisdiction_codes, service_types, is_urgent), request_patents(patent_number), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
     )
     .eq("requester_id", userId)
     .neq("workflow_stage", "draft")
@@ -172,7 +226,10 @@ export async function getRequesterRequests(filters?: {
         const patentQuery = (request.patent_searches ?? [])
           .map((search: { query: string }) => search.query)
           .join(" ");
-        return [request.request_no, request.title, patentQuery]
+        const requestPatent = Array.isArray(request.request_patents)
+          ? request.request_patents[0]
+          : request.request_patents;
+        return [request.request_no, request.title, patentQuery, requestPatent?.patent_number]
           .join(" ")
           .toLowerCase()
           .includes(keyword);
@@ -184,6 +241,7 @@ export async function getRequesterRequests(filters?: {
   const safePage = Math.min(page, totalPages);
   const paginatedRequests = requests.slice((safePage - 1) * pageSize, safePage * pageSize);
 
+  const dictionaries = await getRequesterDictionaries();
   return {
     organization,
     requests: paginatedRequests,
@@ -191,6 +249,7 @@ export async function getRequesterRequests(filters?: {
     totalPages,
     page: safePage,
     pageSize,
+    dictionaries,
   };
 }
 
@@ -199,7 +258,7 @@ export async function getRequesterRequest(requestId: string) {
   const { data, error } = await supabase
     .from("translation_requests")
     .select(
-      "*, request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language))), request_events(*)",
+      "*, request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language))), request_events(*)",
     )
     .eq("id", requestId)
     .maybeSingle();

@@ -15,8 +15,10 @@ type DashboardDraft = DashboardData["recentDrafts"][number];
 
 export function RecentRequestsPanel({
   requests,
+  dictionaries,
 }: {
   requests: DashboardRequest[];
+  dictionaries: NonNullable<DashboardData["dictionaries"]>;
 }) {
   return (
     <Card className="flex h-[27rem] min-h-[27rem] flex-col overflow-hidden rounded-[28px] border shadow-sm">
@@ -39,6 +41,21 @@ export function RecentRequestsPanel({
               const requirement = Array.isArray(request.translation_requirements)
                 ? request.translation_requirements[0]
                 : request.translation_requirements;
+              const patent = Array.isArray(request.request_patents)
+                ? request.request_patents[0]
+                : request.request_patents;
+              const channelLabel = requestsDictionaryLabel(
+                request.channel_code,
+                "channels",
+                dictionaries,
+              );
+              const serviceLabels = (requirement?.service_types ?? []).map(
+                (serviceType: string) => requestsDictionaryLabel(
+                  serviceType,
+                  "serviceTypes",
+                  dictionaries,
+                ),
+              );
 
               return (
                 <Link
@@ -49,12 +66,22 @@ export function RecentRequestsPanel({
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-base font-semibold text-foreground">
-                        {request.request_no}
+                        {patent?.patent_number || "Request"}
                       </span>
                       {requirement?.is_urgent ? <UrgentBadge /> : null}
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-                      <span>{request.title?.trim() || "Patent translation request"}</span>
+                      <span>{request.request_no}</span>
+                      <span className="h-1 w-1 rounded-full bg-slate-300" />
+                      <span>{channelLabel}</span>
+                      {serviceLabels.map((label: string) => (
+                        <span
+                          key={label}
+                          className="rounded-full border bg-background px-2 py-0.5 text-xs text-foreground"
+                        >
+                          {label}
+                        </span>
+                      ))}
                       <span className="h-1 w-1 rounded-full bg-slate-300" />
                       <span>Updated {formatDate(request.updated_at)}</span>
                     </div>
@@ -76,6 +103,15 @@ export function RecentRequestsPanel({
       </CardContent>
     </Card>
   );
+}
+
+function requestsDictionaryLabel(
+  value: string | null,
+  key: "channels" | "serviceTypes",
+  dictionaries: NonNullable<DashboardData["dictionaries"]>,
+) {
+  if (!value) return "-";
+  return dictionaries[key].find((option) => option.value === value)?.label ?? value;
 }
 
 export function DraftsPanel({

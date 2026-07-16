@@ -24,17 +24,28 @@ export type WizardPatentCandidate = {
   description: string;
   filingDate: string;
   publicationDate: string;
+  language?: string;
+  firstPriorityDate?: string;
+  internationalFilingDate?: string;
+  filingDeadline30Months?: string;
+  filingDeadline31Months?: string;
+  totalPages?: number;
   legalStatus: string;
   technicalField: string;
   downloadableFiles: WizardPatentFile[];
   abstractWordCount?: number;
   descriptionWordCount?: number;
   claimsWordCount?: number;
+  source?: string;
+  ipcCodes?: string[];
+  cpcCodes?: string[];
+  sourceSnapshot?: Record<string, unknown>;
 };
 
 export type WizardConfig = {
+  channelCode: string;
   sourceLanguage: string;
-  targetLanguages: string[];
+  jurisdictionCodes: string[];
   scopeType: string;
   purpose: string;
   serviceTypes: string[];
@@ -47,6 +58,23 @@ export type WizardConfig = {
   dueAt?: string;
   isUrgent: boolean;
   customScope?: string;
+};
+
+export type DictionaryOption = {
+  value: string;
+  label: string;
+  isoCountryCode?: string;
+  countryGroup?: string;
+};
+
+export type WizardDictionaries = {
+  channels: DictionaryOption[];
+  serviceTypes: DictionaryOption[];
+  filingTypes: DictionaryOption[];
+  applicationTypes: DictionaryOption[];
+  entityTypes: DictionaryOption[];
+  epvTypes: DictionaryOption[];
+  jurisdictions: DictionaryOption[];
 };
 
 export type WizardUploadedFile = {

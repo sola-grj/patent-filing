@@ -33,7 +33,9 @@ export async function persistWizardRequest(
     const payload = parseWizardPayload(formData);
     const { supabase, userId, organization } = await getRequesterOrganization();
     if (!organization) throw new Error("Create an organization before creating requests.");
+    await validateDictionaryValues(supabase, payload);
     if (mode !== "draft") {
+      validateCommercialFields(payload);
       validateFutureDateString(payload.config.dueAt, "Due date");
     }
 
@@ -100,12 +102,69 @@ export async function persistWizardRequest(
   }
 }
 
+function validateCommercialFields(payload: WizardPayload) {
+  const config = payload.config;
+  if (!config.jurisdictionCodes.length) {
+    throw new Error("Select at least one jurisdiction.");
+  }
+  if (config.serviceTypes.includes("filing")) {
+    if (!config.filingType || !config.filingApplicationType || !config.entityType) {
+      throw new Error("Filing type, application type, and entity type are required for filing.");
+    }
+  }
+  if (config.serviceTypes.includes("epv") && !config.epvType) {
+    throw new Error("EPV type is required for EPV.");
+  }
+}
+
 function parseWizardPayload(formData: FormData): WizardPayload {
   const payload = JSON.parse(String(formData.get("payload") ?? "")) as WizardPayload;
   if (!["patent_search", "upload"].includes(payload.sourceMode)) {
     throw new Error("Choose a valid file source.");
   }
+  payload.config.channelCode = payload.sourceMode === "upload"
+    ? "upload_files"
+    : payload.config.channelCode || channelFromLegacyPurpose(payload.config.purpose);
+  payload.config.jurisdictionCodes = Array.isArray(payload.config.jurisdictionCodes)
+    ? payload.config.jurisdictionCodes
+    : [];
   return payload;
+}
+
+async function validateDictionaryValues(
+  supabase: SupabaseClient,
+  payload: WizardPayload,
+) {
+  const config = payload.config;
+  const expected = [
+    ["request_channel", config.channelCode],
+    ...config.serviceTypes.map((value) => ["service_type", value]),
+    ...config.jurisdictionCodes.map((value) => ["jurisdiction", value]),
+    ...(config.filingType ? [["filing_type", config.filingType]] : []),
+    ...(config.filingApplicationType ? [["application_type", config.filingApplicationType]] : []),
+    ...(config.entityType ? [["entity_type", config.entityType]] : []),
+    ...(config.epvType ? [["epv_type", config.epvType]] : []),
+  ] as Array<[string, string]>;
+  const { data, error } = await supabase
+    .from("dictionary_items")
+    .select("category, code")
+    .eq("is_active", true);
+  if (error) throw new Error(error.message);
+  const activeValues = new Set((data ?? []).map((item) => `${item.category}:${item.code}`));
+  const invalid = expected.find(([category, code]) => !activeValues.has(`${category}:${code}`));
+  if (invalid) throw new Error(`Invalid ${invalid[0]} value: ${invalid[1]}.`);
+}
+
+function channelFromLegacyPurpose(purpose?: string) {
+  if (purpose === "pct_national_phase") return "pct";
+  if (purpose === "paris_convention") return "paris_convention";
+  return "ep";
+}
+
+function purposeFromChannel(channelCode: string) {
+  if (channelCode === "pct") return "pct_national_phase";
+  if (channelCode === "paris_convention") return "paris_convention";
+  return "european_validation";
 }
 
 async function upsertRequest(
@@ -120,6 +179,7 @@ async function upsertRequest(
     organization_id: organizationId,
     requester_id: userId,
     source_mode: payload.sourceMode,
+    channel_code: payload.config.channelCode,
     title: null,
     workflow_stage: mode === "draft" ? "draft" : "configured",
     requester_status: mode === "draft" ? "responding" : "responding",
@@ -129,18 +189,56 @@ async function upsertRequest(
     submitted_at: mode === "draft" ? null : new Date().toISOString(),
   };
 
-  const query = payload.requestId
-    ? supabase.from("translation_requests").update(requestInput).eq("id", requestId)
-    : supabase.from("translation_requests").insert({
-        id: requestId,
-        ...requestInput,
-      });
+  const writeRequest = () => {
+    const query = payload.requestId
+      ? supabase.from("translation_requests").update(requestInput).eq("id", requestId)
+      : supabase.from("translation_requests").insert({
+          id: requestId,
+          ...requestInput,
+        });
 
-  const { data, error } = await query.select("request_no").single();
+    return query.select("request_no").single();
+  };
 
-  if (error) throw new Error(error.message);
+  let result = await writeRequest();
+  if (result.error?.code === "42501") {
+    await refreshAndVerifyRequestIdentity(supabase, userId, organizationId);
+    result = await writeRequest();
+  }
 
-  return data.request_no;
+  if (result.error) {
+    const operation = payload.requestId ? "update" : "insert";
+    throw new Error(`Unable to ${operation} translation request: ${result.error.message}`);
+  }
+
+  return result.data.request_no;
+}
+
+async function refreshAndVerifyRequestIdentity(
+  supabase: SupabaseClient,
+  userId: string,
+  organizationId: string,
+) {
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) {
+    throw new Error("Your session has expired. Sign in again before creating a request.");
+  }
+
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  if (claimsError || claimsData?.claims?.sub !== userId) {
+    throw new Error("Your signed-in account changed. Sign in again before creating a request.");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("organization_id", organizationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    throw new Error("Your requester organization access changed. Sign in again and retry.");
+  }
 }
 
 async function persistSourceFiles(
@@ -247,6 +345,36 @@ async function persistPatentSelection(
     applicants: patent.applicants,
     metadata: patent,
   });
+  const { error: patentSnapshotError } = await supabase.from("request_patents").upsert({
+    request_id: requestId,
+    patent_number: patent.patentNumber,
+    application_no: patent.applicationNo || null,
+    publication_no: patent.publicationNo || null,
+    title: patent.title || null,
+    abstract: patent.description || null,
+    jurisdiction: patent.jurisdiction || null,
+    source: patent.source || null,
+    applicants: patent.applicants,
+    inventors: patent.inventors,
+    filing_date: patent.filingDate || null,
+    publication_date: patent.publicationDate || null,
+    language: patent.language || null,
+    first_priority_date: patent.firstPriorityDate || null,
+    international_filing_date: patent.internationalFilingDate || null,
+    filing_deadline_30_months: patent.filingDeadline30Months || null,
+    filing_deadline_31_months: patent.filingDeadline31Months || null,
+    total_pages: patent.totalPages ?? 0,
+    legal_status: patent.legalStatus || null,
+    ipc_codes: patent.ipcCodes ?? [],
+    cpc_codes: patent.cpcCodes ?? [],
+    abstract_word_count: patent.abstractWordCount ?? 0,
+    description_word_count: patent.descriptionWordCount ?? 0,
+    claims_word_count: patent.claimsWordCount ?? 0,
+    claims_count: selectedFiles.reduce((sum, file) => sum + file.claimCount, 0),
+    drawing_count: selectedFiles.reduce((sum, file) => sum + file.drawingCount, 0),
+    source_snapshot: patent.sourceSnapshot ?? patent,
+  }, { onConflict: "request_id" });
+  if (patentSnapshotError) throw new Error(patentSnapshotError.message);
 
   const requestFileIds: string[] = [];
   for (const file of selectedFiles) {
@@ -325,6 +453,8 @@ async function clearDraftSourceArtifacts(
 
   const { error: deleteSearchesError } = await supabase.from("patent_searches").delete().eq("request_id", requestId);
   if (deleteSearchesError) throw new Error(deleteSearchesError.message);
+  const { error: deletePatentError } = await supabase.from("request_patents").delete().eq("request_id", requestId);
+  if (deletePatentError) throw new Error(deletePatentError.message);
 }
 
 async function persistSubmissionArtifacts(
@@ -392,18 +522,22 @@ async function createRequirement(
   payload: WizardPayload,
 ) {
   const config = payload.config;
-  const primaryTargetLanguage = config.targetLanguages[0] ?? null;
   await supabase.from("translation_requirements").insert({
     id: requirementId,
     request_id: requestId,
     source_language: config.sourceLanguage,
-    target_language: primaryTargetLanguage,
-    target_languages: config.targetLanguages,
+    target_language: config.sourceLanguage,
+    target_languages: [config.sourceLanguage],
     scope_type: config.scopeType,
     scope_details: { customScope: config.customScope },
-    purpose: config.purpose,
+    purpose: purposeFromChannel(config.channelCode),
     service_types: config.serviceTypes,
     entity_type: config.entityType || null,
+    filing_type_code: config.filingType || null,
+    application_type_code: config.filingApplicationType || null,
+    entity_type_code: config.entityType || null,
+    epv_type_code: config.epvType || null,
+    jurisdiction_codes: config.jurisdictionCodes,
     quality_level: config.qualityLevel,
     delivery_option: DEFAULT_DELIVERY_OPTION,
     due_at: config.dueAt || null,
@@ -455,9 +589,17 @@ async function createInitialQuote(
   const pricingSnapshot = {
     source: "requester_wizard_preview",
     wordCount,
+    channelCode: payload.config.channelCode,
+    serviceTypes: payload.config.serviceTypes,
+    jurisdictionCodes: payload.config.jurisdictionCodes,
     qualityLevel: payload.config.qualityLevel,
     urgent: payload.config.isUrgent,
     deliveryOption: DEFAULT_DELIVERY_OPTION,
+    dueAt: payload.config.dueAt || null,
+    filingType: payload.config.filingType || null,
+    applicationType: payload.config.filingApplicationType || null,
+    entityType: payload.config.entityType || null,
+    epvType: payload.config.epvType || null,
   };
 
   const { data: quote, error: quoteError } = await supabase
@@ -479,14 +621,21 @@ async function createInitialQuote(
 
   if (quoteError) throw new Error(quoteError.message);
 
-  const { error: quoteItemError } = await supabase.from("quote_items").insert({
+  const serviceTypes = payload.config.serviceTypes.length
+    ? payload.config.serviceTypes
+    : ["translation"];
+  const baseItemAmount = Math.floor((amount * 100) / serviceTypes.length) / 100;
+  const quoteItems = serviceTypes.map((serviceType, index) => ({
     quote_id: quote.id,
-    label: "Patent translation service",
-    amount,
-    quantity: wordCount || null,
-    unit: wordCount ? "word" : "project",
-    description: "Initial quote generated from submitted request configuration.",
-  });
+    label: serviceTypeLabel(serviceType),
+    amount: index === serviceTypes.length - 1
+      ? Number((amount - baseItemAmount * index).toFixed(2))
+      : baseItemAmount,
+    quantity: serviceType === "translation" && wordCount ? wordCount : 1,
+    unit: serviceType === "translation" && wordCount ? "word" : "project",
+    description: "Initial quote item generated from the submitted request configuration.",
+  }));
+  const { error: quoteItemError } = await supabase.from("quote_items").insert(quoteItems);
   if (quoteItemError) throw new Error(quoteItemError.message);
 
   const { error: factorError } = await supabase.from("quote_factor_snapshots").insert({
@@ -506,7 +655,9 @@ async function createInitialQuote(
       pm_status: "responding",
     })
     .eq("id", requestId);
-  if (requestError) throw new Error(requestError.message);
+  if (requestError) {
+    throw new Error(`Unable to finalize translation request: ${requestError.message}`);
+  }
 
   await writeRequestEvent(
     supabase,
@@ -517,4 +668,14 @@ async function createInitialQuote(
     "quoted",
     { quoteId: quote.id, amount, currency: "USD" },
   );
+}
+
+function serviceTypeLabel(serviceType: string) {
+  const labels: Record<string, string> = {
+    translation: "Translation",
+    filing: "Filing",
+    european_patent_grant_registration: "European Patent Grant Registration",
+    epv: "EPV",
+  };
+  return labels[serviceType] ?? serviceType;
 }

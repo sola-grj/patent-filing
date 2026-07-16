@@ -3,60 +3,20 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import {
-  StatusBadge,
   formatCurrency,
   formatDate,
 } from "@/features/requester/format";
 import {
+  channelOptions,
   entityTypeOptions,
-  purposeOptions,
-  qualityOptions,
-  serviceTypeOptions,
-  scopeOptions,
-  sourceLanguageOptions,
-  targetLanguageOptions,
 } from "@/features/requester/options";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
 type RequestFile = {
   id: string;
-  original_filename: string;
-  status: string;
-  file_role?: string | null;
-  language?: string | null;
-  source: string;
-  version_label?: string | null;
-  metadata?: {
-    patent_file?: {
-      pageCount?: number;
-      wordCount?: number;
-      claimCount?: number;
-    };
-  } | null;
-  file_parse_results?: ParseResult | ParseResult[] | null;
-};
-
-type ParseResult = {
-  page_count: number;
-  word_count: number;
-  claim_count: number;
-};
-
-type PatentFileVersion = {
-  id: string;
-};
-
-type PatentCandidate = {
-  id: string;
-  patent_number?: string | null;
-  patent_file_versions?: PatentFileVersion[] | null;
-};
-
-type PatentSearch = {
-  id: string;
-  patent_candidates?: PatentCandidate[] | null;
 };
 
 type TranslationRequirement = {
@@ -69,6 +29,7 @@ type TranslationRequirement = {
   purpose?: string | null;
   service_types?: string[] | null;
   entity_type?: string | null;
+  entity_type_code?: string | null;
   quality_level?: string | null;
   delivery_option?: string | null;
   due_at?: string | null;
@@ -87,6 +48,23 @@ type TranslationRequirement = {
     dueAt?: string;
     isUrgent?: boolean;
   } | null;
+};
+
+type RequestPatent = {
+  patent_number: string;
+  application_no?: string | null;
+  publication_no?: string | null;
+  applicants?: string[] | null;
+  inventors?: string[] | null;
+  filing_date?: string | null;
+  publication_date?: string | null;
+  language?: string | null;
+  first_priority_date?: string | null;
+  international_filing_date?: string | null;
+  filing_deadline_30_months?: string | null;
+  filing_deadline_31_months?: string | null;
+  total_pages?: number | null;
+  source_snapshot?: Record<string, unknown> | null;
 };
 
 type RequestConfigVersion = {
@@ -140,12 +118,13 @@ type RequestDetail = {
   id: string;
   request_no: string;
   requester_id?: string | null;
+  channel_code?: string | null;
   title?: string | null;
   workflow_stage?: string | null;
   requester_status?: string | null;
   submitted_at?: string | null;
   request_files?: RequestFile[] | null;
-  patent_searches?: PatentSearch[] | null;
+  request_patents?: RequestPatent | RequestPatent[] | null;
   translation_requirements?: TranslationRequirement | TranslationRequirement[] | null;
   request_config_versions?: RequestConfigVersion[] | null;
   quotes?: Quote[] | null;
@@ -155,8 +134,7 @@ type RequestDetail = {
 
 export function RequestDetailView({ request }: { request: RequestDetail }) {
   const files = request.request_files ?? [];
-  const patentSearch = (request.patent_searches ?? [])[0] ?? null;
-  const patent = patentSearch?.patent_candidates?.[0] ?? null;
+  const patent = firstRelation(request.request_patents);
   const requirement = firstRelation(request.translation_requirements);
   const configVersion = [...(request.request_config_versions ?? [])].sort(
     (left, right) => right.version_no - left.version_no,
@@ -187,18 +165,6 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const showAssignees =
     Boolean(order?.id) &&
     (request.requester_status === "in_progress" || request.requester_status === "completed");
-  const sourceLanguage = formatConfigLabel(
-    sourceLanguageOptions,
-    requirement?.source_language ?? config?.sourceLanguage,
-  );
-  const targetLanguage = formatConfigLabels(
-    targetLanguageOptions,
-    requirement?.target_languages?.length
-      ? requirement.target_languages
-      : requirement?.target_language
-        ? [requirement.target_language]
-        : toTargetLanguageArray(config),
-  );
   const patentNumber = patent?.patent_number ?? null;
   const requestItems: DetailItem[] = [
     { label: "Request no.", value: request.request_no },
@@ -210,7 +176,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     ...(latestQuote
       ? [{ label: "Latest quote", value: latestQuoteValue ?? "-" }]
       : []),
-    { label: "Language pair", value: `${sourceLanguage} → ${targetLanguage}` },
+    {
+      label: "Channel",
+      value: formatConfigLabel(channelOptions, request.channel_code),
+    },
     {
       label: "Delivery date",
       value: formatDate(requirement?.due_at ?? config?.dueAt),
@@ -238,62 +207,76 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   ];
   const patentItems: DetailItem[] = [
     {
-      label: "Scope",
-      value: formatConfigLabel(
-        scopeOptions,
-        requirement?.scope_type ?? config?.scopeType,
-      ),
+      label: "Patent number",
+      value: patentNumber,
     },
     {
-      label: "Purpose",
-      value: formatConfigLabel(
-        purposeOptions,
-        requirement?.purpose ?? config?.purpose,
-      ),
+      label: "Applicants",
+      value: formatPatentPeople(patent?.applicants),
     },
     {
-      label: "Service type",
-      value: formatConfigLabels(
-        serviceTypeOptions,
-        requirement?.service_types ?? config?.serviceTypes,
-      ),
+      label: "Inventors",
+      value: formatPatentPeople(patent?.inventors),
     },
     {
-      label: "Entity type",
+      label: "Application date",
+      value: formatDate(patent?.filing_date),
+    },
+    {
+      label: "Application no.",
+      value: patent?.application_no,
+    },
+    {
+      label: "Publication date",
+      value: formatDate(patent?.publication_date),
+    },
+    {
+      label: "Publication no.",
+      value: patent?.publication_no,
+    },
+    {
+      label: "Language",
+      value: patent?.language,
+    },
+    {
+      label: "First priority date",
+      value: formatDate(patent?.first_priority_date),
+    },
+    {
+      label: "International filing date",
+      value: formatDate(patent?.international_filing_date),
+    },
+    {
+      label: "30-month filing deadline",
+      value: formatDate(patent?.filing_deadline_30_months),
+    },
+    {
+      label: "31-month filing deadline",
+      value: formatDate(patent?.filing_deadline_31_months),
+    },
+    {
+      label: "Total pages",
+      value: patent?.total_pages?.toLocaleString(),
+    },
+    {
+      label: "Entity",
       value: formatConfigLabel(
         entityTypeOptions,
-        requirement?.entity_type ?? config?.entityType,
+        requirement?.entity_type_code ?? requirement?.entity_type ?? config?.entityType,
       ),
     },
     {
-      label: "Quality",
-      value: formatConfigLabel(
-        qualityOptions,
-        requirement?.quality_level ?? config?.qualityLevel,
-      ),
-    },
-    {
-      label: "Due date",
-      value: formatDate(requirement?.due_at ?? config?.dueAt),
-    },
-    {
-      label: "Other notes",
-      value:
-        config?.customScope ??
-        requirement?.scope_details?.customScope ??
-        "-",
-      className: "md:col-span-2",
-    },
-    {
-      label: "Urgent",
-      value: (requirement?.is_urgent ?? config?.isUrgent) ? "Yes" : "No",
+      label: "Original file",
+      value: patentNumber
+        ? <PatentFileDownloadButton requestId={request.id} />
+        : "-",
     },
   ];
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
       <RequesterHeader
-        title={request.title ?? request.request_no}
+        title={patentNumber ?? request.request_no}
         description={`Request ${request.request_no}`}
         action={
           request.requester_status === "completed" && order?.id && latestDeliverable?.id ? (
@@ -341,36 +324,13 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             ) : null
           }
         >
-          {patentNumber ? (
-            <div>
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                Patent number
-              </p>
-              <p className="mt-2 text-sm leading-6">{patentNumber}</p>
-            </div>
-          ) : null}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium">
-                Patent files for translation
-              </p>
-              <span className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                {files.length} file{files.length === 1 ? "" : "s"}
-              </span>
-            </div>
-            {files.length ? (
-              <div className="space-y-3">
-                {files.map((file) => (
-                  <PatentFileCard key={file.id} file={file} />
-                ))}
-              </div>
-            ) : (
-              <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                No patent files were selected for translation.
-              </p>
-            )}
-          </div>
-          <DetailsGrid items={patentItems} />
+          {patent ? (
+            <DetailsGrid items={patentItems} />
+          ) : (
+            <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
+              No patent information is associated with this request.
+            </p>
+          )}
         </Section>
       </div>
     </div>
@@ -396,29 +356,8 @@ function formatConfigLabel(
   return options.find((option) => option.value === value)?.label ?? value;
 }
 
-function formatConfigLabels(
-  options: Array<{ value: string; label: string }>,
-  values?: string[] | null,
-) {
-  if (!values?.length) {
-    return "-";
-  }
-
-  return values
-    .map((value) => options.find((option) => option.value === value)?.label ?? value)
-    .join(", ");
-}
-
-function toTargetLanguageArray(
-  config?: TranslationRequirement["config_snapshot"] | null,
-) {
-  if (config?.targetLanguages?.length) {
-    return config.targetLanguages;
-  }
-  if (config?.targetLanguage) {
-    return [config.targetLanguage];
-  }
-  return [];
+function formatPatentPeople(values?: string[] | null) {
+  return values?.filter(Boolean).join(", ") || "-";
 }
 
 function getLatestNegotiationAmount(
@@ -482,8 +421,12 @@ function DetailsGrid({
   items: DetailItem[];
   columns?: "single" | "double";
 }) {
+  const gridClassName = columns === "single"
+    ? "grid gap-4"
+    : "grid gap-5 md:grid-cols-2";
+
   return (
-    <div className={columns === "single" ? "grid gap-4" : "grid gap-4 md:grid-cols-2"}>
+    <div className={gridClassName}>
       {items.map((item) => (
         <div key={item.label} className={item.className}>
           <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
@@ -492,61 +435,6 @@ function DetailsGrid({
           <div className="mt-2 text-sm leading-6">{item.value || "-"}</div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function PatentFileCard({ file }: { file: RequestFile }) {
-  const result = firstRelation(file.file_parse_results);
-
-  return (
-    <div className="rounded-lg border p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium">{file.original_filename}</p>
-            <StatusBadge status={file.status} />
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {file.file_role ?? file.version_label ?? "Patent file"}
-            {" · "}
-            {(file.language ?? "unknown").toUpperCase()}
-            {" · "}
-            {file.source === "patent_search" ? "Patent search" : "Upload"}
-          </p>
-        </div>
-        <div className="grid grid-cols-3 gap-3 text-sm text-muted-foreground">
-          <MetricItem
-            label="Words"
-            value={result?.word_count ?? file.metadata?.patent_file?.wordCount ?? "-"}
-          />
-          <MetricItem
-            label="Pages"
-            value={result?.page_count ?? file.metadata?.patent_file?.pageCount ?? "-"}
-          />
-          <MetricItem
-            label="Claims"
-            value={result?.claim_count ?? file.metadata?.patent_file?.claimCount ?? "-"}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MetricItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="min-w-20 rounded-md bg-muted/30 px-3 py-2 text-center">
-      <p className="text-[11px] uppercase tracking-[0.08em]">{label}</p>
-      <p className="mt-1 text-sm font-medium">
-        {typeof value === "number" ? value.toLocaleString() : value}
-      </p>
     </div>
   );
 }

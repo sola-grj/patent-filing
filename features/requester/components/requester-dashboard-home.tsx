@@ -76,7 +76,10 @@ export function RequesterDashboardHome({
         <DashboardEmptyState />
       ) : (
         <section className="grid min-h-[27rem] flex-1 grid-cols-1 items-stretch gap-6 pb-px">
-          <RecentRequestsPanel requests={recentRequests} />
+          <RecentRequestsPanel
+            requests={recentRequests}
+            dictionaries={dashboard.dictionaries}
+          />
         </section>
       )}
     </div>

@@ -2,7 +2,10 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { NewRequestWizard } from "@/features/requester/components/new-request-wizard";
-import { getRequesterDraft } from "@/features/requester/queries";
+import {
+  getRequesterDictionaries,
+  getRequesterDraft,
+} from "@/features/requester/queries";
 
 export default function RequesterDraftEditorPage({
   params,
@@ -22,7 +25,10 @@ async function DraftEditorContent({
   params: Promise<{ draftId: string }>;
 }) {
   const { draftId } = await params;
-  const draft = await getRequesterDraft(draftId);
+  const [draft, dictionaries] = await Promise.all([
+    getRequesterDraft(draftId),
+    getRequesterDictionaries(),
+  ]);
 
   if (!draft) {
     notFound();
@@ -30,7 +36,7 @@ async function DraftEditorContent({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <NewRequestWizard initialDraft={draft} />
+      <NewRequestWizard initialDraft={draft} dictionaries={dictionaries} />
     </div>
   );
 }
