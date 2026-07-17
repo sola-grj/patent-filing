@@ -140,7 +140,10 @@ export function SourceStep(props: {
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
               {props.patent ? (
                 <div className="overflow-hidden rounded-2xl border bg-background p-5">
-                  <PatentDetailStep patent={props.patent} />
+                  <PatentDetailStep
+                    patent={props.patent}
+                    showPCTFilingDeadlines={props.channelCode === "pct"}
+                  />
                 </div>
               ) : null}
             </div>
@@ -203,6 +206,7 @@ function UploadSourceField({
 
 export function PatentDetailStep(props: {
   patent: WizardPatentCandidate;
+  showPCTFilingDeadlines: boolean;
 }) {
   const metricFiles = props.patent.downloadableFiles;
   const totalWordCount = metricFiles.reduce((total, file) => total + file.wordCount, 0);
@@ -235,8 +239,12 @@ export function PatentDetailStep(props: {
               <Info label="Language" value={props.patent.language ?? ""} />
               <Info label="First Priority Date" value={props.patent.firstPriorityDate ?? ""} />
               <Info label="International Filing Date" value={props.patent.internationalFilingDate ?? ""} />
-              <Info label="30-Month Filing Deadline" value={props.patent.filingDeadline30Months ?? ""} />
-              <Info label="31-Month Filing Deadline" value={props.patent.filingDeadline31Months ?? ""} />
+              {props.showPCTFilingDeadlines ? (
+                <>
+                  <Info label="30-Month Filing Deadline" value={props.patent.filingDeadline30Months ?? ""} />
+                  <Info label="31-Month Filing Deadline" value={props.patent.filingDeadline31Months ?? ""} />
+                </>
+              ) : null}
               <Info label="Total Pages" value={String(props.patent.totalPages ?? 0)} />
             </div>
           </SectionBlock>

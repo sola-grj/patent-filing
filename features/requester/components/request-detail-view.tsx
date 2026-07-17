@@ -246,14 +246,18 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       label: "International filing date",
       value: formatDate(patent?.international_filing_date),
     },
-    {
-      label: "30-month filing deadline",
-      value: formatDate(patent?.filing_deadline_30_months),
-    },
-    {
-      label: "31-month filing deadline",
-      value: formatDate(patent?.filing_deadline_31_months),
-    },
+    ...(request.channel_code === "pct"
+      ? [
+          {
+            label: "30-month filing deadline",
+            value: formatDate(patent?.filing_deadline_30_months),
+          },
+          {
+            label: "31-month filing deadline",
+            value: formatDate(patent?.filing_deadline_31_months),
+          },
+        ]
+      : []),
     {
       label: "Total pages",
       value: patent?.total_pages?.toLocaleString(),

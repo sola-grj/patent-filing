@@ -190,16 +190,11 @@ export function ConfigStep({
     ).showPicker?.();
   }
 
-  function handleServiceTypeToggle(serviceType: string, checked: boolean) {
-    const nextServiceTypes = checked
-      ? config.serviceTypes.includes(serviceType)
-        ? config.serviceTypes
-        : [...config.serviceTypes, serviceType]
-      : config.serviceTypes.filter((item) => item !== serviceType);
-
+  function handleServiceTypeChange(serviceType: ServiceTypeSelection) {
+    const nextServiceTypes = serviceTypeValues[serviceType];
     onChange({
       ...config,
-      serviceTypes: nextServiceTypes,
+      serviceTypes: [...nextServiceTypes],
       filingType: nextServiceTypes.includes("filing") ? config.filingType : "",
       filingApplicationType: nextServiceTypes.includes("filing")
         ? config.filingApplicationType
@@ -265,8 +260,7 @@ export function ConfigStep({
             <ServiceTypeField
               error={configFieldErrors.serviceTypes}
               value={config.serviceTypes}
-              onToggle={handleServiceTypeToggle}
-              options={dictionaries.serviceTypes}
+              onChange={handleServiceTypeChange}
             />
           </div>
           {hasFilingService ? (
@@ -402,34 +396,61 @@ export function ConfigStep({
 function ServiceTypeField(props: {
   error?: string;
   value: string[];
-  onToggle: (serviceType: string, checked: boolean) => void;
-  options: Array<{ value: string; label: string }>;
+  onChange: (serviceType: ServiceTypeSelection) => void;
 }) {
+  const selectedValue = getServiceTypeSelection(props.value);
+
   return (
     <Field label="Service type" required>
-      <div className="grid gap-3 md:grid-cols-2">
-        {props.options.map((option) => {
-          const checked = props.value.includes(option.value);
-
-          return (
-            <label
-              key={option.value}
-              className={getFieldClassName(Boolean(props.error), "flex min-h-11 items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted/20")}
-            >
-              <Checkbox
-                checked={checked}
-                onCheckedChange={(nextChecked) =>
-                  props.onToggle(option.value, nextChecked === true)
-                }
-              />
-              <span className="font-medium">{option.label}</span>
-            </label>
-          );
-        })}
-      </div>
+      <Select
+        value={selectedValue}
+        onValueChange={(value) => props.onChange(value as ServiceTypeSelection)}
+      >
+        <SelectTrigger
+          aria-invalid={Boolean(props.error)}
+          aria-required="true"
+          className={getFieldClassName(Boolean(props.error))}
+        >
+          <SelectValue placeholder="Choose a service type" />
+        </SelectTrigger>
+        <SelectContent>
+          {serviceTypeSelections.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
     </Field>
   );
+}
+
+const serviceTypeSelections = [
+  { value: "translation", label: "Translation" },
+  { value: "grant", label: "Grant" },
+  { value: "filing", label: "Filing" },
+  { value: "translation_filing", label: "Translation + Filing" },
+  { value: "translation_grant", label: "Translation + Grant" },
+  { value: "epv", label: "EPV" },
+] as const;
+
+type ServiceTypeSelection = (typeof serviceTypeSelections)[number]["value"];
+
+const serviceTypeValues: Record<ServiceTypeSelection, readonly string[]> = {
+  translation: ["translation"],
+  grant: ["european_patent_grant_registration"],
+  filing: ["filing"],
+  translation_filing: ["translation", "filing"],
+  translation_grant: ["translation", "european_patent_grant_registration"],
+  epv: ["epv"],
+};
+
+function getServiceTypeSelection(values: string[]) {
+  const normalizedValues = [...values].sort().join("|");
+  return serviceTypeSelections.find((option) =>
+    [...serviceTypeValues[option.value]].sort().join("|") === normalizedValues
+  )?.value;
 }
 
 function SelectField(props: {

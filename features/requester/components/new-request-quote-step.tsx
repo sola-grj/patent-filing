@@ -145,8 +145,12 @@ function PatentOverviewCard({
           <DetailItem label="Language" value={patent.language ?? ""} />
           <DetailItem label="First Priority Date" value={patent.firstPriorityDate ?? ""} />
           <DetailItem label="International Filing Date" value={patent.internationalFilingDate ?? ""} />
-          <DetailItem label="30-Month Filing Deadline" value={patent.filingDeadline30Months ?? ""} />
-          <DetailItem label="31-Month Filing Deadline" value={patent.filingDeadline31Months ?? ""} />
+          {payload.config.channelCode === "pct" ? (
+            <>
+              <DetailItem label="30-Month Filing Deadline" value={patent.filingDeadline30Months ?? ""} />
+              <DetailItem label="31-Month Filing Deadline" value={patent.filingDeadline31Months ?? ""} />
+            </>
+          ) : null}
           <DetailItem label="Total Pages" value={String(patent.totalPages ?? 0)} />
           <DetailItem
             label="Entity"

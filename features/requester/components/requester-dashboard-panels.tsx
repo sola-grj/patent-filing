@@ -4,9 +4,9 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UrgentBadge } from "@/features/requester/components/urgent-badge";
+import { RequestSummaryBadges } from "@/features/requester/components/request-summary-badges";
 import { formatDate } from "@/features/requester/format";
 import type { getRequesterDashboard } from "@/features/requester/queries";
-import { RequesterStatusBadge } from "@/features/requester/requester-status";
 import { RequesterCreateRequestButton } from "./requester-create-request-button";
 
 type DashboardData = Awaited<ReturnType<typeof getRequesterDashboard>>;
@@ -49,19 +49,11 @@ export function RecentRequestsPanel({
                 "channels",
                 dictionaries,
               );
-              const serviceLabels = (requirement?.service_types ?? []).map(
-                (serviceType: string) => requestsDictionaryLabel(
-                  serviceType,
-                  "serviceTypes",
-                  dictionaries,
-                ),
-              );
-
               return (
                 <Link
                   key={request.id}
                   href={`/requester/requests/${request.id}`}
-                  className="group flex items-center justify-between gap-4 py-4 text-sm"
+                  className="group grid items-center gap-4 py-4 text-sm md:grid-cols-[minmax(0,1fr)_minmax(22rem,auto)_auto]"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -73,23 +65,17 @@ export function RecentRequestsPanel({
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
                       <span>{request.request_no}</span>
                       <span className="h-1 w-1 rounded-full bg-slate-300" />
-                      <span>{channelLabel}</span>
-                      {serviceLabels.map((label: string) => (
-                        <span
-                          key={label}
-                          className="rounded-full border bg-background px-2 py-0.5 text-xs text-foreground"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                      <span className="h-1 w-1 rounded-full bg-slate-300" />
                       <span>Updated {formatDate(request.updated_at)}</span>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <RequesterStatusBadge status={request.requester_status} />
-                    <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
-                  </div>
+                  <RequestSummaryBadges
+                    channelCode={request.channel_code}
+                    channelLabel={channelLabel}
+                    serviceTypes={requirement?.service_types ?? []}
+                    serviceOptions={dictionaries.serviceTypes}
+                    status={request.requester_status}
+                  />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
                 </Link>
               );
             })}

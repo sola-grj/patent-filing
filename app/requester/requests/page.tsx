@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PaginationNav } from "@/components/ui/pagination";
 import { RequestFilterForm } from "@/features/requester/components/request-filter-form";
+import { RequestSummaryBadges } from "@/features/requester/components/request-summary-badges";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import { UrgentBadge } from "@/features/requester/components/urgent-badge";
 import { formatCurrency, formatDate } from "@/features/requester/format";
 import { getRequesterRequests } from "@/features/requester/queries";
 import { buildFreshRequestHref } from "@/features/requester/requester-routes";
-import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
 export default async function RequesterRequestsPage({
   searchParams,
@@ -67,12 +67,8 @@ async function RequestsContent({
                   dictionaries?.channels ?? [],
                   request.channel_code,
                 );
-                const services = (requirement?.service_types ?? [])
-                  .map((value: string) => dictionaryLabel(dictionaries?.serviceTypes ?? [], value))
-                  .join(", ");
-
                 return (
-                  <Link key={request.id} href={`/requester/requests/${request.id}`} className="grid gap-3 p-4 text-sm hover:bg-muted/50 md:grid-cols-[1.4fr_1fr_0.6fr_0.8fr_1.2fr_auto]">
+                  <Link key={request.id} href={`/requester/requests/${request.id}`} className="grid items-center gap-4 p-4 text-sm hover:bg-muted/50 md:grid-cols-[minmax(0,1fr)_minmax(22rem,auto)_auto]">
                     <span>
                       <span className="flex items-center gap-2">
                         <span className="block text-base font-semibold text-foreground">
@@ -84,12 +80,17 @@ async function RequestsContent({
                       </span>
                       <span className="block text-xs font-normal text-muted-foreground">
                         {request.request_no}
+                        {" · "}
+                        {request.request_files?.length ?? 0} files
                       </span>
                     </span>
-                    <RequesterStatusBadge status={request.requester_status} />
-                    <span>{request.request_files?.length ?? 0} files</span>
-                    <span>{channel}</span>
-                    <span className="truncate">{services || "-"}</span>
+                    <RequestSummaryBadges
+                      channelCode={request.channel_code}
+                      channelLabel={channel}
+                      serviceTypes={requirement?.service_types ?? []}
+                      serviceOptions={dictionaries?.serviceTypes ?? []}
+                      status={request.requester_status}
+                    />
                     <span className="text-right">
                       {latestQuote ? formatCurrency(latestQuote.total_amount, latestQuote.currency ?? "USD") : "-"}
                       <span className="block text-muted-foreground">{formatDate(request.updated_at)}</span>
