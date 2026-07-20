@@ -38,7 +38,9 @@ export function RecentRequestsPanel({
         {requests.length ? (
           <div className="divide-y">
             {requests.map((request) => {
-              const requirement = Array.isArray(request.translation_requirements)
+              const requirement = Array.isArray(
+                request.translation_requirements,
+              )
                 ? request.translation_requirements[0]
                 : request.translation_requirements;
               const patent = Array.isArray(request.request_patents)
@@ -97,7 +99,9 @@ function requestsDictionaryLabel(
   dictionaries: NonNullable<DashboardData["dictionaries"]>,
 ) {
   if (!value) return "-";
-  return dictionaries[key].find((option) => option.value === value)?.label ?? value;
+  return (
+    dictionaries[key].find((option) => option.value === value)?.label ?? value
+  );
 }
 
 export function DraftsPanel({
@@ -161,10 +165,10 @@ export function DashboardEmptyState() {
     <Card className="flex min-h-[22rem] flex-col rounded-[28px] border shadow-sm">
       <CardContent className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
         <div className="space-y-2">
-          <p className="text-lg font-semibold">No requests or drafts yet</p>
+          <p className="text-lg font-semibold">No requests yet</p>
           <p className="max-w-md text-sm text-muted-foreground">
-            Start your first Patentia request to track quotes, negotiations,
-            and delivery in one operational workspace.
+            Start your first Patentia request to track quotes, negotiations, and
+            delivery in one operational workspace.
           </p>
         </div>
         <RequesterCreateRequestButton label="Start First Request" />

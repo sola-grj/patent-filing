@@ -7,6 +7,7 @@ import {
   validateUploadFile,
 } from "@/lib/validators/requester";
 import type { WizardPayload, WizardPersistResult } from "@/features/requester/wizard-types";
+import { jurisdictionOptions } from "@/features/requester/options";
 import {
   getAuthenticatedUser,
   getRequesterOrganization,
@@ -104,8 +105,25 @@ export async function persistWizardRequest(
 
 function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
+  if (!["machine_pretranslation", "patent_translator"].includes(config.qualityLevel)) {
+    throw new Error("Select machine translation or human translation.");
+  }
+  if (!["full_text", "no_translation", "claims_only"].includes(config.scopeType)) {
+    throw new Error("Select full text, no translation required, or claims.");
+  }
   if (!config.jurisdictionCodes.length) {
     throw new Error("Select at least one jurisdiction.");
+  }
+  const hasTranslationGrant = config.serviceTypes.includes("translation")
+    && config.serviceTypes.includes("european_patent_grant_registration");
+  if (config.channelCode !== "ep" && (config.serviceTypes.includes("epv") || hasTranslationGrant)) {
+    throw new Error("EPV and Translation + Grant are only available for EPO.");
+  }
+  if (
+    (config.serviceTypes.includes("translation") || config.serviceTypes.includes("epv"))
+    && !config.scopeType
+  ) {
+    throw new Error("Scope is required for translation or EPV.");
   }
   if (config.serviceTypes.includes("filing")) {
     if (!config.filingType || !config.filingApplicationType || !config.entityType) {
@@ -122,9 +140,8 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   if (!["patent_search", "upload"].includes(payload.sourceMode)) {
     throw new Error("Choose a valid file source.");
   }
-  payload.config.channelCode = payload.sourceMode === "upload"
-    ? "upload_files"
-    : payload.config.channelCode || channelFromLegacyPurpose(payload.config.purpose);
+  payload.config.channelCode = payload.config.channelCode
+    || channelFromLegacyPurpose(payload.config.purpose);
   payload.config.jurisdictionCodes = Array.isArray(payload.config.jurisdictionCodes)
     ? payload.config.jurisdictionCodes
     : [];
@@ -151,7 +168,22 @@ async function validateDictionaryValues(
     .eq("is_active", true);
   if (error) throw new Error(error.message);
   const activeValues = new Set((data ?? []).map((item) => `${item.category}:${item.code}`));
-  const invalid = expected.find(([category, code]) => !activeValues.has(`${category}:${code}`));
+  const builtInDictionaryValues = new Set([
+    "filing_type:submission",
+    "filing_type:annuity",
+    "application_type:invention",
+    "application_type:utility_model",
+    "application_type:design",
+    "application_type:trademark",
+    "entity_type:large_entity",
+    "entity_type:small_entity",
+    "entity_type:micro_entity",
+    ...jurisdictionOptions.map((option) => `jurisdiction:${option.value}`),
+  ]);
+  const invalid = expected.find(([category, code]) => {
+    const key = `${category}:${code}`;
+    return !activeValues.has(key) && !builtInDictionaryValues.has(key);
+  });
   if (invalid) throw new Error(`Invalid ${invalid[0]} value: ${invalid[1]}.`);
 }
 

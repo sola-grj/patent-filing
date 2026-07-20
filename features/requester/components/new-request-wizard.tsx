@@ -508,9 +508,6 @@ function StepContent(props: {
           if (activeRoute !== nextRoute) {
             props.clearSourceState();
           }
-          if (value === "upload" && props.sourceMode !== "upload") {
-            props.setConfig({ ...props.config, channelCode: "upload_files" });
-          }
           props.setSourceMode(value);
         }}
         onPatentQueryChange={props.setPatentQuery}
@@ -687,11 +684,10 @@ function CancelDialog(props: {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Cancel this request?</AlertDialogTitle>
-          <AlertDialogDescription>You can discard the wizard state or save it as a draft request.</AlertDialogDescription>
+          <AlertDialogDescription>You can keep editing or discard the wizard state.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep editing</AlertDialogCancel>
-          <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onSaveDraft}>Save draft</Button>
           <AlertDialogAction onClick={props.onDiscard}>Discard</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

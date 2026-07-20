@@ -25,13 +25,59 @@ export const targetLanguageOptions = [
   { value: "fr", label: "French" },
 ];
 
+export const jurisdictionOptions = [
+  { value: "BE", label: "Belgium" },
+  { value: "DE", label: "Germany" },
+  { value: "FR", label: "France" },
+  { value: "LU", label: "Luxembourg" },
+  { value: "NL", label: "Netherlands" },
+  { value: "CH", label: "Switzerland" },
+  { value: "GB", label: "United Kingdom" },
+  { value: "SE", label: "Sweden" },
+  { value: "IT", label: "Italy" },
+  { value: "AT", label: "Austria" },
+  { value: "LI", label: "Liechtenstein" },
+  { value: "GR", label: "Greece" },
+  { value: "ES", label: "Spain" },
+  { value: "DK", label: "Denmark" },
+  { value: "MC", label: "Monaco" },
+  { value: "PT", label: "Portugal" },
+  { value: "IE", label: "Ireland" },
+  { value: "FI", label: "Finland" },
+  { value: "CY", label: "Cyprus" },
+  { value: "TR", label: "Türkiye" },
+  { value: "BG", label: "Bulgaria" },
+  { value: "CZ", label: "Czech Republic" },
+  { value: "EE", label: "Estonia" },
+  { value: "SK", label: "Slovakia" },
+  { value: "SI", label: "Slovenia" },
+  { value: "HU", label: "Hungary" },
+  { value: "RO", label: "Romania" },
+  { value: "PL", label: "Poland" },
+  { value: "IS", label: "Iceland" },
+  { value: "LT", label: "Lithuania" },
+  { value: "LV", label: "Latvia" },
+  { value: "MT", label: "Malta" },
+  { value: "HR", label: "Croatia" },
+  { value: "NO", label: "Norway" },
+  { value: "MK", label: "North Macedonia" },
+  { value: "SM", label: "San Marino" },
+  { value: "AL", label: "Albania" },
+  { value: "RS", label: "Serbia" },
+  { value: "ME", label: "Montenegro" },
+  { value: "MD", label: "Republic of Moldova" },
+  { value: "BA", label: "Bosnia and Herzegovina" },
+  { value: "MA", label: "Morocco" },
+  { value: "TN", label: "Tunisia" },
+  { value: "KH", label: "Cambodia" },
+  { value: "GE", label: "Georgia" },
+  { value: "LA", label: "Lao People's Democratic Republic" },
+];
+
 export const scopeOptions = [
-  { value: "full_text", label: "Full text" },
-  { value: "claims_only", label: "Claims only" },
-  { value: "abstract_only", label: "Abstract only" },
-  { value: "description_and_claims", label: "Description + claims" },
-  { value: "description_claims_abstract", label: "Description + claims + abstract" },
-  { value: "drawing_text", label: "Drawing text" },
+  { value: "full_text", label: "Full Text" },
+  { value: "no_translation", label: "No Translation Required" },
+  { value: "claims_only", label: "Claims" },
 ];
 
 export const purposeOptions = [
@@ -81,11 +127,8 @@ export const epvTypeOptions = [
 ];
 
 export const qualityOptions = [
-  { value: "machine_pretranslation", label: "Machine pre-translation" },
-  { value: "patent_translator", label: "Patent translator" },
-  { value: "patent_translator_review", label: "Patent translator + review" },
-  { value: "patent_translator_native_review", label: "Patent translator + native review" },
-  { value: "local_agent_review", label: "Local agent review" },
+  { value: "machine_pretranslation", label: "Machine Translation" },
+  { value: "patent_translator", label: "Human Translation" },
 ];
 
 export const rejectReasonOptions = [

@@ -25,7 +25,7 @@ export const defaultWizardConfig: WizardConfig = {
   filingApplicationType: "",
   entityType: "",
   epvType: "",
-  qualityLevel: "patent_translator_review",
+  qualityLevel: "patent_translator",
   deliveryOption: "standard",
   dueAt: "",
   isUrgent: false,
@@ -41,6 +41,7 @@ export type WizardConfigFieldErrors = Partial<Record<
   | "epvType"
   | "sourceLanguage"
   | "jurisdictionCodes"
+  | "scopeType"
   | "dueAt",
   string
 >>;
@@ -161,10 +162,22 @@ export function normalizeWizardConfig(
 
   return {
     ...merged,
-    channelCode: config?.channelCode || legacyChannel,
+    channelCode: config?.channelCode === "upload_files"
+      ? "ep"
+      : config?.channelCode || legacyChannel,
     jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
+    scopeType: ["full_text", "no_translation", "claims_only"].includes(
+      config?.scopeType ?? "",
+    )
+      ? config?.scopeType ?? "full_text"
+      : "full_text",
+    qualityLevel: ["machine_pretranslation", "patent_translator"].includes(
+      config?.qualityLevel ?? "",
+    )
+      ? config?.qualityLevel ?? "patent_translator"
+      : "patent_translator",
   };
 }
 
@@ -172,6 +185,7 @@ export function validateWizardConfigFields(
   config: WizardConfig,
 ): WizardConfigFieldErrors {
   const errors: WizardConfigFieldErrors = {};
+  const hasTranslationService = config.serviceTypes.includes("translation");
   const hasFilingService = config.serviceTypes.includes("filing");
   const hasEpvService = config.serviceTypes.includes("epv");
 
@@ -181,6 +195,12 @@ export function validateWizardConfigFields(
 
   if (!config.serviceTypes.length) {
     errors.serviceTypes = "Select at least one service type before continuing.";
+  }
+
+  const hasTranslationGrant = config.serviceTypes.includes("translation")
+    && config.serviceTypes.includes("european_patent_grant_registration");
+  if (config.channelCode !== "ep" && (hasEpvService || hasTranslationGrant)) {
+    errors.serviceTypes = "EPV and Translation + Grant are only available for EPO.";
   }
 
   if (hasFilingService) {
@@ -207,6 +227,10 @@ export function validateWizardConfigFields(
 
   if (!config.jurisdictionCodes.length) {
     errors.jurisdictionCodes = "Select at least one jurisdiction before continuing.";
+  }
+
+  if ((hasTranslationService || hasEpvService) && !config.scopeType) {
+    errors.scopeType = "Select a scope before continuing.";
   }
 
   try {

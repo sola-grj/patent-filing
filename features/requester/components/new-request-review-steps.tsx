@@ -23,6 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  entityTypeOptions,
+  filingApplicationTypeOptions,
+  filingTypeOptions,
+  jurisdictionOptions,
   qualityOptions,
   scopeOptions,
   sourceLanguageOptions,
@@ -171,8 +175,11 @@ export function ConfigStep({
   dictionaries: WizardDictionaries;
 }) {
   const dueDateRef = useRef<HTMLInputElement | null>(null);
-  const channelLabel = labelForOption(dictionaries.channels, config.channelCode);
+  const channelLabel = config.channelCode === "ep"
+    ? "EPO"
+    : labelForOption(dictionaries.channels, config.channelCode);
   const isChannelLocked = sourceMode === "patent_search";
+  const hasTranslationService = config.serviceTypes.includes("translation");
   const hasFilingService = config.serviceTypes.includes("filing");
   const hasEpvService = config.serviceTypes.includes("epv");
 
@@ -203,6 +210,24 @@ export function ConfigStep({
       epvType: nextServiceTypes.includes("epv") ? config.epvType : "",
     });
   }
+
+  function handleChannelChange(channelCode: string) {
+    const hasEpoOnlyService = config.serviceTypes.includes("epv")
+      || (
+        config.serviceTypes.includes("translation")
+        && config.serviceTypes.includes("european_patent_grant_registration")
+      );
+    onChange({
+      ...config,
+      channelCode,
+      serviceTypes: channelCode !== "ep" && hasEpoOnlyService ? [] : config.serviceTypes,
+      epvType: channelCode !== "ep" ? "" : config.epvType,
+    });
+  }
+
+  const channelOptions = dictionaries.channels
+    .filter((option) => ["ep", "paris_convention", "pct"].includes(option.value))
+    .map((option) => option.value === "ep" ? { ...option, label: "EPO" } : option);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -247,17 +272,18 @@ export function ConfigStep({
               <SelectField
                 label="Channels"
                 value={config.channelCode}
-                options={dictionaries.channels}
+                options={channelOptions}
                 placeholder="Choose an application channel"
                 disabled={isChannelLocked}
                 error={configFieldErrors.channelCode}
                 required
-                onChange={onConfigValueChange(config, onChange, "channelCode")}
+                onChange={handleChannelChange}
               />
             </div>
           ) : null}
           <div className="md:col-span-2">
             <ServiceTypeField
+              channelCode={config.channelCode}
               error={configFieldErrors.serviceTypes}
               value={config.serviceTypes}
               onChange={handleServiceTypeChange}
@@ -268,7 +294,9 @@ export function ConfigStep({
               <SelectField
                 label="Filing Type"
                 value={config.filingType ?? ""}
-                options={dictionaries.filingTypes}
+                options={dictionaries.filingTypes.length
+                  ? dictionaries.filingTypes
+                  : filingTypeOptions}
                 placeholder="Choose a filing type"
                 error={configFieldErrors.filingType}
                 required
@@ -277,7 +305,9 @@ export function ConfigStep({
               <SelectField
                 label="Application Type"
                 value={config.filingApplicationType ?? ""}
-                options={dictionaries.applicationTypes}
+                options={dictionaries.applicationTypes.length
+                  ? dictionaries.applicationTypes
+                  : filingApplicationTypeOptions}
                 placeholder="Choose an application type"
                 error={configFieldErrors.filingApplicationType}
                 required
@@ -286,7 +316,9 @@ export function ConfigStep({
               <SelectField
                 label="Entity Type"
                 value={config.entityType ?? ""}
-                options={dictionaries.entityTypes}
+                options={dictionaries.entityTypes.length
+                  ? dictionaries.entityTypes
+                  : entityTypeOptions}
                 placeholder="Choose an entity type"
                 error={configFieldErrors.entityType}
                 required
@@ -317,7 +349,9 @@ export function ConfigStep({
           <MultiSelectField
             label="Jurisdictions"
             values={config.jurisdictionCodes}
-            options={dictionaries.jurisdictions}
+            options={dictionaries.jurisdictions.length
+              ? dictionaries.jurisdictions
+              : jurisdictionOptions}
             placeholder="Choose jurisdictions"
             error={configFieldErrors.jurisdictionCodes}
             required
@@ -332,13 +366,16 @@ export function ConfigStep({
               })
             }
           />
-          <SelectField
-            label="Scope"
-            value={config.scopeType}
-            options={scopeOptions}
-            required
-            onChange={onConfigValueChange(config, onChange, "scopeType")}
-          />
+          {hasTranslationService || hasEpvService ? (
+            <SelectField
+              label="Scope"
+              value={config.scopeType}
+              options={scopeOptions}
+              error={configFieldErrors.scopeType}
+              required
+              onChange={onConfigValueChange(config, onChange, "scopeType")}
+            />
+          ) : null}
           <SelectField
             label="Quality"
             value={config.qualityLevel}
@@ -394,6 +431,7 @@ export function ConfigStep({
 }
 
 function ServiceTypeField(props: {
+  channelCode: string;
   error?: string;
   value: string[];
   onChange: (serviceType: ServiceTypeSelection) => void;
@@ -414,11 +452,13 @@ function ServiceTypeField(props: {
           <SelectValue placeholder="Choose a service type" />
         </SelectTrigger>
         <SelectContent>
-          {serviceTypeSelections.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
+          {serviceTypeSelections
+            .filter((option) => props.channelCode === "ep" || !option.epoOnly)
+            .map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
         </SelectContent>
       </Select>
       {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
@@ -427,12 +467,12 @@ function ServiceTypeField(props: {
 }
 
 const serviceTypeSelections = [
-  { value: "translation", label: "Translation" },
-  { value: "grant", label: "Grant" },
-  { value: "filing", label: "Filing" },
-  { value: "translation_filing", label: "Translation + Filing" },
-  { value: "translation_grant", label: "Translation + Grant" },
-  { value: "epv", label: "EPV" },
+  { value: "translation", label: "Translation", epoOnly: false },
+  { value: "grant", label: "Grant", epoOnly: false },
+  { value: "filing", label: "Filing", epoOnly: false },
+  { value: "translation_filing", label: "Translation + Filing", epoOnly: false },
+  { value: "translation_grant", label: "Translation + Grant", epoOnly: true },
+  { value: "epv", label: "EPV", epoOnly: true },
 ] as const;
 
 type ServiceTypeSelection = (typeof serviceTypeSelections)[number]["value"];

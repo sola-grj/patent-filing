@@ -52,13 +52,6 @@ export function HeroSection({
             >
               <Link href="/requester/requests">Open Requests</Link>
             </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="rounded-full border-white/18 bg-white/10 px-6 text-white hover:bg-white/14 hover:text-white"
-            >
-              <Link href="/requester/drafts">My drafts</Link>
-            </Button>
           </div>
         </div>
       </div>
