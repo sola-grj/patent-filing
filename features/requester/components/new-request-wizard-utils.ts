@@ -1,6 +1,7 @@
 import type {
   WizardConfig,
   WizardPatentCandidate,
+  WizardPatentAnalysisResult,
   WizardPatentFile,
   WizardPayload,
   WizardSourceMode,
@@ -54,6 +55,7 @@ export function buildWizardPayload(input: {
   selectedPatentFileIds: string[];
   uploadedFiles: File[];
   uploadedFileSnapshots?: WizardUploadedFile[];
+  analysis?: WizardPatentAnalysisResult;
   config: WizardConfig;
   lastStep: string;
 }): WizardPayload {
@@ -66,6 +68,7 @@ export function buildWizardPayload(input: {
     uploadedFiles: input.uploadedFiles.length
       ? input.uploadedFiles.map(fileToUploadedFile)
       : input.uploadedFileSnapshots ?? [],
+    analysis: input.analysis,
     config: input.config,
     lastStep: input.lastStep,
   };

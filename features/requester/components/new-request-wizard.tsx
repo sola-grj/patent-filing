@@ -43,6 +43,7 @@ import type {
   WizardConfig,
   WizardDraftSession,
   WizardDictionaries,
+  WizardPatentAnalysisStatus,
   WizardPatentCandidate,
   WizardPayload,
   WizardSourceMode,
@@ -62,6 +63,7 @@ import {
   wizardSteps,
 } from "./new-request-wizard-utils";
 import { useRequestWizardController } from "./requester-create-request-controller";
+import { usePatentAnalysis } from "./use-patent-analysis";
 
 type WizardNegotiationDraft = {
   adjustmentNotes: string;
@@ -80,6 +82,7 @@ export function NewRequestWizard({
   const { registerController } = useRequestWizardController();
   const initialPayload = initialDraft?.payload;
   const initialConfig = normalizeWizardConfig(initialPayload?.config);
+  const analysis = usePatentAnalysis(initialPayload?.analysis);
   const [requestId, setRequestId] = useState<string | undefined>(initialDraft?.requestId);
   const [step, setStep] = useState(resolveInitialStep(initialPayload?.lastStep));
   const [sourceMode, setSourceMode] = useState<WizardSourceMode>(initialPayload?.sourceMode ?? "patent_search");
@@ -113,6 +116,7 @@ export function NewRequestWizard({
     || JSON.stringify(config) !== JSON.stringify(defaultWizardConfig);
 
   function applyUploadedFiles(nextFiles: File[]) {
+    analysis.reset();
     setUploadedFiles(nextFiles);
     setUploadedFileSnapshots(nextFiles.map((file) => ({
       name: file.name,
@@ -122,6 +126,7 @@ export function NewRequestWizard({
   }
 
   function clearSourceState() {
+    analysis.reset();
     setPatentQuery("");
     setSelectedPatent(undefined);
     setSelectedPatentFileIds([]);
@@ -131,11 +136,13 @@ export function NewRequestWizard({
   }
 
   function applyPatentSearchResult(candidate: WizardPatentCandidate) {
+    analysis.reset();
     setSelectedPatent(candidate);
     setSelectedPatentFileIds(candidate.downloadableFiles.map((file) => file.id));
   }
 
   function clearPatentSearchResult() {
+    analysis.reset();
     setSelectedPatent(undefined);
     setSelectedPatentFileIds([]);
   }
@@ -149,6 +156,7 @@ export function NewRequestWizard({
       selectedPatentFileIds,
       uploadedFiles,
       uploadedFileSnapshots,
+      analysis: analysis.result,
       config,
       lastStep: wizardSteps[step].title,
     });
@@ -191,6 +199,14 @@ export function NewRequestWizard({
     }
     setShowConfigValidation(false);
     setError(null);
+
+    if (step === 0) {
+      analysis.start({
+        sourceMode,
+        patentNumber: selectedPatent?.patentNumber ?? patentQuery,
+        files: uploadedFiles,
+      });
+    }
 
     if (step === 1) {
       void runStepTransition("Parsing quote details", () => {
@@ -242,6 +258,7 @@ export function NewRequestWizard({
   }
 
   function resetWizard() {
+    analysis.reset();
     setRequestId(undefined);
     setStep(0);
     setSourceMode("patent_search");
@@ -344,6 +361,8 @@ export function NewRequestWizard({
                 config={config}
                 configFieldErrors={configFieldErrors}
                 payload={payload}
+                analysisStatus={analysis.status}
+                analysisError={analysis.error}
                 isPending={isBusy}
                 setSourceMode={(value) => {
                   clearStepError(0);
@@ -351,6 +370,7 @@ export function NewRequestWizard({
                 }}
                 setPatentQuery={(value) => {
                   clearStepError(0);
+                  analysis.reset();
                   setPatentQuery(value);
                 }}
                 setPatentSearchResult={(value) => {
@@ -473,6 +493,8 @@ function StepContent(props: {
   dictionaries: WizardDictionaries;
   configFieldErrors: WizardConfigFieldErrors;
   payload: WizardPayload;
+  analysisStatus: WizardPatentAnalysisStatus;
+  analysisError?: string;
   quoteAction?: ReactNode;
   isPending: boolean;
   setSourceMode: (value: WizardSourceMode) => void;
@@ -539,6 +561,8 @@ function StepContent(props: {
       payload={props.payload}
       action={props.quoteAction}
       dictionaries={props.dictionaries}
+      analysisStatus={props.analysisStatus}
+      analysisError={props.analysisError}
     />
   );
 }

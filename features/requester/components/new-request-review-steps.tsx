@@ -206,7 +206,7 @@ export function ConfigStep({
       filingApplicationType: nextServiceTypes.includes("filing")
         ? config.filingApplicationType
         : "",
-      entityType: nextServiceTypes.includes("filing") ? config.entityType : "",
+      entityType: config.entityType,
       epvType: nextServiceTypes.includes("epv") ? config.epvType : "",
     });
   }

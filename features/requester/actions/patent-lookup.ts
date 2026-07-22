@@ -1,11 +1,13 @@
 import type {
   WizardPatentCandidate,
   WizardPatentFile,
+  WizardPatentPriority,
+  WizardPatentRepresentative,
 } from "@/features/requester/wizard-types";
 
 const defaultPatentServiceBaseUrl = "http://127.0.0.1:9999";
 
-type PatentLookupResponse = {
+export type PatentLookupResponse = {
   source?: string;
   normalized_number?: string;
   display_number?: string;
@@ -15,6 +17,17 @@ type PatentLookupResponse = {
   cpc?: string[];
   applicants?: string[];
   inventors?: string[];
+  representatives?: PatentRepresentative[];
+  agents?: PatentRepresentative[];
+  priority_data?: PatentPriority[];
+  publication_language?: string | null;
+  filing_language?: string | null;
+  designated_states?: {
+    regions?: string[];
+    countries?: string[];
+    protection_types?: string[];
+  };
+  related_patent_documents?: string[];
   application_date?: string | null;
   application_no?: string | null;
   publication_date?: string | null;
@@ -30,6 +43,7 @@ type PatentLookupResponse = {
   claims_count?: number | null;
   claims_words?: number | null;
   drawings?: {
+    has_drawings?: boolean;
     drawing_page_count?: number | null;
     drawing_labels?: string[];
   };
@@ -46,12 +60,31 @@ type PatentLookupResponse = {
     application_number?: string;
     applicants?: string[];
     inventors?: string[];
+    representatives?: PatentRepresentative[];
     ipc?: string[];
     cpc?: string[];
   };
-  raw_source_refs?: {
-    ops_images?: { page_count?: number };
-  };
+  raw_source_refs?: PatentRawSourceRefs;
+};
+
+type PatentRepresentative = {
+  name?: string;
+  organization?: string;
+  address?: string;
+  country?: string;
+};
+
+type PatentPriority = {
+  number?: string;
+  date?: string;
+  country?: string;
+  kind?: string;
+};
+
+type PatentRawSourceRefs = {
+  ops_images?: { page_count?: number | null };
+  generated_pdf?: { page_count?: number | null };
+  document_pages?: string[];
 };
 
 type PatentLookupError = {
@@ -85,7 +118,7 @@ export async function lookupPatent(
     throwLookupError(response.status, body, patentNumber);
   }
 
-  return toWizardPatent(body as PatentLookupResponse, patentNumber);
+  return mapPatentLookupResponse(body as PatentLookupResponse, patentNumber);
 }
 
 function resolveLookupUrl() {
@@ -121,7 +154,7 @@ function throwLookupError(
   throw new Error(message || "Patent lookup failed. Please try again later.");
 }
 
-function toWizardPatent(
+export function mapPatentLookupResponse(
   response: PatentLookupResponse,
   fallbackNumber: string,
 ): WizardPatentCandidate {
@@ -140,6 +173,8 @@ function toWizardPatent(
     response.original_file_download_url ||
     response.original_file?.download_url ||
     "";
+  const totalPages = resolveTotalPages(response);
+  const priorities = normalizePriorities(response.priority_data);
 
   return {
     id: response.normalized_number || patentNumber,
@@ -151,33 +186,56 @@ function toWizardPatent(
     publicationNo: response.publication_no || "",
     applicants: response.applicants || basicInfo?.applicants || [],
     inventors: response.inventors || basicInfo?.inventors || [],
+    agents: normalizeRepresentatives(
+      firstPopulated(
+        response.agents,
+        response.representatives,
+        basicInfo?.representatives,
+      ),
+    ),
+    priorities,
     description: response.abstract || basicInfo?.abstract || "",
     filingDate: formatPatentDate(response.application_date),
     publicationDate: formatPatentDate(
       response.publication_date || basicInfo?.publication_date,
     ),
-    language: formatLanguage(response.language),
-    firstPriorityDate: formatPatentDate(response.first_priority_date),
-    internationalFilingDate: formatPatentDate(response.international_filing_date),
+    language: formatLanguage(response.language || response.publication_language),
+    firstPriorityDate: formatPatentDate(
+      response.first_priority_date || earliestPriorityDate(priorities),
+    ),
+    internationalFilingDate: formatPatentDate(
+      response.international_filing_date
+        || (response.source === "wipo" ? response.application_date : null),
+    ),
     filingDeadline30Months: formatPatentDate(response.filing_deadline_30_months),
     filingDeadline31Months: formatPatentDate(response.filing_deadline_31_months),
-    totalPages: response.total_pages ?? response.raw_source_refs?.ops_images?.page_count ?? 0,
+    totalPages,
     legalStatus: "",
     technicalField:
       response.ipc?.[0] || basicInfo?.ipc?.[0] || response.cpc?.[0] || "patent",
     downloadableFiles: [
-      buildPatentFile(response, patentNumber, sourceUrl, {
+      buildPatentFile(response, patentNumber, sourceUrl, totalPages, {
         wordCount: abstractWordCount + descriptionWordCount + claimsWordCount,
         claimsCount,
         drawingCount,
       }),
     ],
-    abstractWordCount,
-    descriptionWordCount,
-    claimsWordCount,
+    abstractWordCount: response.abstract_words ?? undefined,
+    descriptionWordCount: response.description_words ?? undefined,
+    claimsWordCount: response.claims_words ?? undefined,
+    claimsCount: response.claims_count ?? undefined,
+    drawingCount: resolveDrawingCount(response.drawings),
     source: response.source,
+    publicationLanguage: formatLanguage(response.publication_language),
+    filingLanguage: formatLanguage(response.filing_language),
     ipcCodes: response.ipc || basicInfo?.ipc || [],
     cpcCodes: response.cpc || basicInfo?.cpc || [],
+    designatedStates: {
+      regions: response.designated_states?.regions ?? [],
+      countries: response.designated_states?.countries ?? [],
+      protectionTypes: response.designated_states?.protection_types ?? [],
+    },
+    relatedPatentDocuments: response.related_patent_documents ?? [],
     sourceSnapshot: response as Record<string, unknown>,
   };
 }
@@ -186,6 +244,7 @@ function buildPatentFile(
   response: PatentLookupResponse,
   patentNumber: string,
   sourceUrl: string,
+  pageCount: number | undefined,
   metrics: { wordCount: number; claimsCount: number; drawingCount: number },
 ): WizardPatentFile {
   return {
@@ -194,11 +253,66 @@ function buildPatentFile(
     fileType: resolveFileType(response.original_file),
     language: "",
     sourceUrl,
-    pageCount: response.raw_source_refs?.ops_images?.page_count ?? 0,
+    pageCount: pageCount ?? 0,
     wordCount: metrics.wordCount,
     claimCount: metrics.claimsCount,
     drawingCount: metrics.drawingCount,
   };
+}
+
+function normalizeRepresentatives(
+  representatives?: PatentRepresentative[],
+): WizardPatentRepresentative[] {
+  return (representatives ?? [])
+    .map((representative) => ({
+      name: representative.name?.trim() ?? "",
+      organization: representative.organization?.trim() ?? "",
+      address: representative.address?.trim() ?? "",
+      country: representative.country?.trim() ?? "",
+    }))
+    .filter((representative) => Object.values(representative).some(Boolean));
+}
+
+function normalizePriorities(priorities?: PatentPriority[]): WizardPatentPriority[] {
+  return (priorities ?? [])
+    .map((priority) => ({
+      number: priority.number?.trim() ?? "",
+      date: formatPatentDate(priority.date),
+      country: priority.country?.trim() ?? "",
+      kind: priority.kind?.trim() ?? "",
+    }))
+    .filter((priority) => Object.values(priority).some(Boolean));
+}
+
+function earliestPriorityDate(priorities: WizardPatentPriority[]) {
+  return priorities
+    .map((priority) => priority.date)
+    .filter(Boolean)
+    .sort()[0];
+}
+
+function firstPopulated<T>(...values: Array<T[] | undefined>) {
+  return values.find((value) => value?.length);
+}
+
+function resolveDrawingCount(drawings: PatentLookupResponse["drawings"]) {
+  if (drawings?.drawing_page_count && drawings.drawing_page_count > 0) {
+    return drawings.drawing_page_count;
+  }
+  return drawings?.drawing_labels?.length ? drawings.drawing_labels.length : undefined;
+}
+
+function resolveTotalPages(response: PatentLookupResponse) {
+  const reported = response.total_pages
+    ?? response.raw_source_refs?.ops_images?.page_count
+    ?? response.raw_source_refs?.generated_pdf?.page_count;
+
+  if (reported && reported > 0) return reported;
+
+  const imagePages = response.raw_source_refs?.document_pages?.filter((page) =>
+    /\.(?:tif|tiff|png|jpe?g)$/i.test(page)
+  ).length;
+  return imagePages ? imagePages : undefined;
 }
 
 function formatPatentDate(value?: string | null) {

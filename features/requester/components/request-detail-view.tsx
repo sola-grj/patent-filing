@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
 import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
+import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import {
   formatCurrency,
@@ -14,6 +16,7 @@ import {
   entityTypeOptions,
 } from "@/features/requester/options";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
+import type { WizardPatentCandidate } from "@/features/requester/wizard-types";
 
 type RequestFile = {
   id: string;
@@ -52,6 +55,10 @@ type TranslationRequirement = {
 
 type RequestPatent = {
   patent_number: string;
+  title?: string | null;
+  abstract?: string | null;
+  jurisdiction?: string | null;
+  source?: string | null;
   application_no?: string | null;
   publication_no?: string | null;
   applicants?: string[] | null;
@@ -64,6 +71,14 @@ type RequestPatent = {
   filing_deadline_30_months?: string | null;
   filing_deadline_31_months?: string | null;
   total_pages?: number | null;
+  legal_status?: string | null;
+  ipc_codes?: string[] | null;
+  cpc_codes?: string[] | null;
+  abstract_word_count?: number | null;
+  description_word_count?: number | null;
+  claims_word_count?: number | null;
+  claims_count?: number | null;
+  drawing_count?: number | null;
   source_snapshot?: Record<string, unknown> | null;
 };
 
@@ -166,6 +181,13 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     Boolean(order?.id) &&
     (request.requester_status === "in_progress" || request.requester_status === "completed");
   const patentNumber = patent?.patent_number ?? null;
+  const patentCandidate = patent ? toPatentCandidate(patent) : null;
+  const entityType = requirement?.entity_type_code
+    ?? requirement?.entity_type
+    ?? config?.entityType;
+  const entityLabel = entityType
+    ? formatConfigLabel(entityTypeOptions, entityType)
+    : null;
   const requestItems: DetailItem[] = [
     { label: "Request no.", value: request.request_no },
     {
@@ -205,78 +227,6 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       value: (requirement?.is_urgent ?? config?.isUrgent) ? "Yes" : "No",
     },
   ];
-  const patentItems: DetailItem[] = [
-    {
-      label: "Patent number",
-      value: patentNumber,
-    },
-    {
-      label: "Applicants",
-      value: formatPatentPeople(patent?.applicants),
-    },
-    {
-      label: "Inventors",
-      value: formatPatentPeople(patent?.inventors),
-    },
-    {
-      label: "Application date",
-      value: formatDate(patent?.filing_date),
-    },
-    {
-      label: "Application no.",
-      value: patent?.application_no,
-    },
-    {
-      label: "Publication date",
-      value: formatDate(patent?.publication_date),
-    },
-    {
-      label: "Publication no.",
-      value: patent?.publication_no,
-    },
-    {
-      label: "Language",
-      value: patent?.language,
-    },
-    {
-      label: "First priority date",
-      value: formatDate(patent?.first_priority_date),
-    },
-    {
-      label: "International filing date",
-      value: formatDate(patent?.international_filing_date),
-    },
-    ...(request.channel_code === "pct"
-      ? [
-          {
-            label: "30-month filing deadline",
-            value: formatDate(patent?.filing_deadline_30_months),
-          },
-          {
-            label: "31-month filing deadline",
-            value: formatDate(patent?.filing_deadline_31_months),
-          },
-        ]
-      : []),
-    {
-      label: "Total pages",
-      value: patent?.total_pages?.toLocaleString(),
-    },
-    {
-      label: "Entity",
-      value: formatConfigLabel(
-        entityTypeOptions,
-        requirement?.entity_type_code ?? requirement?.entity_type ?? config?.entityType,
-      ),
-    },
-    {
-      label: "Original file",
-      value: patentNumber
-        ? <PatentFileDownloadButton requestId={request.id} />
-        : "-",
-    },
-  ];
-
   return (
     <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
       <RequesterHeader
@@ -319,17 +269,29 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
         <Section
           title="Patent Information"
           cardClassName="flex h-full min-h-0 flex-col overflow-hidden"
-          contentClassName="hide-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto"
+          contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
           action={
-            configVersion ? (
-              <span className="text-xs text-muted-foreground">
-                Config v{configVersion.version_no}
-              </span>
+            configVersion || patentNumber ? (
+              <div className="flex items-center gap-2">
+                {configVersion ? (
+                  <span className="text-xs text-muted-foreground">
+                    Config v{configVersion.version_no}
+                  </span>
+                ) : null}
+                {patentNumber ? (
+                  <PatentFileDownloadButton requestId={request.id} />
+                ) : null}
+              </div>
             ) : null
           }
         >
-          {patent ? (
-            <DetailsGrid items={patentItems} />
+          {patentCandidate ? (
+            <PatentDetailStep
+              patent={patentCandidate}
+              additionalMetadata={entityLabel
+                ? [{ label: "Entity", value: entityLabel }]
+                : []}
+            />
           ) : (
             <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
               No patent information is associated with this request.
@@ -349,6 +311,60 @@ function firstRelation<T>(value?: T | T[] | null) {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
+function toPatentCandidate(patent: RequestPatent): WizardPatentCandidate {
+  const snapshotCandidate = mapPatentLookupResponse(
+    patent.source_snapshot ?? {},
+    patent.patent_number,
+  );
+  const ipcCodes = patent.ipc_codes?.length
+    ? patent.ipc_codes
+    : snapshotCandidate.ipcCodes;
+  const cpcCodes = patent.cpc_codes?.length
+    ? patent.cpc_codes
+    : snapshotCandidate.cpcCodes;
+
+  return {
+    ...snapshotCandidate,
+    id: patent.patent_number,
+    patentNumber: patent.patent_number,
+    title: patent.title || snapshotCandidate.title,
+    jurisdiction: patent.jurisdiction || snapshotCandidate.jurisdiction,
+    applicationNo: patent.application_no || snapshotCandidate.applicationNo,
+    publicationNo: patent.publication_no || snapshotCandidate.publicationNo,
+    applicants: patent.applicants?.length
+      ? patent.applicants
+      : snapshotCandidate.applicants,
+    inventors: patent.inventors?.length
+      ? patent.inventors
+      : snapshotCandidate.inventors,
+    description: patent.abstract || snapshotCandidate.description,
+    filingDate: patent.filing_date || snapshotCandidate.filingDate,
+    publicationDate: patent.publication_date || snapshotCandidate.publicationDate,
+    language: patent.language || snapshotCandidate.language,
+    firstPriorityDate: patent.first_priority_date || snapshotCandidate.firstPriorityDate,
+    internationalFilingDate:
+      patent.international_filing_date || snapshotCandidate.internationalFilingDate,
+    filingDeadline30Months:
+      patent.filing_deadline_30_months || snapshotCandidate.filingDeadline30Months,
+    filingDeadline31Months:
+      patent.filing_deadline_31_months || snapshotCandidate.filingDeadline31Months,
+    totalPages: patent.total_pages || snapshotCandidate.totalPages,
+    legalStatus: patent.legal_status || snapshotCandidate.legalStatus,
+    technicalField: ipcCodes?.[0] || cpcCodes?.[0] || snapshotCandidate.technicalField,
+    ipcCodes,
+    cpcCodes,
+    abstractWordCount:
+      patent.abstract_word_count || snapshotCandidate.abstractWordCount,
+    descriptionWordCount:
+      patent.description_word_count || snapshotCandidate.descriptionWordCount,
+    claimsWordCount: patent.claims_word_count || snapshotCandidate.claimsWordCount,
+    claimsCount: patent.claims_count || snapshotCandidate.claimsCount,
+    drawingCount: patent.drawing_count || snapshotCandidate.drawingCount,
+    source: patent.source || snapshotCandidate.source,
+    sourceSnapshot: patent.source_snapshot ?? snapshotCandidate.sourceSnapshot,
+  };
+}
+
 function formatConfigLabel(
   options: Array<{ value: string; label: string }>,
   value?: string | null,
@@ -358,10 +374,6 @@ function formatConfigLabel(
   }
 
   return options.find((option) => option.value === value)?.label ?? value;
-}
-
-function formatPatentPeople(values?: string[] | null) {
-  return values?.filter(Boolean).join(", ") || "-";
 }
 
 function getLatestNegotiationAmount(

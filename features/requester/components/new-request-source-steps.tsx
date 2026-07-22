@@ -1,7 +1,7 @@
 "use client";
 
 import { Upload } from "lucide-react";
-import { useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,8 @@ import type {
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import { fileToUploadedFile } from "./new-request-wizard-utils";
-import { FileList, Info, StepShell } from "./new-request-wizard-shared";
+import { FileList, StepShell } from "./new-request-wizard-shared";
+import { PatentDetailStep } from "./patent-detail-step";
 
 const searchEntryCards = [
   {
@@ -142,7 +143,6 @@ export function SourceStep(props: {
                 <div className="overflow-hidden rounded-2xl border bg-background p-5">
                   <PatentDetailStep
                     patent={props.patent}
-                    showPCTFilingDeadlines={props.channelCode === "pct"}
                   />
                 </div>
               ) : null}
@@ -204,92 +204,6 @@ function UploadSourceField({
   );
 }
 
-export function PatentDetailStep(props: {
-  patent: WizardPatentCandidate;
-  showPCTFilingDeadlines: boolean;
-}) {
-  const metricFiles = props.patent.downloadableFiles;
-  const totalWordCount = metricFiles.reduce((total, file) => total + file.wordCount, 0);
-  const abstractWordCount = props.patent.abstractWordCount
-    ?? Math.min(240, Math.max(120, Math.round(totalWordCount * 0.02)));
-  const descriptionWordCount = props.patent.descriptionWordCount
-    ?? Math.max(totalWordCount - abstractWordCount, 0);
-  const totalClaims = metricFiles.reduce((total, file) => total + file.claimCount, 0);
-  const claimWordCount = props.patent.claimsWordCount
-    ?? Math.max(totalClaims * 45, Math.round(totalWordCount * 0.18));
-  const totalDrawings = metricFiles.reduce((total, file) => total + file.drawingCount, 0);
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b pb-5">
-        <h2 className="text-2xl font-semibold tracking-tight">
-          {props.patent.title}
-        </h2>
-      </div>
-
-      <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-        <div className="space-y-6">
-          <SectionBlock label="Bibliographic data">
-            <div className="grid gap-4 rounded-xl border bg-card p-5 text-sm md:grid-cols-2 xl:grid-cols-3">
-              <Info label="Applicants" value={props.patent.applicants.join(", ")} />
-              <Info label="Inventors" value={props.patent.inventors.join(", ")} />
-              <Info label="Application Date" value={props.patent.filingDate} />
-              <Info label="Application No" value={props.patent.applicationNo} />
-              <Info label="Publication Date" value={props.patent.publicationDate} />
-              <Info label="Publication No" value={props.patent.publicationNo} />
-              <Info label="Language" value={props.patent.language ?? ""} />
-              <Info label="First Priority Date" value={props.patent.firstPriorityDate ?? ""} />
-              <Info label="International Filing Date" value={props.patent.internationalFilingDate ?? ""} />
-              {props.showPCTFilingDeadlines ? (
-                <>
-                  <Info label="30-Month Filing Deadline" value={props.patent.filingDeadline30Months ?? ""} />
-                  <Info label="31-Month Filing Deadline" value={props.patent.filingDeadline31Months ?? ""} />
-                </>
-              ) : null}
-              <Info label="Total Pages" value={String(props.patent.totalPages ?? 0)} />
-            </div>
-          </SectionBlock>
-
-          <SectionBlock label="Content Summary">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border bg-card p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Abstract
-                </p>
-                <p className="mt-3 text-2xl font-semibold tracking-tight">
-                  {abstractWordCount.toLocaleString()} <span className="text-base font-medium text-muted-foreground">words</span>
-                </p>
-              </div>
-              <div className="rounded-xl border bg-card p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Description
-                </p>
-                <p className="mt-3 text-2xl font-semibold tracking-tight">
-                  {descriptionWordCount.toLocaleString()} <span className="text-base font-medium text-muted-foreground">words</span>
-                </p>
-              </div>
-            </div>
-          </SectionBlock>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <SummaryCard
-              label="Claims Count"
-              value={totalClaims}
-              unit="claims"
-              secondaryValue={claimWordCount}
-              secondaryUnit="words"
-            />
-            <SummaryCard
-              label="Drawings"
-              value={totalDrawings}
-              unit="drawings"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function EntryModeCard({
   card,
   active,
@@ -319,60 +233,6 @@ function EntryModeCard({
         </p>
       </div>
     </button>
-  );
-}
-
-function SectionBlock({
-  label,
-  action,
-  children,
-}: {
-  label: string;
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between gap-4">
-        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          {label}
-        </h3>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  unit,
-  secondaryValue,
-  secondaryUnit,
-}: {
-  label: string;
-  value: number;
-  unit: string;
-  secondaryValue?: number;
-  secondaryUnit?: string;
-}) {
-  return (
-    <div className="rounded-xl border bg-card p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
-      <div className="mt-3 flex items-baseline gap-4">
-        <p className="text-2xl font-semibold tracking-tight">
-          {value.toLocaleString()} <span className="text-base font-medium text-muted-foreground">{unit}</span>
-        </p>
-        {secondaryValue !== undefined && secondaryUnit ? (
-          <p className="text-2xl font-semibold tracking-tight">
-            {secondaryValue.toLocaleString()} <span className="text-base font-medium text-muted-foreground">{secondaryUnit}</span>
-          </p>
-        ) : null}
-      </div>
-    </div>
   );
 }
 

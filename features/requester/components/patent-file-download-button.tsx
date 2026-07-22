@@ -1,9 +1,15 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const DOWNLOAD_COOLDOWN_MS = 800;
 
@@ -48,14 +54,32 @@ export function PatentFileDownloadButton({ requestId }: { requestId: string }) {
     }
   }
 
+  const tooltip = error
+    ?? (isDownloading ? "Downloading original file..." : "Download original file");
+
   return (
-    <div className="space-y-2">
-      <Button type="button" variant="outline" size="sm" disabled={isDownloading} onClick={handleDownload}>
-        <Download className="size-4" />
-        {isDownloading ? "Downloading..." : "Download original file"}
-      </Button>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-    </div>
+    <TooltipProvider delayDuration={120}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Download original file"
+            disabled={isDownloading}
+            onClick={handleDownload}
+          >
+            {isDownloading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

@@ -12,6 +12,26 @@ export type WizardPatentFile = {
   drawingCount: number;
 };
 
+export type WizardPatentRepresentative = {
+  name: string;
+  organization: string;
+  address: string;
+  country: string;
+};
+
+export type WizardPatentPriority = {
+  number: string;
+  date: string;
+  country: string;
+  kind: string;
+};
+
+export type WizardPatentDesignatedStates = {
+  regions: string[];
+  countries: string[];
+  protectionTypes: string[];
+};
+
 export type WizardPatentCandidate = {
   id: string;
   patentNumber: string;
@@ -21,6 +41,8 @@ export type WizardPatentCandidate = {
   publicationNo: string;
   applicants: string[];
   inventors: string[];
+  agents?: WizardPatentRepresentative[];
+  priorities?: WizardPatentPriority[];
   description: string;
   filingDate: string;
   publicationDate: string;
@@ -36,9 +58,15 @@ export type WizardPatentCandidate = {
   abstractWordCount?: number;
   descriptionWordCount?: number;
   claimsWordCount?: number;
+  claimsCount?: number;
+  drawingCount?: number;
   source?: string;
+  publicationLanguage?: string;
+  filingLanguage?: string;
   ipcCodes?: string[];
   cpcCodes?: string[];
+  designatedStates?: WizardPatentDesignatedStates;
+  relatedPatentDocuments?: string[];
   sourceSnapshot?: Record<string, unknown>;
 };
 
@@ -83,6 +111,53 @@ export type WizardUploadedFile = {
   type: string;
 };
 
+export type WizardPatentAnalysisPart = {
+  word_count: number;
+  status: "found" | "missing" | "unclassified" | "error";
+  method: string;
+  confidence: string;
+};
+
+export type WizardPatentAnalysisFile = {
+  filename: string;
+  file_type: "pdf" | "doc" | "docx" | "wipo_zip" | "epo_zip";
+  sha256: string;
+  status: "success" | "partial" | "failed";
+  parts: {
+    abstract: WizardPatentAnalysisPart;
+    abstract_drawing: WizardPatentAnalysisPart;
+    description: WizardPatentAnalysisPart;
+    description_drawings: WizardPatentAnalysisPart;
+    claims: WizardPatentAnalysisPart;
+    unclassified: WizardPatentAnalysisPart;
+  };
+  document_text_words: number;
+  drawing_ocr_words: number;
+  total_words: number;
+  warnings: string[];
+};
+
+export type WizardPatentAnalysisResult = {
+  input_mode: "upload" | "patent_number";
+  status: "success" | "partial" | "failed";
+  patent_number?: string | null;
+  counting_standard: string;
+  excluded_content: string[];
+  files: WizardPatentAnalysisFile[];
+  aggregate: {
+    abstract_words: number;
+    abstract_drawing_words: number;
+    description_words: number;
+    description_drawings_words: number;
+    claims_words: number;
+    unclassified_words: number;
+    total_words: number;
+  };
+  warnings: string[];
+};
+
+export type WizardPatentAnalysisStatus = "idle" | "pending" | "complete" | "error";
+
 export type WizardPayload = {
   requestId?: string;
   sourceMode: WizardSourceMode;
@@ -90,6 +165,7 @@ export type WizardPayload = {
   selectedPatent?: WizardPatentCandidate;
   selectedPatentFileIds: string[];
   uploadedFiles: WizardUploadedFile[];
+  analysis?: WizardPatentAnalysisResult;
   config: WizardConfig;
   lastStep: string;
 };
