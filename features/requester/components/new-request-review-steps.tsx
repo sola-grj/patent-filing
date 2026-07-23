@@ -28,7 +28,6 @@ import {
   filingTypeOptions,
   jurisdictionOptions,
   qualityOptions,
-  scopeOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
 import type {
@@ -180,8 +179,11 @@ export function ConfigStep({
     : labelForOption(dictionaries.channels, config.channelCode);
   const isChannelLocked = sourceMode === "patent_search";
   const hasTranslationService = config.serviceTypes.includes("translation");
+  const isTranslationOnlyService = config.serviceTypes.length === 1
+    && hasTranslationService;
   const hasFilingService = config.serviceTypes.includes("filing");
   const hasEpvService = config.serviceTypes.includes("epv");
+  const showQualityField = hasTranslationService || hasEpvService;
 
   function openDueDatePicker() {
     const input = dueDateRef.current;
@@ -199,9 +201,12 @@ export function ConfigStep({
 
   function handleServiceTypeChange(serviceType: ServiceTypeSelection) {
     const nextServiceTypes = serviceTypeValues[serviceType];
+    const isNextTranslationOnly = nextServiceTypes.length === 1
+      && nextServiceTypes[0] === "translation";
     onChange({
       ...config,
       serviceTypes: [...nextServiceTypes],
+      dueAt: isNextTranslationOnly ? config.dueAt : "",
       filingType: nextServiceTypes.includes("filing") ? config.filingType : "",
       filingApplicationType: nextServiceTypes.includes("filing")
         ? config.filingApplicationType
@@ -366,41 +371,34 @@ export function ConfigStep({
               })
             }
           />
-          {hasTranslationService || hasEpvService ? (
+          {showQualityField ? (
             <SelectField
-              label="Scope"
-              value={config.scopeType}
-              options={scopeOptions}
-              error={configFieldErrors.scopeType}
+              label="Quality"
+              value={config.qualityLevel}
+              options={qualityOptions}
               required
-              onChange={onConfigValueChange(config, onChange, "scopeType")}
+              onChange={onConfigValueChange(config, onChange, "qualityLevel")}
             />
           ) : null}
-          <SelectField
-            label="Quality"
-            value={config.qualityLevel}
-            options={qualityOptions}
-            required
-            onChange={onConfigValueChange(config, onChange, "qualityLevel")}
-          />
-          <Field label="Due date" required>
-            <Input
-              aria-invalid={Boolean(configFieldErrors.dueAt)}
-              className={getFieldClassName(Boolean(configFieldErrors.dueAt))}
-              required
-              ref={dueDateRef}
-              value={config.dueAt}
-              type="date"
-              min={getTomorrowDateInputValue()}
-              onClick={openDueDatePicker}
-              onChange={(event) =>
-                onChange({ ...config, dueAt: event.target.value })
-              }
-            />
-            {configFieldErrors.dueAt ? (
-              <p className="text-sm text-destructive">{configFieldErrors.dueAt}</p>
-            ) : null}
-          </Field>
+          {isTranslationOnlyService ? (
+            <Field label="Due date">
+              <Input
+                aria-invalid={Boolean(configFieldErrors.dueAt)}
+                className={getFieldClassName(Boolean(configFieldErrors.dueAt))}
+                ref={dueDateRef}
+                value={config.dueAt}
+                type="date"
+                min={getTomorrowDateInputValue()}
+                onClick={openDueDatePicker}
+                onChange={(event) =>
+                  onChange({ ...config, dueAt: event.target.value })
+                }
+              />
+              {configFieldErrors.dueAt ? (
+                <p className="text-sm text-destructive">{configFieldErrors.dueAt}</p>
+              ) : null}
+            </Field>
+          ) : null}
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="customScope">
               Custom pages / paragraphs or special requirements
@@ -447,7 +445,7 @@ function ServiceTypeField(props: {
         <SelectTrigger
           aria-invalid={Boolean(props.error)}
           aria-required="true"
-          className={getFieldClassName(Boolean(props.error))}
+          className={getFieldClassName(Boolean(props.error), "h-10")}
         >
           <SelectValue placeholder="Choose a service type" />
         </SelectTrigger>
@@ -513,7 +511,7 @@ function SelectField(props: {
         <SelectTrigger
           aria-invalid={Boolean(props.error)}
           aria-required={props.required}
-          className={getFieldClassName(Boolean(props.error))}
+          className={getFieldClassName(Boolean(props.error), "h-10")}
         >
           <SelectValue placeholder={props.placeholder} />
         </SelectTrigger>

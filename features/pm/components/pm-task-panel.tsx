@@ -22,102 +22,68 @@ type Order = {
   translation_tasks?: TranslationTask[] | null;
 };
 
-type TranslatorOption = {
-  userId: string;
-  label: string;
-  email: string | null;
-  isSelectable: boolean;
-};
-
 export function PmTaskPanel({
   requestId,
   order,
   files,
-  translators,
-  canStartTask,
-  quoteStatus,
+  requestStatus,
 }: {
   requestId: string;
   order?: Order | null;
   files: Array<{ id: string; original_filename: string }>;
-  translators: TranslatorOption[];
-  canStartTask: boolean;
-  quoteStatus?: string | null;
+  requestStatus?: string | null;
 }) {
   const tasks = [...(order?.translation_tasks ?? [])];
   const hasStartedTasks = tasks.length > 0;
   const hasCompletedTasks =
     (order?.status ?? null) === "completed" ||
     tasks.some((task) => task.status === "completed");
-  const hasQuote = Boolean(quoteStatus);
-  const selectableTranslators = translators.filter((translator) => translator.isSelectable);
-  const currentTranslatorId =
-    tasks.find((task) => task.assigned_translator_id)?.assigned_translator_id ?? null;
-  const defaultTranslatorId = currentTranslatorId ?? selectableTranslators[0]?.userId ?? "";
+  const canStartTask = requestStatus === "responding";
   return (
     <Card className="flex shrink-0 flex-col overflow-hidden">
       <CardHeader className="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85">
         <CardTitle>Task control</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {order || hasQuote || canStartTask || tasks.length ? (
-          <>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                  Order
-                </p>
-                <div className="mt-2 text-sm leading-6">
-                  {order?.order_no ?? order?.id ?? "Will be created on task start"}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                  Order status
-                </p>
-                <div className="mt-2 text-sm leading-6">
-                  {titleCaseStatus(order?.status ?? "pending")}
-                </div>
-              </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+              Order
+            </p>
+            <div className="mt-2 text-sm leading-6">
+              {order?.order_no ?? order?.id ?? "Will be created on task start"}
             </div>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+              Order status
+            </p>
+            <div className="mt-2 text-sm leading-6">
+              {titleCaseStatus(order?.status ?? "pending")}
+            </div>
+          </div>
+        </div>
 
-            {!hasStartedTasks && !hasQuote ? (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                Generate a quote before assigning a linguist.
-              </p>
-            ) : !hasStartedTasks && !canStartTask ? (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                Requester must accept the current quote before PM can assign a
-                linguist and start production.
-              </p>
-            ) : !hasStartedTasks && files.length === 0 ? (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                No confirmed request files are available yet. Confirm files before starting
-                translation tasks.
-              </p>
-            ) : hasCompletedTasks ? (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                This task has already been completed. Completed tasks cannot be reassigned or
-                restarted.
-              </p>
-            ) : canStartTask && selectableTranslators.length ? (
-              <PmStartTaskForm
-                requestId={requestId}
-                translators={selectableTranslators}
-                defaultTranslatorId={defaultTranslatorId}
-                filesCount={files.length}
-                hasExistingTasks={tasks.length > 0}
-              />
-            ) : (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                No linguist account is available yet. Add an organization member with the
-                `translator` role before starting tasks.
-              </p>
-            )}
-          </>
+        {hasCompletedTasks ? (
+          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            This task has already been completed.
+          </p>
+        ) : canStartTask && files.length === 0 ? (
+          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            No confirmed request files are available yet. Confirm files before starting
+            translation tasks.
+          </p>
+        ) : canStartTask ? (
+          <PmStartTaskForm
+            requestId={requestId}
+          />
+        ) : hasStartedTasks ? (
+          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            Production has started for this request.
+          </p>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Generate a quote before assigning a linguist.
+          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+            Tasks can be started while the request is Responding.
           </p>
         )}
       </CardContent>

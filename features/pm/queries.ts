@@ -35,22 +35,50 @@ export async function getPmDashboard() {
   const context = await requirePmContext();
 
   if (context.denied) {
-    return { denied: true, organization: null, buckets: [], recentRequests: [] };
+    return {
+      denied: true,
+      organization: null,
+      buckets: [],
+      recentRequests: [],
+      dictionaries: { channels: [], serviceTypes: [] },
+    };
   }
 
-  const { data, error } = await context.supabase
-    .from("translation_requests")
-    .select(
-      "id, request_no, title, workflow_stage, pm_status, updated_at, translation_requirements(is_urgent), organizations(id, name), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
-    )
-    .neq("workflow_stage", "draft")
-    .order("updated_at", { ascending: false });
+  const [
+    { data, error },
+    { data: dictionaryItems, error: dictionaryError },
+  ] = await Promise.all([
+    context.supabase
+      .from("translation_requests")
+      .select(
+        "id, request_no, title, channel_code, workflow_stage, pm_status, updated_at, translation_requirements(is_urgent, service_types), request_patents(patent_number)",
+      )
+      .neq("workflow_stage", "draft")
+      .order("updated_at", { ascending: false }),
+    context.supabase
+      .from("dictionary_items")
+      .select("category, code, label")
+      .in("category", ["request_channel", "service_type"])
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true }),
+  ]);
 
   if (error) {
     throw new Error(error.message);
   }
+  if (dictionaryError) {
+    throw new Error(dictionaryError.message);
+  }
 
   const requests = data ?? [];
+  const dictionaries = {
+    channels: (dictionaryItems ?? [])
+      .filter((item) => item.category === "request_channel")
+      .map((item) => ({ value: item.code, label: item.label })),
+    serviceTypes: (dictionaryItems ?? [])
+      .filter((item) => item.category === "service_type")
+      .map((item) => ({ value: item.code, label: item.label })),
+  };
 
   return {
     denied: false,
@@ -59,7 +87,8 @@ export async function getPmDashboard() {
       ...bucket,
       count: requests.filter((request) => request.pm_status === bucket.status).length,
     })),
-    recentRequests: requests.slice(0, 3),
+    recentRequests: requests.slice(0, 8),
+    dictionaries,
   };
 }
 
@@ -131,13 +160,13 @@ export async function getPmRequestDetail(requestId: string) {
   const context = await requirePmContext();
 
   if (context.denied) {
-    return { denied: true, request: null, translators: [], currentUserId: null };
+    return { denied: true, request: null, currentUserId: null };
   }
 
   const { data, error } = await context.supabase
     .from("translation_requests")
     .select(
-      "*, organizations(id, name, type), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(*, task_deliverables(*))), request_events(*)",
+      "*, organizations(id, name, type), request_files(*, file_parse_results(*), file_parse_jobs(*)), request_patents(*), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(*, task_deliverables(*))), request_events(*)",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -147,70 +176,10 @@ export async function getPmRequestDetail(requestId: string) {
   }
 
   if (data?.workflow_stage === "draft") {
-    return { denied: false, request: null, translators: [], currentUserId: context.userId };
+    return { denied: false, request: null, currentUserId: context.userId };
   }
 
-  const order = firstRelation(
-    (data?.orders as Array<{ translation_tasks?: Array<{ assigned_translator_id?: string | null }> }> | null) ??
-      null,
-  );
-  const assignedTranslatorIds = [
-    ...new Set(
-      (order?.translation_tasks ?? [])
-        .map((task) => task.assigned_translator_id)
-        .filter((value): value is string => Boolean(value)),
-    ),
-  ];
-
-  const { data: translatorMembers, error: memberError } = await context.supabase
-    .from("organization_members")
-    .select("user_id")
-    .eq("role", "translator");
-
-  if (memberError) {
-    throw new Error(memberError.message);
-  }
-
-  const translatorIds = [
-    ...new Set([
-      ...((translatorMembers ?? []).map((member) => member.user_id)),
-      ...assignedTranslatorIds,
-    ]),
-  ];
-
-  let translators: Array<{
-    userId: string;
-    label: string;
-    email: string | null;
-    isSelectable: boolean;
-  }> = [];
-
-  if (translatorIds.length) {
-    const { data: profiles, error: profileError } = await context.supabase
-      .from("profiles")
-      .select("user_id, display_name, email")
-      .in("user_id", translatorIds);
-
-    if (profileError) {
-      throw new Error(profileError.message);
-    }
-
-    const translatorIdSet = new Set((translatorMembers ?? []).map((member) => member.user_id));
-    translators = translatorIds.map((userId) => {
-      const profile = (profiles ?? []).find((item) => item.user_id === userId);
-      return {
-        userId,
-        label:
-          profile?.display_name?.trim() ||
-          profile?.email?.trim() ||
-          userId,
-        email: profile?.email ?? null,
-        isSelectable: translatorIdSet.has(userId),
-      };
-    }).sort((left, right) => left.label.localeCompare(right.label));
-  }
-
-  return { denied: false, request: data, translators, currentUserId: context.userId };
+  return { denied: false, request: data, currentUserId: context.userId };
 }
 
 function firstRelation<T>(value?: T | T[] | null) {

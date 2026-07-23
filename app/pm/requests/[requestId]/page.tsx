@@ -36,7 +36,6 @@ async function PmRequestDetailContent({
   return (
     <PmRequestDetail
       request={result.request}
-      translators={result.translators}
       currentUserId={result.currentUserId}
     />
   );

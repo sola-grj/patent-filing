@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileUploadField } from "@/components/ui/file-upload-field";
 import { deliverPmOrder, uploadPmDeliverableZip } from "@/features/pm/actions";
-import { StatusBadge, formatDate, titleCaseStatus } from "@/features/requester/format";
+import { formatDate, titleCaseStatus } from "@/features/requester/format";
 
 type TaskDeliverable = {
   id: string;
@@ -32,9 +32,11 @@ type Order = {
 };
 
 export function PmDeliveryPanel({
+  embedded = false,
   requestId,
   order,
 }: {
+  embedded?: boolean;
   requestId: string;
   order?: Order | null;
 }) {
@@ -62,8 +64,11 @@ export function PmDeliveryPanel({
       });
   }, [order?.translation_tasks]);
 
-  const draftDeliverables = deliverables.filter((deliverable) => deliverable.status === "draft");
-  const canUpload = Boolean(order?.id) && (order?.status ?? null) !== "completed";
+  const draftDeliverables = deliverables.filter(
+    (deliverable) => deliverable.status === "draft",
+  );
+  const canUpload =
+    Boolean(order?.id) && (order?.status ?? null) !== "completed";
   const canDeliver = draftDeliverables.length > 0 && !isUploading;
 
   function handleUpload() {
@@ -122,100 +127,112 @@ export function PmDeliveryPanel({
     });
   }
 
+  const content = (
+    <>
+      {!order ? (
+        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+          Start the translation task before uploading the translated ZIP.
+        </p>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+              Order status
+            </p>
+            <div className="text-sm">{titleCaseStatus(order.status)}</div>
+          </div>
+
+          {canUpload ? (
+            <div className="space-y-3">
+              <FileUploadField
+                accept=".zip,application/zip,application/x-zip-compressed"
+                description="Upload the delivery package for requester review."
+                disabled={isUploading || isDelivering}
+                inputKey={inputKey}
+                label="Upload ZIP"
+                selectedFile={selectedFile}
+                onFileChange={setSelectedFile}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isUploading || isDelivering}
+                onClick={handleUpload}
+              >
+                {isUploading
+                  ? "Uploading..."
+                  : draftDeliverables.length
+                    ? "Replace draft ZIP"
+                    : "Upload ZIP"}
+              </Button>
+              {uploadError ? (
+                <p className="text-sm text-destructive">{uploadError}</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+              This order has already been delivered to the requester.
+            </p>
+          )}
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Deliverables</p>
+
+            {deliverables.length ? (
+              <div className="space-y-3">
+                {deliverables.map((deliverable) => (
+                  <div
+                    key={deliverable.id}
+                    className="rounded-md border p-3 text-sm"
+                  >
+                    <p className="font-medium">
+                      {storageName(deliverable.storage_path) || "Upload ZIP"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Uploaded {formatDate(deliverable.created_at)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                No translated ZIP has been uploaded yet.
+              </p>
+            )}
+
+            {deliverError ? (
+              <p className="text-sm text-destructive">{deliverError}</p>
+            ) : null}
+          </div>
+
+          {canUpload ? (
+            <div className="flex justify-end pt-4">
+              <Button
+                type="button"
+                className="min-w-28"
+                disabled={!canDeliver || isDelivering}
+                onClick={handleDeliver}
+              >
+                {isDelivering ? "Delivering..." : "Deliver"}
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </>
+  );
+
+  if (embedded) {
+    return <div className="space-y-4">{content}</div>;
+  }
+
   return (
     <Card className="flex flex-col overflow-visible">
       <CardHeader className="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85">
         <CardTitle>Delivery</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {!order ? (
-          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            Start the translation task before uploading the translated ZIP.
-          </p>
-        ) : (
-          <>
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                Order status
-              </p>
-              <div className="text-sm">{titleCaseStatus(order.status)}</div>
-            </div>
-
-            {canUpload ? (
-              <div className="space-y-3">
-                <FileUploadField
-                  accept=".zip,application/zip,application/x-zip-compressed"
-                  buttonLabel="Choose ZIP"
-                  description="Upload the translated delivery package for requester review."
-                  disabled={isUploading || isDelivering}
-                  inputKey={inputKey}
-                  label="Translated ZIP"
-                  selectedFile={selectedFile}
-                  onFileChange={setSelectedFile}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  disabled={isUploading || isDelivering}
-                  onClick={handleUpload}
-                >
-                  {isUploading ? "Uploading..." : draftDeliverables.length ? "Replace draft ZIP" : "Upload ZIP"}
-                </Button>
-                {uploadError ? <p className="text-sm text-destructive">{uploadError}</p> : null}
-              </div>
-            ) : (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                This order has already been delivered to the requester.
-              </p>
-            )}
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">Deliverables</p>
-                {canUpload ? (
-                  <Button
-                    type="button"
-                    className="min-w-28"
-                    disabled={!canDeliver || isDelivering}
-                    onClick={handleDeliver}
-                  >
-                    {isDelivering ? "Delivering..." : "Deliver"}
-                  </Button>
-                ) : null}
-              </div>
-
-              {deliverables.length ? (
-                <div className="space-y-3">
-                  {deliverables.map((deliverable) => (
-                    <div key={deliverable.id} className="rounded-md border p-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium">
-                          {storageName(deliverable.storage_path) || "Translated ZIP"}
-                        </span>
-                        <StatusBadge status={deliverable.status} />
-                      </div>
-                      <p className="mt-2 text-muted-foreground">
-                        {titleCaseStatus(deliverable.taskType)} · v{deliverable.version_no ?? 1}
-                        {deliverable.language ? ` · ${deliverable.language.toUpperCase()}` : ""}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Uploaded {formatDate(deliverable.created_at)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                  No translated ZIP has been uploaded yet.
-                </p>
-              )}
-
-              {deliverError ? <p className="text-sm text-destructive">{deliverError}</p> : null}
-            </div>
-          </>
-        )}
-      </CardContent>
+      <CardContent className="space-y-4">{content}</CardContent>
     </Card>
   );
 }

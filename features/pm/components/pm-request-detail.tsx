@@ -9,7 +9,6 @@ import {
 } from "@/features/pm/actions";
 import { QuoteNegotiationHistory } from "@/features/requester/components/quote-negotiation-history";
 import {
-  StatusBadge,
   formatCurrency,
   formatDate,
 } from "@/features/requester/format";
@@ -17,42 +16,29 @@ import {
   formatRequestEventTitle,
   formatRequestEventTransition,
 } from "@/features/pm/request-event-copy";
-import {
-  entityTypeOptions,
-  purposeOptions,
-  qualityOptions,
-  serviceTypeOptions,
-  scopeOptions,
-  sourceLanguageOptions,
-  targetLanguageOptions,
-} from "@/features/requester/options";
 import type { RequesterQuoteHistoryEntry } from "@/features/requester/queries";
+import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
+import {
+  RequestFileInformation,
+  type RequestInformationFile,
+} from "@/features/requester/components/request-file-information";
+import { RequestFilesDownloadButton } from "@/features/requester/components/request-files-download-button";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
+import type {
+  WizardConfig,
+  WizardPatentCandidate,
+} from "@/features/requester/wizard-types";
 
-import { PmCloseRequestDialog } from "./pm-close-request-dialog";
 import { ClickableDateInput } from "./clickable-date-input";
-import { PmDeliveryPanel } from "./pm-delivery-panel";
 import { PmFormSubmitButton } from "./pm-form-submit-button";
 import { PmHeader } from "./pm-header";
-import { PmTaskPanel } from "./pm-task-panel";
+import { PmPatentInfo, type PmRequestPatent } from "./pm-patent-info";
+import { PmQuoteSheet } from "./pm-quote-sheet";
+import { PmRequestHeaderAction } from "./pm-request-header-action";
+import { PmRequestOverview } from "./pm-request-overview";
 
-type RequestFile = {
-  id: string;
-  original_filename: string;
-  confirmed_for_translation?: boolean | null;
-  status?: string | null;
-  file_role?: string | null;
-  language?: string | null;
-  source?: string | null;
-  file_parse_results?: ParseResult | ParseResult[] | null;
-};
-
-type ParseResult = {
-  word_count?: number | null;
-  page_count?: number | null;
-  claim_count?: number | null;
-  parse_status?: string | null;
-};
+const SHOW_QUOTE_PANEL = false;
+const SHOW_NEGOTIATION_HISTORY = false;
 
 type Quote = {
   id: string;
@@ -62,6 +48,7 @@ type Quote = {
   currency?: string | null;
   estimated_delivery_at?: string | null;
   valid_until?: string | null;
+  pricing_snapshot?: { wordCount?: number | null } | null;
   quote_items?: QuoteItem[] | null;
 };
 
@@ -111,6 +98,23 @@ type Requirement = {
   due_at?: string | null;
   is_urgent?: boolean | null;
   scope_details?: { customScope?: string } | null;
+  filing_type_code?: string | null;
+  application_type_code?: string | null;
+  entity_type_code?: string | null;
+  epv_type_code?: string | null;
+  jurisdiction_codes?: string[] | null;
+  config_snapshot?: Partial<WizardConfig> | null;
+};
+
+type RequestConfigVersion = {
+  version_no?: number | null;
+  config_snapshot?: Partial<WizardConfig> | null;
+};
+
+type PatentSearch = {
+  patent_candidates?: Array<{
+    metadata?: WizardPatentCandidate | null;
+  }> | null;
 };
 
 type Order = {
@@ -161,39 +165,46 @@ type PmRequestDetailProps = {
     workflow_stage?: string | null;
     requester_status?: string | null;
     pm_status?: string | null;
+    source_mode?: string | null;
+    channel_code?: string | null;
     submitted_at?: string | null;
     updated_at?: string | null;
     organizations?: { name?: string | null } | Array<{ name?: string | null }> | null;
-    request_files?: RequestFile[] | null;
+    request_files?: RequestInformationFile[] | null;
+    request_patents?: PmRequestPatent | PmRequestPatent[] | null;
+    patent_searches?: PatentSearch[] | null;
     translation_requirements?: Requirement | Requirement[] | null;
+    request_config_versions?: RequestConfigVersion[] | null;
     quotes?: Quote[] | null;
     quote_negotiations?: Negotiation[] | null;
     orders?: Order | Order[] | null;
     request_events?: RequestEvent[] | null;
   };
-  translators: Array<{
-    userId: string;
-    label: string;
-    email: string | null;
-    isSelectable: boolean;
-  }>;
   currentUserId: string | null;
 };
 
 export function PmRequestDetail({
   request,
-  translators,
   currentUserId,
 }: PmRequestDetailProps) {
   const organization = firstRelation(request.organizations);
   const requirement = firstRelation(request.translation_requirements);
   const latestQuote = latestBy(request.quotes ?? [], "version_no");
-  const acceptedQuote =
-    [...(request.quotes ?? [])]
-      .filter((quote) => quote.status === "accepted")
-      .sort((left, right) => right.version_no - left.version_no)[0] ?? null;
+  const patent = firstRelation(request.request_patents);
+  const patentCandidate = firstRelation(
+    firstRelation(request.patent_searches)?.patent_candidates,
+  )?.metadata ?? null;
+  const isPatentSearch = request.source_mode === "patent_search";
+  const config = resolveRequestConfig(request, requirement);
+  const translationWordCount = resolveTranslationWordCount(
+    config,
+    latestQuote,
+    patent,
+    patentCandidate,
+  );
   const order = firstRelation(request.orders);
   const files = request.request_files ?? [];
+  const uploadedFiles = files.filter((file) => file.source === "upload");
   const quoteById = new Map((request.quotes ?? []).map((quote) => [quote.id, quote]));
   const negotiations = [...(request.quote_negotiations ?? [])].sort((left, right) =>
     new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
@@ -216,84 +227,74 @@ export function PmRequestDetail({
   const events = [...(request.request_events ?? [])].sort((left, right) =>
     new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
   );
+  const headerTitle =
+    (isPatentSearch
+      ? patent?.patent_number?.trim() || patentCandidate?.patentNumber?.trim()
+      : null) ||
+    request.request_no;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-8 overflow-hidden">
       <div className="shrink-0">
         <PmHeader
-          title={request.title ?? request.request_no}
-          description={`${request.request_no} · ${organization?.name ?? "Customer organization"}`}
-          action={<PmCloseRequestDialog requestId={request.id} />}
+          title={headerTitle}
+          description={`Request ${request.request_no} · ${organization?.name ?? "Customer organization"}`}
+          status={<RequesterStatusBadge status={request.pm_status} size="compact" />}
+          action={
+            <PmRequestHeaderAction
+              requestId={request.id}
+              status={request.pm_status}
+              order={order}
+            />
+          }
         />
       </div>
       <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)] xl:items-start">
-          <div className="flex flex-col gap-6 xl:pr-2">
-            <Section title="Request overview">
-              <InfoGrid
-                items={[
-                  { label: "Current status", value: <RequesterStatusBadge status={request.pm_status} size="compact" /> },
-                  { label: "Submitted", value: formatDate(request.submitted_at) },
-                  { label: "Updated", value: formatDate(request.updated_at) },
-                  { label: "Organization", value: organization?.name ?? "-" },
-                ]}
-              />
-            </Section>
-            <Section
-              title="Files and parsing"
-              cardClassName="flex min-h-0 max-h-[32rem] flex-col overflow-hidden"
-              headerClassName="sticky top-0 z-10 flex flex-row items-center justify-between gap-3 space-y-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-              contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-              action={
-                files.length ? (
-                  <Button asChild variant="outline" size="sm">
-                    <a href={`/pm/requests/${request.id}/download`}>Download zip</a>
-                  </Button>
-                ) : null
-              }
-            >
-              {files.length ? (
-                <div className="space-y-3">
-                  {files.map((file) => (
-                    <FileRow key={file.id} file={file} />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState>No files attached.</EmptyState>
-              )}
-            </Section>
-            <Section title="Translation configuration">
-              <InfoGrid
-                items={[
-                  { label: "Language pair", value: `${labelFor(sourceLanguageOptions, requirement?.source_language)} -> ${labelForMany(targetLanguageOptions, requirement?.target_languages ?? toArray(requirement?.target_language))}` },
-                  { label: "Scope", value: labelFor(scopeOptions, requirement?.scope_type) },
-                  { label: "Purpose", value: labelFor(purposeOptions, requirement?.purpose) },
-                  { label: "Service type", value: labelForMany(serviceTypeOptions, requirement?.service_types) },
-                  { label: "Entity type", value: labelFor(entityTypeOptions, requirement?.entity_type) },
-                  { label: "Quality", value: labelFor(qualityOptions, requirement?.quality_level) },
-                  { label: "Due date", value: formatDate(requirement?.due_at) },
-                  { label: "Notes", value: requirement?.scope_details?.customScope ?? "-" },
-                  { label: "Urgent", value: requirement?.is_urgent ? "Yes" : "No" },
-                ]}
-              />
-            </Section>
-            {negotiationHistory.length ? (
-              <QuoteNegotiationHistory
-                cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
-                contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-                currency={latestQuote?.currency ?? "USD"}
-                headerClassName="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-                items={negotiationHistory}
+        <div className="flex flex-col gap-6 pr-1">
+            <PmRequestOverview
+              config={config}
+              organizationName={organization?.name ?? "-"}
+              request={request}
+            />
+            {isPatentSearch ? (
+              <PmPatentInfo
+                patent={patent}
+                candidate={patentCandidate}
+                action={<PatentFileDownloadButton requestId={request.id} />}
               />
             ) : (
-              <Section
-                title="Negotiation history"
-                cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
-                headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-              >
-                <EmptyState>No negotiation rounds yet.</EmptyState>
-              </Section>
+              <RequestFileInformation
+                files={uploadedFiles}
+                action={
+                  <RequestFilesDownloadButton
+                    href={`/requester/requests/${request.id}/download`}
+                  />
+                }
+              />
             )}
+            <PmQuoteSheet
+              config={config}
+              translationWordCount={translationWordCount}
+            />
+            {SHOW_NEGOTIATION_HISTORY ? (
+              negotiationHistory.length ? (
+                <QuoteNegotiationHistory
+                  cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
+                  contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
+                  currency={latestQuote?.currency ?? "USD"}
+                  headerClassName="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+                  items={negotiationHistory}
+                />
+              ) : (
+                <Section
+                  title="Negotiation history"
+                  cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
+                  headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+                >
+                  <EmptyState>No negotiation rounds yet.</EmptyState>
+                </Section>
+              )
+            ) : null}
             <Section
               title="Event timeline"
               cardClassName="flex min-h-0 max-h-[24rem] flex-col overflow-hidden"
@@ -320,30 +321,18 @@ export function PmRequestDetail({
                 <EmptyState>No events recorded.</EmptyState>
               )}
             </Section>
-          </div>
-          <aside className="flex flex-col gap-6 xl:pr-2">
-            <PmTaskPanel
-              requestId={request.id}
-              order={order}
-              canStartTask={Boolean(acceptedQuote)}
-              quoteStatus={latestQuote?.status}
-              files={files
-                .filter((file) => file.confirmed_for_translation)
-                .map((file) => ({ id: file.id, original_filename: file.original_filename }))}
-              translators={translators}
-            />
-            <PmDeliveryPanel requestId={request.id} order={order} />
-            <QuotePanel
-              quote={latestQuote}
-              sourceQuote={activeSourceQuote}
-              latestNegotiation={latestOpenNegotiation}
-              latestNegotiationHistory={latestNegotiationHistory}
-              negotiationHistory={negotiationHistory}
-              currentUserId={currentUserId}
-              requestId={request.id}
-              requestStatus={request.pm_status}
-            />
-          </aside>
+            {SHOW_QUOTE_PANEL ? (
+              <QuotePanel
+                quote={latestQuote}
+                sourceQuote={activeSourceQuote}
+                latestNegotiation={latestOpenNegotiation}
+                latestNegotiationHistory={latestNegotiationHistory}
+                negotiationHistory={negotiationHistory}
+                currentUserId={currentUserId}
+                requestId={request.id}
+                requestStatus={request.pm_status}
+              />
+            ) : null}
         </div>
       </div>
     </div>
@@ -581,55 +570,6 @@ function Section({
   );
 }
 
-function InfoGrid({ items }: { items: Array<{ label: string; value: ReactNode }> }) {
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {items.map((item) => (
-        <div key={item.label}>
-          <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-            {item.label}
-          </p>
-          <div className="mt-2 text-sm leading-6">{item.value || "-"}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function FileRow({ file }: { file: RequestFile }) {
-  const result = firstRelation(file.file_parse_results);
-
-  return (
-    <div className="rounded-md border p-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium">{file.original_filename}</p>
-            <StatusBadge status={file.status} />
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {file.file_role ?? "Patent file"} · {(file.language ?? "unknown").toUpperCase()} · {file.source}
-          </p>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-sm">
-          <Metric label="Words" value={result?.word_count ?? "-"} />
-          <Metric label="Pages" value={result?.page_count ?? "-"} />
-          <Metric label="Claims" value={result?.claim_count ?? "-"} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="min-w-20 rounded-md bg-muted/30 px-3 py-2 text-center">
-      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-      <p className="mt-1 font-medium">{typeof value === "number" ? value.toLocaleString() : value}</p>
-    </div>
-  );
-}
-
 function Field({
   label,
   name,
@@ -689,29 +629,61 @@ function latestBy<T extends Record<string, unknown>>(items: T[], key: keyof T) {
   return [...items].sort((left, right) => Number(right[key] ?? 0) - Number(left[key] ?? 0))[0] ?? null;
 }
 
-function labelFor(options: Array<{ value: string; label: string }>, value?: string | null) {
-  if (!value) {
-    return "-";
-  }
+function resolveRequestConfig(
+  request: PmRequestDetailProps["request"],
+  requirement?: Requirement | null,
+): WizardConfig {
+  const latestConfig = [...(request.request_config_versions ?? [])]
+    .sort((left, right) => Number(right.version_no ?? 0) - Number(left.version_no ?? 0))[0]
+    ?.config_snapshot;
+  const snapshot = latestConfig ?? requirement?.config_snapshot ?? {};
 
-  return options.find((option) => option.value === value)?.label ?? value;
+  return {
+    channelCode: snapshot.channelCode ?? request.channel_code ?? "",
+    sourceLanguage: snapshot.sourceLanguage ?? requirement?.source_language ?? "",
+    jurisdictionCodes:
+      snapshot.jurisdictionCodes ?? requirement?.jurisdiction_codes ?? [],
+    scopeType: snapshot.scopeType ?? requirement?.scope_type ?? "",
+    purpose: snapshot.purpose ?? requirement?.purpose ?? "",
+    serviceTypes: snapshot.serviceTypes ?? requirement?.service_types ?? [],
+    filingType: snapshot.filingType ?? requirement?.filing_type_code ?? undefined,
+    filingApplicationType:
+      snapshot.filingApplicationType ?? requirement?.application_type_code ?? undefined,
+    entityType:
+      snapshot.entityType ??
+      requirement?.entity_type_code ??
+      requirement?.entity_type ??
+      undefined,
+    epvType: snapshot.epvType ?? requirement?.epv_type_code ?? undefined,
+    qualityLevel: snapshot.qualityLevel ?? requirement?.quality_level ?? "",
+    deliveryOption: snapshot.deliveryOption ?? requirement?.delivery_option ?? "",
+    dueAt: snapshot.dueAt ?? requirement?.due_at ?? undefined,
+    isUrgent: snapshot.isUrgent ?? requirement?.is_urgent ?? false,
+    customScope:
+      snapshot.customScope ?? requirement?.scope_details?.customScope ?? undefined,
+  };
 }
 
-function labelForMany(
-  options: Array<{ value: string; label: string }>,
-  values?: string[] | null,
+function resolveTranslationWordCount(
+  config: WizardConfig,
+  quote?: Quote | null,
+  patent?: PmRequestPatent | null,
+  patentCandidate?: WizardPatentCandidate | null,
 ) {
-  if (!values?.length) {
-    return "-";
+  if (config.scopeType === "no_translation") return 0;
+  if (config.scopeType === "claims_only") {
+    return patent?.claims_word_count ?? patentCandidate?.claimsWordCount ?? 3324;
   }
 
-  return values
-    .map((value) => options.find((option) => option.value === value)?.label ?? value)
-    .join(", ");
-}
-
-function toArray(value?: string | null) {
-  return value ? [value] : [];
+  const storedWordCount = quote?.pricing_snapshot?.wordCount
+    ?? (patent
+      ? Number(patent.abstract_word_count ?? 0)
+        + Number(patent.description_word_count ?? 0)
+        + Number(patent.claims_word_count ?? 0)
+      : Number(patentCandidate?.abstractWordCount ?? 0)
+        + Number(patentCandidate?.descriptionWordCount ?? 0)
+        + Number(patentCandidate?.claimsWordCount ?? 0));
+  return storedWordCount || 23705;
 }
 
 function formatEventDateTime(value?: string | null) {

@@ -11,7 +11,7 @@ import { validateFutureDateString } from "@/lib/validators/requester";
 
 export const wizardSteps = [
   { title: "Source", description: "Search by patent number or upload source files." },
-  { title: "Configure", description: "Set languages, scope, quality, and timing." },
+  { title: "Configure", description: "Set languages, quality, and timing." },
   { title: "Quote", description: "Review the mock quote before submission." },
 ];
 
@@ -42,7 +42,6 @@ export type WizardConfigFieldErrors = Partial<Record<
   | "epvType"
   | "sourceLanguage"
   | "jurisdictionCodes"
-  | "scopeType"
   | "dueAt",
   string
 >>;
@@ -69,7 +68,10 @@ export function buildWizardPayload(input: {
       ? input.uploadedFiles.map(fileToUploadedFile)
       : input.uploadedFileSnapshots ?? [],
     analysis: input.analysis,
-    config: input.config,
+    config: {
+      ...input.config,
+      scopeType: "full_text",
+    },
     lastStep: input.lastStep,
   };
 }
@@ -162,20 +164,23 @@ export function normalizeWizardConfig(
     : config?.purpose === "paris_convention"
       ? "paris_convention"
       : "ep";
+  const serviceTypes = Array.isArray(config?.serviceTypes)
+    ? config.serviceTypes.filter(Boolean)
+    : [];
+  const isTranslationOnlyService = serviceTypes.length === 1
+    && serviceTypes[0] === "translation";
 
   return {
     ...merged,
     channelCode: config?.channelCode === "upload_files"
       ? "ep"
       : config?.channelCode || legacyChannel,
+    serviceTypes,
+    dueAt: isTranslationOnlyService ? merged.dueAt : "",
     jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
-    scopeType: ["full_text", "no_translation", "claims_only"].includes(
-      config?.scopeType ?? "",
-    )
-      ? config?.scopeType ?? "full_text"
-      : "full_text",
+    scopeType: "full_text",
     qualityLevel: ["machine_pretranslation", "patent_translator"].includes(
       config?.qualityLevel ?? "",
     )
@@ -189,6 +194,8 @@ export function validateWizardConfigFields(
 ): WizardConfigFieldErrors {
   const errors: WizardConfigFieldErrors = {};
   const hasTranslationService = config.serviceTypes.includes("translation");
+  const isTranslationOnlyService = config.serviceTypes.length === 1
+    && hasTranslationService;
   const hasFilingService = config.serviceTypes.includes("filing");
   const hasEpvService = config.serviceTypes.includes("epv");
 
@@ -232,14 +239,12 @@ export function validateWizardConfigFields(
     errors.jurisdictionCodes = "Select at least one jurisdiction before continuing.";
   }
 
-  if ((hasTranslationService || hasEpvService) && !config.scopeType) {
-    errors.scopeType = "Select a scope before continuing.";
-  }
-
-  try {
-    validateFutureDateString(config.dueAt, "Due date");
-  } catch (error) {
-    errors.dueAt = error instanceof Error ? error.message : "Due date is invalid.";
+  if (isTranslationOnlyService && config.dueAt) {
+    try {
+      validateFutureDateString(config.dueAt, "Due date");
+    } catch (error) {
+      errors.dueAt = error instanceof Error ? error.message : "Due date is invalid.";
+    }
   }
 
   return errors;

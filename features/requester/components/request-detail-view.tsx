@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -6,21 +5,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
 import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
+import {
+  RequestFileInformation,
+  type RequestInformationFile,
+} from "@/features/requester/components/request-file-information";
+import { RequestFilesDownloadButton } from "@/features/requester/components/request-files-download-button";
+import { RequestQuoteSheet } from "@/features/requester/components/request-quote-sheet";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import {
-  formatCurrency,
   formatDate,
 } from "@/features/requester/format";
 import {
   channelOptions,
   entityTypeOptions,
+  epvTypeOptions,
+  filingApplicationTypeOptions,
+  filingTypeOptions,
+  jurisdictionOptions,
+  purposeOptions,
+  qualityOptions,
+  serviceTypeOptions,
+  sourceLanguageOptions,
 } from "@/features/requester/options";
-import { RequesterStatusBadge } from "@/features/requester/requester-status";
-import type { WizardPatentCandidate } from "@/features/requester/wizard-types";
-
-type RequestFile = {
-  id: string;
-};
+import type {
+  WizardConfig,
+  WizardPatentCandidate,
+} from "@/features/requester/wizard-types";
 
 type TranslationRequirement = {
   id: string;
@@ -33,24 +43,15 @@ type TranslationRequirement = {
   service_types?: string[] | null;
   entity_type?: string | null;
   entity_type_code?: string | null;
+  filing_type_code?: string | null;
+  application_type_code?: string | null;
+  epv_type_code?: string | null;
+  jurisdiction_codes?: string[] | null;
   quality_level?: string | null;
   delivery_option?: string | null;
   due_at?: string | null;
   is_urgent?: boolean | null;
-  config_snapshot?: {
-    customScope?: string;
-    sourceLanguage?: string;
-    targetLanguage?: string;
-    targetLanguages?: string[];
-    scopeType?: string;
-    purpose?: string;
-    serviceTypes?: string[];
-    entityType?: string;
-    qualityLevel?: string;
-    deliveryOption?: string;
-    dueAt?: string;
-    isUrgent?: boolean;
-  } | null;
+  config_snapshot?: Partial<WizardConfig> | null;
 };
 
 type RequestPatent = {
@@ -93,6 +94,7 @@ type Quote = {
   version_no: number;
   total_amount?: number | string | null;
   currency?: string | null;
+  pricing_snapshot?: { wordCount?: number | null } | null;
 };
 
 type QuoteNegotiationMessage = {
@@ -137,8 +139,17 @@ type RequestDetail = {
   title?: string | null;
   workflow_stage?: string | null;
   requester_status?: string | null;
+  source_mode?: string | null;
   submitted_at?: string | null;
-  request_files?: RequestFile[] | null;
+  updated_at?: string | null;
+  organizations?: {
+    id: string;
+    name?: string | null;
+  } | Array<{
+    id: string;
+    name?: string | null;
+  }> | null;
+  request_files?: RequestInformationFile[] | null;
   request_patents?: RequestPatent | RequestPatent[] | null;
   translation_requirements?: TranslationRequirement | TranslationRequirement[] | null;
   request_config_versions?: RequestConfigVersion[] | null;
@@ -149,18 +160,20 @@ type RequestDetail = {
 
 export function RequestDetailView({ request }: { request: RequestDetail }) {
   const files = request.request_files ?? [];
+  const uploadedFiles = files.filter((file) => file.source === "upload");
   const patent = firstRelation(request.request_patents);
   const requirement = firstRelation(request.translation_requirements);
   const configVersion = [...(request.request_config_versions ?? [])].sort(
     (left, right) => right.version_no - left.version_no,
   )[0];
-  const config = requirement?.config_snapshot ?? configVersion?.config_snapshot ?? null;
+  const config = resolveRequestConfig(
+    request,
+    requirement,
+    configVersion?.config_snapshot ?? requirement?.config_snapshot ?? {},
+  );
   const latestQuote = [...(request.quotes ?? [])].sort(
     (left, right) => right.version_no - left.version_no,
   )[0];
-  const latestNegotiation = [...(request.quote_negotiations ?? [])].sort(
-    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
-  )[0] ?? null;
   const order = firstRelation(request.orders);
   const latestDeliverable =
     ((((order?.translation_tasks ?? []) as NonNullable<Order["translation_tasks"]>) ?? [])
@@ -169,62 +182,112 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       .sort((left, right) =>
         new Date(right.created_at ?? 0).getTime() - new Date(left.created_at ?? 0).getTime(),
       )[0] ?? null);
-  const latestQuoteAmount =
-    request.requester_status === "negotiation"
-      ? getLatestNegotiationAmount(latestNegotiation) ?? latestQuote?.total_amount
-      : latestQuote?.total_amount;
-  const latestQuoteValue = latestQuoteAmount != null
-    ? formatCurrency(latestQuoteAmount, latestQuote?.currency ?? "USD")
-    : null;
-  const assignmentContacts = order?.assignment_contacts ?? null;
-  const showAssignees =
-    Boolean(order?.id) &&
-    (request.requester_status === "in_progress" || request.requester_status === "completed");
-  const patentNumber = patent?.patent_number ?? null;
-  const patentCandidate = patent ? toPatentCandidate(patent) : null;
+  const isPatentSearch = request.source_mode === "patent_search";
+  const patentNumber = isPatentSearch ? patent?.patent_number ?? null : null;
+  const patentCandidate = isPatentSearch && patent ? toPatentCandidate(patent) : null;
+  const translationWordCount = resolveTranslationWordCount(
+    config,
+    latestQuote,
+    patent,
+    uploadedFiles,
+  );
   const entityType = requirement?.entity_type_code
     ?? requirement?.entity_type
-    ?? config?.entityType;
+    ?? config.entityType;
   const entityLabel = entityType
     ? formatConfigLabel(entityTypeOptions, entityType)
     : null;
+  const organization = firstRelation(request.organizations);
+  const serviceTypes = config.serviceTypes;
+  const jurisdictionCodes = config.jurisdictionCodes;
+  const dueAt = config.dueAt;
+  const showFilingFields = serviceTypes.includes("filing");
+  const showEpvType = serviceTypes.includes("epv");
+  const showQuality = serviceTypes.includes("translation") || showEpvType;
+  const showDueDate = serviceTypes.includes("translation") && Boolean(dueAt);
   const requestItems: DetailItem[] = [
-    { label: "Request no.", value: request.request_no },
-    {
-      label: "Requester status",
-      value: <RequesterStatusBadge status={request.requester_status} />,
-    },
-    { label: "Submitted time", value: formatDate(request.submitted_at) },
-    ...(latestQuote
-      ? [{ label: "Latest quote", value: latestQuoteValue ?? "-" }]
-      : []),
+    { label: "Organization", value: organization?.name ?? "-" },
+    { label: "Submitted", value: formatDate(request.submitted_at) },
+    { label: "Updated", value: formatDate(request.updated_at) },
     {
       label: "Channel",
-      value: formatConfigLabel(channelOptions, request.channel_code),
+      value: channelLabel(config.channelCode),
     },
     {
-      label: "Delivery date",
-      value: formatDate(requirement?.due_at ?? config?.dueAt),
+      label: "Service type",
+      value: formatConfigLabels(serviceTypeOptions, serviceTypes),
     },
     {
-      label: "Files",
-      value: `${files.length} file${files.length === 1 ? "" : "s"}`,
+      label: "Patent language",
+      value: formatConfigLabel(
+        sourceLanguageOptions,
+        config.sourceLanguage,
+      ),
     },
-    ...(showAssignees
+    {
+      label: "Jurisdictions",
+      value: formatConfigLabels(jurisdictionOptions, jurisdictionCodes),
+    },
+    {
+      label: "Purpose",
+      value: formatConfigLabel(
+        purposeOptions,
+        config.purpose,
+      ),
+    },
+    ...(showQuality
+      ? [{
+          label: "Quality",
+          value: formatConfigLabel(qualityOptions, config.qualityLevel),
+        }]
+      : []),
+    {
+      label: "Delivery option",
+      value: titleCase(config.deliveryOption),
+    },
+    ...(showFilingFields
       ? [
           {
-            label: "Responsible PM",
-            value: assignmentContacts?.pm_names?.trim() || "-",
+            label: "Filing type",
+            value: formatConfigLabel(
+              filingTypeOptions,
+              config.filingType,
+            ),
           },
           {
-            label: "Linguist",
-            value: assignmentContacts?.linguist_names?.trim() || "-",
+            label: "Application type",
+            value: formatConfigLabel(
+              filingApplicationTypeOptions,
+              config.filingApplicationType,
+            ),
+          },
+          {
+            label: "Entity type",
+            value: formatConfigLabel(entityTypeOptions, entityType),
           },
         ]
       : []),
+    ...(showEpvType
+      ? [{
+          label: "EPV type",
+          value: formatConfigLabel(
+            epvTypeOptions,
+            config.epvType,
+          ),
+        }]
+      : []),
+    ...(showDueDate
+      ? [{ label: "Due date", value: formatDate(dueAt) }]
+      : []),
     {
       label: "Urgent",
-      value: (requirement?.is_urgent ?? config?.isUrgent) ? "Yes" : "No",
+      value: config.isUrgent ? "Yes" : "No",
+    },
+    {
+      label: "Special requirements",
+      value:
+        config.customScope?.trim() || "-",
+      className: "md:col-span-2",
     },
   ];
   return (
@@ -242,62 +305,51 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           ) : null
         }
       />
-      <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-        <Section
-          title="Request Information"
-          cardClassName="flex h-full min-h-0 flex-col overflow-hidden"
-          contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-          action={
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {latestQuote ? (
-                <Button asChild size="sm">
-                  <Link href={`/requester/requests/${request.id}/quote`}>
-                    Open quote
-                  </Link>
-                </Button>
-              ) : null}
-              {order ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/requester/orders/${order.id}`}>Open order</Link>
-                </Button>
-              ) : null}
-            </div>
-          }
-        >
-          <DetailsGrid items={requestItems} columns="single" />
-        </Section>
-        <Section
-          title="Patent Information"
-          cardClassName="flex h-full min-h-0 flex-col overflow-hidden"
-          contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-          action={
-            configVersion || patentNumber ? (
-              <div className="flex items-center gap-2">
-                {configVersion ? (
-                  <span className="text-xs text-muted-foreground">
-                    Config v{configVersion.version_no}
-                  </span>
-                ) : null}
-                {patentNumber ? (
+      <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+        <div className="flex flex-col gap-6 pr-1">
+          <Section title="Request overview">
+            <DetailsGrid items={requestItems} />
+          </Section>
+          {isPatentSearch ? (
+            <Section
+              title="Patent Information"
+              action={
+                patentNumber ? (
                   <PatentFileDownloadButton requestId={request.id} />
-                ) : null}
-              </div>
-            ) : null
-          }
-        >
-          {patentCandidate ? (
-            <PatentDetailStep
-              patent={patentCandidate}
-              additionalMetadata={entityLabel
-                ? [{ label: "Entity", value: entityLabel }]
-                : []}
-            />
+                ) : null
+              }
+            >
+              {patentCandidate ? (
+                <PatentDetailStep
+                  patent={patentCandidate}
+                  flushBibliographic
+                  plainBibliographic
+                  useParentScroll
+                  additionalMetadata={entityLabel
+                    ? [{ label: "Entity", value: entityLabel }]
+                    : []}
+                />
+              ) : (
+                <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                  No patent information is associated with this request.
+                </p>
+              )}
+            </Section>
           ) : (
-            <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
-              No patent information is associated with this request.
-            </p>
+            <RequestFileInformation
+              files={uploadedFiles}
+              action={
+                <RequestFilesDownloadButton
+                  href={`/requester/requests/${request.id}/download`}
+                />
+              }
+            />
           )}
-        </Section>
+          <RequestQuoteSheet
+            config={config}
+            translationWordCount={translationWordCount}
+          />
+        </div>
       </div>
     </div>
   );
@@ -309,6 +361,71 @@ function firstRelation<T>(value?: T | T[] | null) {
   }
 
   return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function resolveRequestConfig(
+  request: Pick<RequestDetail, "channel_code">,
+  requirement?: TranslationRequirement | null,
+  snapshot: Partial<WizardConfig> = {},
+): WizardConfig {
+  return {
+    channelCode: snapshot.channelCode ?? request.channel_code ?? "",
+    sourceLanguage: snapshot.sourceLanguage ?? requirement?.source_language ?? "",
+    jurisdictionCodes:
+      snapshot.jurisdictionCodes ?? requirement?.jurisdiction_codes ?? [],
+    scopeType: snapshot.scopeType ?? requirement?.scope_type ?? "full_text",
+    purpose: snapshot.purpose ?? requirement?.purpose ?? "",
+    serviceTypes: snapshot.serviceTypes ?? requirement?.service_types ?? [],
+    filingType: snapshot.filingType ?? requirement?.filing_type_code ?? undefined,
+    filingApplicationType:
+      snapshot.filingApplicationType
+      ?? requirement?.application_type_code
+      ?? undefined,
+    entityType:
+      snapshot.entityType
+      ?? requirement?.entity_type_code
+      ?? requirement?.entity_type
+      ?? undefined,
+    epvType: snapshot.epvType ?? requirement?.epv_type_code ?? undefined,
+    qualityLevel: snapshot.qualityLevel ?? requirement?.quality_level ?? "",
+    deliveryOption: snapshot.deliveryOption ?? requirement?.delivery_option ?? "",
+    dueAt: snapshot.dueAt ?? requirement?.due_at ?? undefined,
+    isUrgent: snapshot.isUrgent ?? requirement?.is_urgent ?? false,
+    customScope:
+      snapshot.customScope
+      ?? requirement?.scope_details?.customScope
+      ?? undefined,
+  };
+}
+
+function resolveTranslationWordCount(
+  config: WizardConfig,
+  quote: Quote | null | undefined,
+  patent: RequestPatent | null,
+  files: RequestInformationFile[],
+) {
+  if (config.scopeType === "no_translation") {
+    return 0;
+  }
+
+  if (config.scopeType === "claims_only") {
+    return patent?.claims_word_count ?? 3324;
+  }
+
+  const patentWordCount = patent
+    ? Number(patent.abstract_word_count ?? 0)
+      + Number(patent.description_word_count ?? 0)
+      + Number(patent.claims_word_count ?? 0)
+    : 0;
+  const uploadedFileWordCount = files.reduce((total, file) => {
+    const parseResult = firstRelation(file.file_parse_results);
+    return total + Number(parseResult?.word_count ?? 0);
+  }, 0);
+
+  return quote?.pricing_snapshot?.wordCount
+    || patentWordCount
+    || uploadedFileWordCount
+    || 23705;
 }
 
 function toPatentCandidate(patent: RequestPatent): WizardPatentCandidate {
@@ -376,26 +493,30 @@ function formatConfigLabel(
   return options.find((option) => option.value === value)?.label ?? value;
 }
 
-function getLatestNegotiationAmount(
-  negotiation: QuoteNegotiation | null,
+function formatConfigLabels(
+  options: Array<{ value: string; label: string }>,
+  values?: string[] | null,
 ) {
-  if (!negotiation) {
-    return null;
+  if (!values?.length) {
+    return "-";
   }
 
-  const latestMessageWithQuote = [...(negotiation.quote_negotiation_messages ?? [])]
-    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-    .find((message) => message.expected_amount != null || message.expected_delivery_at);
+  return values.map((value) => formatConfigLabel(options, value)).join(", ");
+}
 
-  if (latestMessageWithQuote) {
-    return latestMessageWithQuote.expected_amount ?? null;
+function channelLabel(value?: string | null) {
+  return value === "ep" ? "EPO" : formatConfigLabel(channelOptions, value);
+}
+
+function titleCase(value?: string | null) {
+  if (!value) {
+    return "-";
   }
 
-  if (negotiation.expected_amount != null) {
-    return negotiation.expected_amount;
-  }
-
-  return null;
+  return value
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function Section({

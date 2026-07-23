@@ -40,7 +40,7 @@ export function validateFutureDateString(value: string | null | undefined, label
   const text = value?.trim() ?? "";
 
   if (!text) {
-    throw new Error(`${label} is required.`);
+    return null;
   }
 
   const parsed = parseDateInputValue(text);

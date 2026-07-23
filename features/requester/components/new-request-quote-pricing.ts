@@ -1,5 +1,6 @@
 import { sourceLanguageOptions } from "@/features/requester/options";
 import type {
+  WizardConfig,
   WizardDictionaries,
   WizardPayload,
 } from "@/features/requester/wizard-types";
@@ -17,20 +18,31 @@ export type EstimateRow = {
 };
 
 export function hasTranslationPricing(payload: WizardPayload) {
-  return payload.config.serviceTypes.includes("translation")
-    || payload.config.serviceTypes.includes("epv");
+  return hasTranslationPricingForServiceTypes(payload.config.serviceTypes);
 }
 
 export function buildEstimateRows(
   payload: WizardPayload,
   dictionaries: WizardDictionaries,
 ): EstimateRow[] {
-  const includeTranslation = hasTranslationPricing(payload);
-  const sourceLanguage = labelFor(sourceLanguageOptions, payload.config.sourceLanguage);
-  const translationWords = includeTranslation ? resolveTranslationWords(payload) : 0;
-  const translationRequirement = resolveTranslationRequirement(payload.config.scopeType);
+  return buildEstimateRowsForConfig(
+    payload.config,
+    dictionaries,
+    resolveTranslationWords(payload),
+  );
+}
 
-  return payload.config.jurisdictionCodes.map((jurisdictionCode, index) => {
+export function buildEstimateRowsForConfig(
+  config: WizardConfig,
+  dictionaries: WizardDictionaries,
+  translationWordCount: number,
+): EstimateRow[] {
+  const includeTranslation = hasTranslationPricingForServiceTypes(config.serviceTypes);
+  const sourceLanguage = labelFor(sourceLanguageOptions, config.sourceLanguage);
+  const translationWords = includeTranslation ? translationWordCount : 0;
+  const translationRequirement = resolveTranslationRequirement(config.scopeType);
+
+  return config.jurisdictionCodes.map((jurisdictionCode, index) => {
     const filingFee = 320 + index * 90;
     const officialFee = 180 + index * 120;
     const translationUnitPrice = includeTranslation && translationWords
@@ -50,6 +62,10 @@ export function buildEstimateRows(
       total: filingFee + officialFee + translationFee,
     };
   });
+}
+
+export function hasTranslationPricingForServiceTypes(serviceTypes: string[]) {
+  return serviceTypes.includes("translation") || serviceTypes.includes("epv");
 }
 
 export function labelFor(

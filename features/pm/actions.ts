@@ -416,7 +416,6 @@ export async function startTranslationTaskFromPm(
   try {
     const context = await assertPm();
     const requestId = requiredString(formData.get("requestId"), "Request");
-    const translatorId = requiredString(formData.get("translatorId"), "Translator");
     const now = new Date().toISOString();
 
     const { data: request, error: requestError } = await context.supabase
@@ -425,8 +424,8 @@ export async function startTranslationTaskFromPm(
       .eq("id", requestId)
       .single();
     if (requestError) throw new Error(requestError.message);
-    if (request.pm_status !== "responding" && request.pm_status !== "in_progress") {
-      throw new Error("Tasks can only start after the quote is accepted.");
+    if (request.pm_status !== "responding") {
+      throw new Error("Tasks can only start while the request is Responding.");
     }
 
     const { data: acceptedQuote, error: acceptedQuoteError } = await context.supabase
@@ -438,12 +437,9 @@ export async function startTranslationTaskFromPm(
       .limit(1)
       .maybeSingle();
     if (acceptedQuoteError) throw new Error(acceptedQuoteError.message);
-    if (!acceptedQuote) {
-      throw new Error("An accepted quote is required before starting tasks.");
-    }
 
     const order = await getOrCreateStartedOrder(context.supabase, {
-      acceptedQuoteId: acceptedQuote.id,
+      acceptedQuoteId: acceptedQuote?.id ?? null,
       organizationId: request.organization_id,
       requestId,
       requesterId: request.requester_id,
@@ -458,18 +454,6 @@ export async function startTranslationTaskFromPm(
     if (orderStatusError) throw new Error(orderStatusError.message);
     if (orderStatusRow.status === "completed") {
       throw new Error("Completed tasks cannot be reassigned or restarted.");
-    }
-
-    const { data: translatorMembership, error: translatorError } = await context.supabase
-      .from("organization_members")
-      .select("id")
-      .eq("user_id", translatorId)
-      .eq("role", "translator")
-      .limit(1)
-      .maybeSingle();
-    if (translatorError) throw new Error(translatorError.message);
-    if (!translatorMembership) {
-      throw new Error("Selected translator is not available.");
     }
 
     const { data: files, error: filesError } = await context.supabase
@@ -506,7 +490,7 @@ export async function startTranslationTaskFromPm(
         order_id: order.id,
         request_file_id: file.id,
         assigned_pm_id: context.userId,
-        assigned_translator_id: translatorId,
+        assigned_translator_id: null,
         task_type: "translation" as const,
         status: "in_progress" as const,
         started_at: now,
@@ -529,7 +513,6 @@ export async function startTranslationTaskFromPm(
         .from("translation_tasks")
         .update({
           assigned_pm_id: context.userId,
-          assigned_translator_id: translatorId,
           status: "in_progress",
           started_at: now,
         })
@@ -540,7 +523,7 @@ export async function startTranslationTaskFromPm(
     await context.supabase
       .from("orders")
       .update({
-        accepted_quote_id: acceptedQuote.id,
+        accepted_quote_id: acceptedQuote?.id ?? null,
         status: "in_progress",
         offline_confirmation_status: "confirmed",
         confirmed_at: order.confirmed_at ?? now,
@@ -564,7 +547,6 @@ export async function startTranslationTaskFromPm(
       "production",
       {
         orderId: order.id,
-        translatorId,
         taskCount: files?.length ?? 0,
       },
     );
@@ -878,7 +860,7 @@ async function closeOpenNegotiations(
 async function getOrCreateStartedOrder(
   supabase: SupabaseClient,
   input: {
-    acceptedQuoteId: string;
+    acceptedQuoteId: string | null;
     organizationId: string;
     requestId: string;
     requesterId: string;

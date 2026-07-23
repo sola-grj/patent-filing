@@ -105,11 +105,13 @@ export async function persistWizardRequest(
 
 function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
-  if (!["machine_pretranslation", "patent_translator"].includes(config.qualityLevel)) {
+  const usesTranslationQuality = config.serviceTypes.includes("translation")
+    || config.serviceTypes.includes("epv");
+  if (
+    usesTranslationQuality
+    && !["machine_pretranslation", "patent_translator"].includes(config.qualityLevel)
+  ) {
     throw new Error("Select machine translation or human translation.");
-  }
-  if (!["full_text", "no_translation", "claims_only"].includes(config.scopeType)) {
-    throw new Error("Select full text, no translation required, or claims.");
   }
   if (!config.jurisdictionCodes.length) {
     throw new Error("Select at least one jurisdiction.");
@@ -118,12 +120,6 @@ function validateCommercialFields(payload: WizardPayload) {
     && config.serviceTypes.includes("european_patent_grant_registration");
   if (config.channelCode !== "ep" && (config.serviceTypes.includes("epv") || hasTranslationGrant)) {
     throw new Error("EPV and Translation + Grant are only available for EPO.");
-  }
-  if (
-    (config.serviceTypes.includes("translation") || config.serviceTypes.includes("epv"))
-    && !config.scopeType
-  ) {
-    throw new Error("Scope is required for translation or EPV.");
   }
   if (config.serviceTypes.includes("filing")) {
     if (!config.filingType || !config.filingApplicationType || !config.entityType) {
@@ -142,9 +138,18 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   }
   payload.config.channelCode = payload.config.channelCode
     || channelFromLegacyPurpose(payload.config.purpose);
+  payload.config.serviceTypes = Array.isArray(payload.config.serviceTypes)
+    ? payload.config.serviceTypes
+    : [];
+  const isTranslationOnlyService = payload.config.serviceTypes.length === 1
+    && payload.config.serviceTypes[0] === "translation";
+  payload.config.dueAt = isTranslationOnlyService
+    ? payload.config.dueAt?.trim() ?? ""
+    : "";
   payload.config.jurisdictionCodes = Array.isArray(payload.config.jurisdictionCodes)
     ? payload.config.jurisdictionCodes
     : [];
+  payload.config.scopeType = "full_text";
   return payload;
 }
 
@@ -560,7 +565,7 @@ async function createRequirement(
     source_language: config.sourceLanguage,
     target_language: config.sourceLanguage,
     target_languages: [config.sourceLanguage],
-    scope_type: config.scopeType,
+    scope_type: "full_text",
     scope_details: { customScope: config.customScope },
     purpose: purposeFromChannel(config.channelCode),
     service_types: config.serviceTypes,
@@ -575,7 +580,10 @@ async function createRequirement(
     due_at: config.dueAt || null,
     is_urgent: config.isUrgent,
     terminology_notes: null,
-    config_snapshot: config,
+    config_snapshot: {
+      ...config,
+      scopeType: "full_text",
+    },
   });
 }
 
@@ -592,7 +600,10 @@ async function createConfigVersion(
     request_id: requestId,
     translation_requirement_id: requirementId,
     version_no: 1,
-    config_snapshot: payload.config,
+    config_snapshot: {
+      ...payload.config,
+      scopeType: "full_text",
+    },
     created_by: userId,
   });
 }
@@ -612,9 +623,11 @@ async function createInitialQuote(
   if (filesError) throw new Error(filesError.message);
 
   const wordCount = sumParseMetric(files ?? [], "word_count");
+  const usesTranslationQuality = payload.config.serviceTypes.includes("translation")
+    || payload.config.serviceTypes.includes("epv");
   const amount = calculateQuote(
     wordCount,
-    payload.config.qualityLevel,
+    usesTranslationQuality ? payload.config.qualityLevel : "",
     payload.config.isUrgent,
   );
   const versionNo = await nextVersion(supabase, "quotes", requestId);
@@ -624,7 +637,7 @@ async function createInitialQuote(
     channelCode: payload.config.channelCode,
     serviceTypes: payload.config.serviceTypes,
     jurisdictionCodes: payload.config.jurisdictionCodes,
-    qualityLevel: payload.config.qualityLevel,
+    qualityLevel: usesTranslationQuality ? payload.config.qualityLevel : null,
     urgent: payload.config.isUrgent,
     deliveryOption: DEFAULT_DELIVERY_OPTION,
     dueAt: payload.config.dueAt || null,

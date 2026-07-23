@@ -32,17 +32,37 @@ export function PatentFileDownloadButton({ requestId }: { requestId: string }) {
     setError(null);
 
     try {
-      const response = await fetch(`/requester/requests/${requestId}/patent-file`);
+      const response = await fetch(`/api/requests/${requestId}/patent-file`);
+      if (response.redirected) {
+        throw new Error("The download request was redirected. Please sign in again.");
+      }
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { error?: string } | null;
         throw new Error(body?.error || "Unable to download the original patent file.");
+      }
+
+      const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+      if (
+        !contentType.includes("application/pdf")
+        && !contentType.includes("application/octet-stream")
+      ) {
+        throw new Error("The download service returned an invalid file response.");
+      }
+
+      const disposition = response.headers.get("content-disposition");
+      if (!disposition) {
+        throw new Error("The download response did not include a file name.");
+      }
+      const fileName = fileNameFromDisposition(disposition);
+      if (!fileName) {
+        throw new Error("The download response included an invalid file name.");
       }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = fileNameFromDisposition(response.headers.get("content-disposition"));
+      anchor.download = fileName;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -83,8 +103,8 @@ export function PatentFileDownloadButton({ requestId }: { requestId: string }) {
   );
 }
 
-function fileNameFromDisposition(disposition: string | null) {
-  const encoded = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+function fileNameFromDisposition(disposition: string) {
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
   if (encoded) return decodeURIComponent(encoded);
-  return disposition?.match(/filename="?([^";]+)"?/i)?.[1] || "original-patent.pdf";
+  return disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? null;
 }

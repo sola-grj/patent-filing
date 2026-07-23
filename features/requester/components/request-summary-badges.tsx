@@ -21,19 +21,25 @@ export function RequestSummaryBadges({
   status?: string | null;
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
-      <span
-        className={`rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${
-          channelToneClassNames[channelCode ?? ""]
-            ?? "border-slate-300 bg-slate-100 text-slate-700"
-        }`}
-      >
-        {channelLabel}
+    <div className="flex min-w-0 flex-wrap items-center gap-2 md:grid md:grid-cols-[7rem_10rem_10rem]">
+      <span className="flex min-w-0 justify-start">
+        <span
+          className={`max-w-full truncate rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${
+            channelToneClassNames[channelCode ?? ""]
+              ?? "border-slate-300 bg-slate-100 text-slate-700"
+          }`}
+        >
+          {channelLabel}
+        </span>
       </span>
-      <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium text-foreground">
-        {serviceTypeLabel(serviceTypes, serviceOptions)}
+      <span className="flex min-w-0 justify-start">
+        <span className="max-w-full truncate rounded-full border bg-background px-3 py-1 text-xs font-medium text-foreground">
+          {serviceTypeLabel(serviceTypes, serviceOptions)}
+        </span>
       </span>
-      <RequesterStatusBadge status={status} />
+      <span className="flex min-w-0 justify-start">
+        <RequesterStatusBadge status={status} />
+      </span>
     </div>
   );
 }

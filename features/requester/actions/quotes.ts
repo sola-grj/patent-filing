@@ -318,7 +318,6 @@ export async function negotiateQuote(formData: FormData): Promise<ActionResult> 
 }
 
 function buildRequirementInput(requestId: string, formData: FormData) {
-  const dueAt = validateFutureDateString(optionalString(formData.get("dueAt")), "Due date");
   const targetLanguages = formData
     .getAll("targetLanguage")
     .map((value) => String(value).trim())
@@ -333,6 +332,11 @@ function buildRequirementInput(requestId: string, formData: FormData) {
   if (!serviceTypes.length) {
     throw new Error("Service type is required.");
   }
+  const isTranslationOnlyService = serviceTypes.length === 1
+    && serviceTypes[0] === "translation";
+  const dueAt = isTranslationOnlyService
+    ? validateFutureDateString(optionalString(formData.get("dueAt")), "Due date")
+    : null;
   const configSnapshot = {
     customScope: optionalString(formData.get("customScope")),
     deliveryOption: DEFAULT_DELIVERY_OPTION,
