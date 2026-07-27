@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
+import { DeliverableDownloadButton } from "@/features/requester/components/deliverable-download-button";
 import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
 import {
@@ -15,6 +15,7 @@ import { RequesterHeader } from "@/features/requester/components/requester-heade
 import {
   formatDate,
 } from "@/features/requester/format";
+import { RequesterStatusBadge } from "@/features/requester/requester-status";
 import {
   channelOptions,
   entityTypeOptions,
@@ -22,7 +23,6 @@ import {
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
-  purposeOptions,
   qualityOptions,
   serviceTypeOptions,
   sourceLanguageOptions,
@@ -228,13 +228,6 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       label: "Jurisdictions",
       value: formatConfigLabels(jurisdictionOptions, jurisdictionCodes),
     },
-    {
-      label: "Purpose",
-      value: formatConfigLabel(
-        purposeOptions,
-        config.purpose,
-      ),
-    },
     ...(showQuality
       ? [{
           label: "Quality",
@@ -295,13 +288,17 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       <RequesterHeader
         title={patentNumber ?? request.request_no}
         description={`Request ${request.request_no}`}
+        status={
+          <RequesterStatusBadge
+            status={request.requester_status}
+            size="compact"
+          />
+        }
         action={
           request.requester_status === "completed" && order?.id && latestDeliverable?.id ? (
-            <Button asChild variant="secondary" size="sm">
-              <a href={`/requester/orders/${order.id}/deliverables/${latestDeliverable.id}`}>
-                Download ZIP
-              </a>
-            </Button>
+            <DeliverableDownloadButton
+              href={`/requester/orders/${order.id}/deliverables/${latestDeliverable.id}`}
+            />
           ) : null
         }
       />

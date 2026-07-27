@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   type ActionResult,
   validateFutureDateString,
-  validateUploadFile,
+  validateUploadFiles,
 } from "@/lib/validators/requester";
 import type { WizardPayload, WizardPersistResult } from "@/features/requester/wizard-types";
 import { jurisdictionOptions } from "@/features/requester/options";
@@ -42,6 +42,7 @@ export async function persistWizardRequest(
 
     const requestId = payload.requestId ?? randomUUID();
     const uploadedFormFiles = formData.getAll("files").filter((file): file is File => file instanceof File);
+    validateUploadFiles(uploadedFormFiles);
     const reuseExistingUploadFiles = Boolean(payload.requestId)
       && payload.sourceMode === "upload"
       && uploadedFormFiles.length === 0;
@@ -305,7 +306,6 @@ async function persistUploadedFiles(
   const fileIds: string[] = [];
 
   for (const file of files) {
-    validateUploadFile(file);
     const fileId = randomUUID();
     const path = `${userId}/${requestId}/${Date.now()}-${safeFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from("request-files").upload(

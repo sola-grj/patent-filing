@@ -6,6 +6,7 @@ import { Table } from "@radix-ui/themes";
 
 import type {
   WizardDictionaries,
+  WizardPatentAnalysisFile,
   WizardPatentAnalysisStatus,
   WizardPatentCandidate,
   WizardPayload,
@@ -16,7 +17,6 @@ import {
   hasTranslationPricing,
   labelFor,
 } from "./new-request-quote-pricing";
-import { parsePreviewFiles } from "./new-request-wizard-utils";
 import { StepShell } from "./new-request-wizard-shared";
 import { PatentDetailStep } from "./patent-detail-step";
 
@@ -33,7 +33,6 @@ export function QuoteStepContent({
   analysisStatus?: WizardPatentAnalysisStatus;
   analysisError?: string;
 }) {
-  const files = parsePreviewFiles(payload);
   const estimateRows = buildEstimateRows(payload, dictionaries);
   const includeTranslation = hasTranslationPricing(payload);
   const total = estimateRows.reduce((sum, row) => sum + row.total, 0);
@@ -50,8 +49,7 @@ export function QuoteStepContent({
         ) : (
           <UploadOverviewCard
             files={payload.uploadedFiles}
-            parsedFileCount={files.length}
-            entityLabel={entityLabel}
+            analysisFiles={payload.analysis?.files ?? []}
           />
         )}
 
@@ -180,48 +178,66 @@ function PatentOverviewCard({
 
 function UploadOverviewCard({
   files,
-  parsedFileCount,
-  entityLabel,
+  analysisFiles,
 }: {
   files: WizardUploadedFile[];
-  parsedFileCount: number;
-  entityLabel: string;
+  analysisFiles: WizardPatentAnalysisFile[];
 }) {
-  const totalSizeKb = files.reduce((sum, file) => sum + Math.ceil(file.size / 1024), 0);
-
   return (
-    <section className="rounded-2xl border bg-card">
-      <div className="border-b px-6 py-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Uploaded Source Files
-        </p>
-        <h3 className="mt-2 text-2xl font-semibold tracking-tight">
-          {files.length} file{files.length === 1 ? "" : "s"} staged for estimate
-        </h3>
-      </div>
-      <div className="grid gap-5 px-6 py-5 lg:grid-cols-[0.7fr_1.3fr]">
-        <div className="grid gap-3 rounded-2xl bg-muted/20 p-4 sm:grid-cols-2">
-          <MetricCard label="Files" value={String(files.length || parsedFileCount)} />
-          <MetricCard label="Total Size" value={`${totalSizeKb.toLocaleString()} KB`} />
-          <MetricCard label="Package Type" value="Custom upload" />
-          <MetricCard label="Entity" value={entityLabel} />
+    <details className="group rounded-2xl border bg-card">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Uploaded Source Files
+          </p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-tight">
+            {files.length} file{files.length === 1 ? "" : "s"} staged for estimate
+          </h3>
         </div>
+        <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t px-6 py-5">
         <div className="space-y-3">
-          {files.map((file, index) => (
-            <div
-              key={`${file.name}-${index}`}
-              className="grid gap-2 rounded-xl border px-4 py-3 text-sm md:grid-cols-[1.5fr_0.7fr_0.8fr]"
-            >
-              <span className="font-medium">{file.name}</span>
-              <span className="text-muted-foreground">{file.type || "unknown"}</span>
-              <span className="text-muted-foreground">
-                {Math.ceil(file.size / 1024).toLocaleString()} KB
-              </span>
-            </div>
-          ))}
+          {files.map((file, index) => {
+            const analyzedFile = findAnalysisFile(analysisFiles, file.name, index);
+
+            return (
+              <div
+                key={`${file.name}-${index}`}
+                className="grid gap-2 rounded-xl border px-4 py-3 text-sm md:grid-cols-[1.5fr_0.7fr_0.8fr_0.9fr]"
+              >
+                <span className="font-medium">{file.name}</span>
+                <span className="text-muted-foreground">{file.type || "unknown"}</span>
+                <span className="text-muted-foreground">
+                  {Math.ceil(file.size / 1024).toLocaleString()} KB
+                </span>
+                <span className="text-muted-foreground md:text-right">
+                  {analyzedFile
+                    ? `${analyzedFile.total_words.toLocaleString()} total words`
+                    : "Total words pending"}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
-    </section>
+    </details>
+  );
+}
+
+function findAnalysisFile(
+  analysisFiles: WizardPatentAnalysisFile[],
+  filename: string,
+  index: number,
+) {
+  const indexedFile = analysisFiles[index];
+  if (indexedFile?.filename === filename) {
+    return indexedFile;
+  }
+
+  const normalizedFilename = filename.toLocaleLowerCase();
+  return analysisFiles.find(
+    (file) => file.filename.toLocaleLowerCase() === normalizedFilename,
   );
 }
 
@@ -242,15 +258,6 @@ function AnalysisStatus({
         ? "Patent analysis completed. Translation word counts use the analysis result."
         : "Mock translation word counts are shown.";
   return <p className="mt-2 text-xs text-muted-foreground">{message}</p>;
-}
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border bg-background px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-lg font-semibold tracking-tight">{value}</p>
-    </div>
-  );
 }
 
 function formatCurrency(value: number) {

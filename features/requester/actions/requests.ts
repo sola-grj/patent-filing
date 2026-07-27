@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   requiredString,
-  validateUploadFile,
+  validateUploadFiles,
   type ActionResult,
 } from "@/lib/validators/requester";
 import {
@@ -145,9 +145,9 @@ export async function uploadRequestFiles(formData: FormData): Promise<ActionResu
     const requestId = requiredString(formData.get("requestId"), "Request");
     const files = formData.getAll("files").filter((file): file is File => file instanceof File);
     if (!files.length) throw new Error("Choose at least one file.");
+    validateUploadFiles(files);
 
     for (const file of files) {
-      validateUploadFile(file);
       const path = `${userId}/${requestId}/${Date.now()}-${safeFileName(file.name)}`;
       const { error: uploadError } = await supabase.storage.from("request-files").upload(
         path,

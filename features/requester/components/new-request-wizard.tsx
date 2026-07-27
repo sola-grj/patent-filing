@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { validateUploadFiles } from "@/lib/validators/requester";
 import {
   Tooltip,
   TooltipContent,
@@ -116,7 +117,19 @@ export function NewRequestWizard({
     || JSON.stringify(config) !== JSON.stringify(defaultWizardConfig);
 
   function applyUploadedFiles(nextFiles: File[]) {
+    try {
+      validateUploadFiles(nextFiles);
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "The selected files could not be uploaded.",
+      );
+      return;
+    }
+
     analysis.reset();
+    setError(null);
     setUploadedFiles(nextFiles);
     setUploadedFileSnapshots(nextFiles.map((file) => ({
       name: file.name,

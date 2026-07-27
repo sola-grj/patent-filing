@@ -7,7 +7,6 @@ import {
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
-  purposeOptions,
   qualityOptions,
   serviceTypeOptions,
   sourceLanguageOptions,
@@ -46,7 +45,6 @@ export function PmRequestOverview({
       label: "Jurisdictions",
       value: labelForMany(jurisdictionOptions, config.jurisdictionCodes),
     },
-    { label: "Purpose", value: labelFor(purposeOptions, config.purpose) },
     ...(showQuality
       ? [{ label: "Quality", value: labelFor(qualityOptions, config.qualityLevel) }]
       : []),

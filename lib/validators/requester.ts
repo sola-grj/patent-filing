@@ -1,5 +1,7 @@
 import { allowedUploadExtensions } from "@/features/requester/options";
 
+export const MAX_REQUEST_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 export type ActionResult<T = undefined> = {
   success: boolean;
   data?: T;
@@ -70,6 +72,19 @@ export function validateUploadFile(file: File) {
 
   if (!isAllowed) {
     throw new Error("Only PDF, DOC, DOCX, XML, and TXT files are supported.");
+  }
+
+  if (file.size > MAX_REQUEST_UPLOAD_BYTES) {
+    throw new Error("Each uploaded file must not exceed 50 MB.");
+  }
+}
+
+export function validateUploadFiles(files: readonly File[]) {
+  files.forEach(validateUploadFile);
+
+  const totalSize = files.reduce((total, file) => total + file.size, 0);
+  if (totalSize > MAX_REQUEST_UPLOAD_BYTES) {
+    throw new Error("The combined upload size must not exceed 50 MB.");
   }
 }
 

@@ -31,9 +31,11 @@ const estimateDictionaries: WizardDictionaries = {
 export function RequestQuoteSheet({
   config,
   translationWordCount,
+  showEditAction = false,
 }: {
   config: WizardConfig;
   translationWordCount: number;
+  showEditAction?: boolean;
 }) {
   const rows = buildEstimateRowsForConfig(
     config,
@@ -52,16 +54,18 @@ export function RequestQuoteSheet({
             Estimate submitted with the request · {formatCurrency(total)}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          disabled
-          aria-label="Edit quotation amounts"
-          title="Quotation editing will be available later"
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
+        {showEditAction ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled
+            aria-label="Edit quotation amounts"
+            title="Quotation editing will be available later"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent className="p-0">
         {rows.length ? (
