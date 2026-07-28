@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { lookupPatentForWizard } from "@/features/requester/actions";
 import type {
+  WizardPatentAnalysisResult,
+  WizardPatentAnalysisStatus,
   WizardPatentCandidate,
   WizardSourceMode,
   WizardUploadedFile,
@@ -14,6 +16,7 @@ import type {
 import { fileToUploadedFile } from "./new-request-wizard-utils";
 import { FileList, StepShell } from "./new-request-wizard-shared";
 import { PatentDetailStep } from "./patent-detail-step";
+import { PatentProcessingNotice } from "./patent-processing-notice";
 
 const searchEntryCards = [
   {
@@ -45,6 +48,9 @@ export function SourceStep(props: {
   channelCode: string;
   patentQuery: string;
   patent?: WizardPatentCandidate;
+  analysisStatus: WizardPatentAnalysisStatus;
+  analysisResult?: WizardPatentAnalysisResult;
+  analysisError?: string;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
   isPending: boolean;
@@ -53,6 +59,7 @@ export function SourceStep(props: {
   onPatentQueryChange: (value: string) => void;
   onPatentSearch: (patent: WizardPatentCandidate) => Promise<void> | void;
   onPatentSearchStart: () => void;
+  onAnalysisRetry: () => void;
   onFilesChange: (files: File[]) => void;
   onRemoveFile: (index: number) => void;
 }) {
@@ -140,7 +147,13 @@ export function SourceStep(props: {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
               {props.patent ? (
-                <div className="overflow-hidden rounded-2xl border bg-background p-5">
+                <div className="space-y-4 overflow-hidden rounded-2xl border bg-background p-5">
+                  <PatentProcessingNotice
+                    status={props.analysisStatus}
+                    result={props.analysisResult}
+                    error={props.analysisError}
+                    onRetry={props.onAnalysisRetry}
+                  />
                   <PatentDetailStep
                     patent={props.patent}
                   />

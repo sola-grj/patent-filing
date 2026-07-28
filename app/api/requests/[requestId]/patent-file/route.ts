@@ -2,20 +2,8 @@ import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 
-type SourceSnapshot = {
-  source?: string | null;
-  original_file_download_url?: string | null;
-  original_file?: {
-    content_type?: string | null;
-    filename?: string | null;
-    download_url?: string | null;
-  } | null;
-};
-
-const defaultPatentServiceBaseUrl = "http://127.0.0.1:9999";
-
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ requestId: string }> },
 ) {
   const { requestId } = await params;
@@ -25,84 +13,71 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // This user-scoped query is the access-control boundary. RLS only returns a
+  // Request that the signed-in requester/PM can access.
   const { data, error } = await supabase
     .from("translation_requests")
-    .select("request_no, request_patents(patent_number, source, source_snapshot)")
+    .select("id")
     .eq("id", requestId)
     .maybeSingle();
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Request not found" }, { status: 404 });
 
-  const patent = firstRelation(data.request_patents);
-  const snapshot = (patent?.source_snapshot ?? {}) as SourceSnapshot;
-  const isWipo = patent?.source === "wipo" || snapshot.source === "wipo";
-  const downloadPath = isWipo
-    ? snapshot.original_file?.download_url
-    : snapshot.original_file_download_url || snapshot.original_file?.download_url;
-
-  if (!downloadPath) {
-    return NextResponse.json({ error: "The original patent file address is unavailable." }, { status: 404 });
+  const apiKey = process.env.PATENT_SERVICE_API_KEY?.trim();
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Patent file service authentication is not configured." },
+      { status: 503 },
+    );
   }
+  const baseUrl = (
+    process.env.PATENT_SERVICE_BASE_URL ?? "http://127.0.0.1:9999"
+  ).replace(/\/$/, "");
 
-  const parsedUrl = resolveDownloadUrl(downloadPath, isWipo);
-  if (!parsedUrl) {
-    return NextResponse.json({ error: "The original patent file address is invalid." }, { status: 400 });
-  }
-
-  let sourceResponse: Response;
+  let upstream: Response;
   try {
-    sourceResponse = await fetch(parsedUrl, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(120_000),
-    });
+    upstream = await fetch(
+      `${baseUrl}/api/patents/cache/requests/${encodeURIComponent(requestId)}/file`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        cache: "no-store",
+        signal: AbortSignal.any([
+          request.signal,
+          AbortSignal.timeout(120_000),
+        ]),
+      },
+    );
   } catch {
     return NextResponse.json(
-      { error: "Unable to reach the original patent file download path." },
+      { error: "Unable to reach the stored patent file service." },
       { status: 502 },
     );
   }
-  if (!sourceResponse.ok || !sourceResponse.body) {
+
+  if (!upstream.ok || !upstream.body) {
+    const payload = await upstream.json().catch(() => null) as {
+      error?: { message?: string };
+      detail?: string;
+    } | null;
     return NextResponse.json(
-      { error: `Original patent file download returned ${sourceResponse.status}.` },
-      { status: 502 },
+      {
+        error:
+          payload?.error?.message
+          || payload?.detail
+          || `Stored patent file download returned ${upstream.status}.`,
+      },
+      { status: upstream.status },
     );
   }
 
-  const fileName =
-    snapshot.original_file?.filename?.trim()
-    || `${patent?.patent_number || data.request_no}.pdf`;
-
-  return new NextResponse(sourceResponse.body, {
+  return new Response(upstream.body, {
+    status: upstream.status,
     headers: {
-      "Content-Type": sourceResponse.headers.get("content-type") || "application/pdf",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "Content-Type": upstream.headers.get("content-type")
+        || "application/octet-stream",
+      "Content-Disposition": upstream.headers.get("content-disposition")
+        || "attachment; filename=patent-document.pdf",
       "Cache-Control": "private, no-store",
     },
   });
-}
-
-function resolveDownloadUrl(downloadPath: string, requirePatentServiceOrigin: boolean) {
-  try {
-    const baseUrl = new URL(
-      process.env.PATENT_SERVICE_BASE_URL ?? defaultPatentServiceBaseUrl,
-    );
-    const downloadUrl = new URL(downloadPath, baseUrl);
-
-    if (!["https:", "http:"].includes(downloadUrl.protocol)) {
-      return null;
-    }
-
-    if (requirePatentServiceOrigin && downloadUrl.origin !== baseUrl.origin) {
-      return null;
-    }
-
-    return downloadUrl;
-  } catch {
-    return null;
-  }
-}
-
-function firstRelation<T>(value: T | T[] | null) {
-  return Array.isArray(value) ? value[0] ?? null : value;
 }

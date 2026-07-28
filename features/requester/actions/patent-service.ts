@@ -1,0 +1,97 @@
+import type {
+  WizardPatentAnalysisResult,
+  WizardPatentCandidate,
+} from "@/features/requester/wizard-types";
+import {
+  mapPatentLookupResponse,
+  type PatentLookupResponse,
+} from "./patent-lookup";
+
+type VerifiedPatentReceipts = {
+  lookup: PatentLookupResponse;
+  analysis: WizardPatentAnalysisResult;
+};
+
+export async function verifyPatentReceipts(input: {
+  lookupReceipt: string;
+  analysisReceipt: string;
+  fallbackPatentNumber: string;
+}): Promise<{
+  patent: WizardPatentCandidate;
+  analysis: WizardPatentAnalysisResult;
+}> {
+  const verified = await callPatentService<VerifiedPatentReceipts>(
+    "/api/patents/receipts/verify",
+    {
+      lookup_receipt: input.lookupReceipt,
+      analysis_receipt: input.analysisReceipt,
+    },
+  );
+  return {
+    patent: {
+      ...mapPatentLookupResponse(verified.lookup, input.fallbackPatentNumber),
+      lookupReceipt: input.lookupReceipt,
+    },
+    analysis: {
+      ...verified.analysis,
+      analysis_receipt: input.analysisReceipt,
+    },
+  };
+}
+
+export async function enqueueSubmittedPatentCache(input: {
+  requestId: string;
+  lookupReceipt: string;
+  analysisReceipt: string;
+}) {
+  return callPatentService<{
+    request_id: string;
+    patent_id: string;
+    status: "pending" | "processing" | "completed" | "failed";
+  }>("/api/patents/cache", {
+    request_id: input.requestId,
+    lookup_receipt: input.lookupReceipt,
+    analysis_receipt: input.analysisReceipt,
+  });
+}
+
+async function callPatentService<T>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const apiKey = process.env.PATENT_SERVICE_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Patent service authentication is not configured.");
+  }
+  const baseUrl = (
+    process.env.PATENT_SERVICE_BASE_URL ?? "http://127.0.0.1:9999"
+  ).replace(/\/$/, "");
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new Error("The patent service is unavailable. Please retry.");
+  }
+
+  const payload = await response.json().catch(() => null) as {
+    error?: { message?: string };
+    detail?: string;
+  } | null;
+  if (!response.ok) {
+    throw new Error(
+      payload?.error?.message
+      || payload?.detail
+      || `The patent service rejected the request (${response.status}).`,
+    );
+  }
+  return payload as T;
+}

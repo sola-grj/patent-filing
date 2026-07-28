@@ -10,6 +10,8 @@ import type {
 import { getAuthenticatedUser, toErrorMessage } from "../server-utils";
 import { lookupPatent } from "./patent-lookup";
 import { persistWizardRequest } from "./wizard-persistence";
+import { retrySubmittedPatentCache } from "./patent-cache";
+import { writeRequestEvent } from "./helpers";
 import {
   parseQuoteNegotiationInput,
   startQuoteNegotiation,
@@ -45,7 +47,19 @@ export async function submitNegotiationFromWizard(
   formData: FormData,
 ): Promise<ActionResult<WizardPersistResult>> {
   try {
-    const submitResult = await persistWizardRequest(formData, "submit");
+    const sourceMode = (
+      JSON.parse(String(formData.get("payload") ?? "{}")) as {
+        sourceMode?: string;
+      }
+    ).sourceMode;
+    const submitResult = await persistWizardRequest(
+      formData,
+      "submit",
+      {
+        deferPatentCache: true,
+        deferFormalSubmission: true,
+      },
+    );
     if (!submitResult.success || !submitResult.data?.requestId) {
       return submitResult;
     }
@@ -79,6 +93,32 @@ export async function submitNegotiationFromWizard(
       negotiationInput,
       { source: "requester_wizard_preview", quoteId: quote.id },
     );
+    const submittedAt = new Date().toISOString();
+    const { error: finalizeError } = await supabase
+      .from("translation_requests")
+      .update({
+        workflow_stage: "quoted",
+        requester_status: "responding",
+        pm_status: "responding",
+        submitted_at: submittedAt,
+      })
+      .eq("id", requestId)
+      .is("submitted_at", null);
+    if (finalizeError) {
+      throw new Error(`Unable to finalize translation request: ${finalizeError.message}`);
+    }
+    await writeRequestEvent(
+      supabase,
+      requestId,
+      userId,
+      "request.submitted.from_wizard",
+      "draft",
+      "quoted",
+      { sourceMode, negotiation: true },
+    );
+    if (sourceMode === "patent_search") {
+      await retrySubmittedPatentCache(requestId);
+    }
 
     revalidatePath("/requester");
     revalidatePath("/requester/requests");

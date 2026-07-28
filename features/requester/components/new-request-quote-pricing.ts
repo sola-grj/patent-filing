@@ -79,9 +79,9 @@ export function labelFor(
 function resolveTranslationWords(payload: WizardPayload) {
   if (payload.config.scopeType === "no_translation") return 0;
   if (payload.config.scopeType === "claims_only") {
-    return payload.analysis?.aggregate.claims_words || 3324;
+    return payload.analysis?.aggregate.claims_words ?? 0;
   }
-  return payload.analysis?.aggregate.total_words || 23705;
+  return payload.analysis?.aggregate.total_words ?? 0;
 }
 
 function resolveTranslationRequirement(scopeType: string) {

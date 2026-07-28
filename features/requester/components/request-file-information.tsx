@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export type RequestInformationFile = {
   id: string;
   source?: string | null;
+  status?: string | null;
   original_filename: string;
   mime_type?: string | null;
   language?: string | null;

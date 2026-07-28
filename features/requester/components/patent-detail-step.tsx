@@ -12,6 +12,7 @@ import {
   titleCase,
   unique,
 } from "./patent-bibliographic-utils";
+import { PatentCacheWarning } from "./patent-cache-warning";
 
 export function PatentDetailStep({
   patent,
@@ -39,6 +40,11 @@ export function PatentDetailStep({
         <h2 className="text-2xl font-semibold tracking-tight">
           {patent.title}
         </h2>
+        {patent.dataOrigin === "cache_fallback" ? (
+          <div className="mt-4">
+            <PatentCacheWarning />
+          </div>
+        ) : null}
       </div>
 
       <div

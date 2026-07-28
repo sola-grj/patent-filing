@@ -11,6 +11,13 @@ export type PatentLookupResponse = {
   source?: string;
   normalized_number?: string;
   display_number?: string;
+  data_origin?: "official" | "cache_fallback";
+  cache?: {
+    is_cached?: boolean;
+    reason?: "official_source_no_result" | null;
+    last_successful_fetch_at?: string | null;
+  };
+  lookup_receipt?: string | null;
   title?: string;
   abstract?: string;
   ipc?: string[];
@@ -102,7 +109,7 @@ export async function lookupPatent(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         patent_number: patentNumber,
-        include_original_file: true,
+        include_original_file: false,
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(30_000),
@@ -236,6 +243,14 @@ export function mapPatentLookupResponse(
       protectionTypes: response.designated_states?.protection_types ?? [],
     },
     relatedPatentDocuments: response.related_patent_documents ?? [],
+    dataOrigin: response.data_origin ?? "official",
+    cache: {
+      isCached: response.cache?.is_cached ?? false,
+      reason: response.cache?.reason ?? undefined,
+      lastSuccessfulFetchAt:
+        response.cache?.last_successful_fetch_at ?? undefined,
+    },
+    lookupReceipt: response.lookup_receipt ?? undefined,
     sourceSnapshot: response as Record<string, unknown>,
   };
 }

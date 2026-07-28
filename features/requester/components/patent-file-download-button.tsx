@@ -13,7 +13,13 @@ import {
 
 const DOWNLOAD_COOLDOWN_MS = 800;
 
-export function PatentFileDownloadButton({ requestId }: { requestId: string }) {
+export function PatentFileDownloadButton({
+  requestId,
+  status,
+}: {
+  requestId: string;
+  status?: string | null;
+}) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastClickAt = useRef(0);
@@ -74,8 +80,17 @@ export function PatentFileDownloadButton({ requestId }: { requestId: string }) {
     }
   }
 
+  const isReady = status === "parsed";
   const tooltip = error
-    ?? (isDownloading ? "Downloading original file..." : "Download original file");
+    ?? (status === "parsing"
+      ? "Original patent file is being prepared..."
+      : status === "failed"
+        ? "Original patent file preparation failed. Retry it first."
+        : isDownloading
+          ? "Downloading original file..."
+          : isReady
+            ? "Download original file"
+            : "Original patent file is unavailable.");
 
   return (
     <TooltipProvider delayDuration={120}>
@@ -87,7 +102,7 @@ export function PatentFileDownloadButton({ requestId }: { requestId: string }) {
             size="icon"
             className="h-8 w-8"
             aria-label="Download original file"
-            disabled={isDownloading}
+            disabled={isDownloading || !isReady}
             onClick={handleDownload}
           >
             {isDownloading ? (

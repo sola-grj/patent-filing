@@ -19,6 +19,8 @@ import {
 } from "./new-request-quote-pricing";
 import { StepShell } from "./new-request-wizard-shared";
 import { PatentDetailStep } from "./patent-detail-step";
+import { PatentProcessingNotice } from "./patent-processing-notice";
+import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
 
 export function QuoteStepContent({
   payload,
@@ -26,13 +28,16 @@ export function QuoteStepContent({
   dictionaries,
   analysisStatus = payload.analysis ? "complete" : "idle",
   analysisError,
+  onAnalysisRetry,
 }: {
   payload: WizardPayload;
   action?: ReactNode;
   dictionaries: WizardDictionaries;
   analysisStatus?: WizardPatentAnalysisStatus;
   analysisError?: string;
+  onAnalysisRetry?: () => void;
 }) {
+  const analysisReady = hasUsablePatentAnalysis(payload);
   const estimateRows = buildEstimateRows(payload, dictionaries);
   const includeTranslation = hasTranslationPricing(payload);
   const total = estimateRows.reduce((sum, row) => sum + row.total, 0);
@@ -41,9 +46,17 @@ export function QuoteStepContent({
   return (
     <StepShell
       title="Estimate Sheet"
-      description="Review the mocked estimate generated from the selected source package."
+      description="Review the estimate generated from the selected source package."
     >
       <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto pr-1">
+        {payload.sourceMode === "patent_search" ? (
+          <PatentProcessingNotice
+            status={analysisStatus}
+            result={payload.analysis}
+            error={analysisError}
+            onRetry={onAnalysisRetry}
+          />
+        ) : null}
         {payload.sourceMode === "patent_search" && payload.selectedPatent ? (
           <PatentOverviewCard patent={payload.selectedPatent} entityLabel={entityLabel} />
         ) : (
@@ -57,28 +70,21 @@ export function QuoteStepContent({
           <div className="flex flex-wrap items-start justify-between gap-4 border-b px-6 py-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Mock Estimate
+                Estimate
               </p>
               <h3 className="mt-2 text-2xl font-semibold tracking-tight">
-                {formatCurrency(total)}
+                {analysisReady ? formatCurrency(total) : "Pending"}
               </h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                {includeTranslation
-                  ? "Filing, official, and translation line items are mocked for now."
-                  : "Filing and official line items are mocked for now."}
+                {analysisReady
+                  ? "Calculated from the current request configuration and analyzed patent data."
+                  : "Word counts and estimate details will appear when patent processing completes."}
               </p>
-              {includeTranslation ? (
-                <AnalysisStatus
-                  status={analysisStatus}
-                  error={analysisError}
-                  hasResult={Boolean(payload.analysis)}
-                />
-              ) : null}
             </div>
             {action ? <div className="shrink-0">{action}</div> : null}
           </div>
           <div className="overflow-hidden">
-            {estimateRows.length ? (
+            {analysisReady && estimateRows.length ? (
               <Table.Root
                 size="2"
                 variant="ghost"
@@ -142,7 +148,9 @@ export function QuoteStepContent({
               </Table.Root>
             ) : (
               <div className="px-6 py-10 text-sm text-muted-foreground">
-                Estimate rows will appear after at least one jurisdiction is selected.
+                {analysisReady
+                  ? "Estimate rows will appear after at least one jurisdiction is selected."
+                  : "No provisional or mock word counts are shown while patent processing is incomplete."}
               </div>
             )}
           </div>
@@ -239,25 +247,6 @@ function findAnalysisFile(
   return analysisFiles.find(
     (file) => file.filename.toLocaleLowerCase() === normalizedFilename,
   );
-}
-
-function AnalysisStatus({
-  status,
-  error,
-  hasResult,
-}: {
-  status: WizardPatentAnalysisStatus;
-  error?: string;
-  hasResult: boolean;
-}) {
-  const message = status === "pending"
-    ? "Patent analysis is running in the background. Mock word counts are shown until it completes."
-    : status === "error"
-      ? `${error ?? "Patent analysis did not complete."} Mock word counts are shown.`
-      : hasResult
-        ? "Patent analysis completed. Translation word counts use the analysis result."
-        : "Mock translation word counts are shown.";
-  return <p className="mt-2 text-xs text-muted-foreground">{message}</p>;
 }
 
 function formatCurrency(value: number) {

@@ -165,6 +165,7 @@ export function ConfigStep({
   patentNumber,
   onChange,
   dictionaries,
+  processingNotice,
 }: {
   config: WizardConfig;
   configFieldErrors: WizardConfigFieldErrors;
@@ -172,6 +173,7 @@ export function ConfigStep({
   patentNumber?: string;
   onChange: (config: WizardConfig) => void;
   dictionaries: WizardDictionaries;
+  processingNotice?: ReactNode;
 }) {
   const dueDateRef = useRef<HTMLInputElement | null>(null);
   const channelLabel = config.channelCode === "ep"
@@ -423,6 +425,7 @@ export function ConfigStep({
             Urgent
           </label>
         </div>
+        {processingNotice}
       </div>
     </div>
   );

@@ -22,6 +22,10 @@ import {
   sumParseMetric,
   writeRequestEvent,
 } from "./helpers";
+import {
+  enqueueSubmittedPatentCache,
+  verifyPatentReceipts,
+} from "./patent-service";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 const DEFAULT_DELIVERY_OPTION = "standard";
@@ -29,15 +33,20 @@ const DEFAULT_DELIVERY_OPTION = "standard";
 export async function persistWizardRequest(
   formData: FormData,
   mode: "draft" | "submit",
+  options?: {
+    deferPatentCache?: boolean;
+    deferFormalSubmission?: boolean;
+  },
 ): Promise<ActionResult<WizardPersistResult>> {
   try {
-    const payload = parseWizardPayload(formData);
+    let payload = parseWizardPayload(formData);
     const { supabase, userId, organization } = await getRequesterOrganization();
     if (!organization) throw new Error("Create an organization before creating requests.");
     await validateDictionaryValues(supabase, payload);
     if (mode !== "draft") {
       validateCommercialFields(payload);
       validateFutureDateString(payload.config.dueAt, "Due date");
+      payload = await verifySubmittedPatentPayload(payload);
     }
 
     const requestId = payload.requestId ?? randomUUID();
@@ -51,6 +60,9 @@ export async function persistWizardRequest(
       await assertEditableDraft(supabase, requestId, userId);
       if (!reuseExistingUploadFiles) {
         await clearDraftSourceArtifacts(supabase, requestId);
+      }
+      if (mode === "submit") {
+        await clearIncompleteSubmissionArtifacts(supabase, requestId);
       }
     }
 
@@ -71,24 +83,76 @@ export async function persistWizardRequest(
       reuseExistingUploadFiles,
     );
 
-    await writeRequestEvent(
-      supabase,
-      requestId,
-      userId,
-      mode === "draft" ? "request.draft.saved" : "request.submitted.from_wizard",
-      null,
-      mode === "draft" ? "draft" : "configured",
-      { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
-    );
-
-    if (mode !== "draft") {
+    if (mode === "draft") {
+      await writeRequestEvent(
+        supabase,
+        requestId,
+        userId,
+        "request.draft.saved",
+        null,
+        "draft",
+        { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
+      );
+    } else {
       await persistSubmissionArtifacts(
         supabase,
         requestId,
         userId,
         payload,
         requestFileIds,
+        !options?.deferFormalSubmission,
       );
+      if (!options?.deferFormalSubmission) {
+        await writeRequestEvent(
+          supabase,
+          requestId,
+          userId,
+          "request.submitted.from_wizard",
+          "draft",
+          "quoted",
+          { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
+        );
+      }
+      if (
+        payload.sourceMode === "patent_search"
+        && !options?.deferPatentCache
+      ) {
+        try {
+          await enqueueSubmittedPatentCache({
+            requestId,
+            lookupReceipt: payload.selectedPatent!.lookupReceipt!,
+            analysisReceipt: payload.analysis!.analysis_receipt!,
+          });
+        } catch (cacheError) {
+          try {
+            await supabase
+              .from("request_files")
+              .update({ status: "failed" })
+              .eq("request_id", requestId)
+              .eq("source", "patent_search");
+          } catch {
+            // The Request and quote are already complete.
+          }
+          try {
+            await writeRequestEvent(
+              supabase,
+              requestId,
+              userId,
+              "patent.cache.enqueue_failed",
+              "quoted",
+              "quoted",
+              {
+                message: cacheError instanceof Error
+                  ? cacheError.message
+                  : "Patent cache preparation failed.",
+                retryable: true,
+              },
+            );
+          } catch {
+            // Cache preparation is non-transactional and must not undo submission.
+          }
+        }
+      }
     }
 
     revalidatePath("/requester");
@@ -102,6 +166,37 @@ export async function persistWizardRequest(
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
   }
+}
+
+async function verifySubmittedPatentPayload(
+  payload: WizardPayload,
+): Promise<WizardPayload> {
+  if (payload.sourceMode !== "patent_search") return payload;
+  const lookupReceipt = payload.selectedPatent?.lookupReceipt;
+  const analysisReceipt = payload.analysis?.analysis_receipt;
+  if (!payload.selectedPatent || !lookupReceipt || !analysisReceipt) {
+    throw new Error(
+      "Patent lookup or analysis verification is missing. Search the patent again before submitting.",
+    );
+  }
+  const verified = await verifyPatentReceipts({
+    lookupReceipt,
+    analysisReceipt,
+    fallbackPatentNumber: payload.selectedPatent.patentNumber,
+  });
+  if (
+    !["success", "partial"].includes(verified.analysis.status)
+    || verified.analysis.aggregate.total_words <= 0
+  ) {
+    throw new Error(
+      "Patent data processing has not produced usable word counts. Retry before submitting.",
+    );
+  }
+  return {
+    ...payload,
+    selectedPatent: verified.patent,
+    analysis: verified.analysis,
+  };
 }
 
 function validateCommercialFields(payload: WizardPayload) {
@@ -219,12 +314,12 @@ async function upsertRequest(
     source_mode: payload.sourceMode,
     channel_code: payload.config.channelCode,
     title: null,
-    workflow_stage: mode === "draft" ? "draft" : "configured",
+    workflow_stage: "draft",
     requester_status: mode === "draft" ? "responding" : "responding",
     pm_status: mode === "draft" ? "responding" : "responding",
     draft_payload: { ...payload, requestId },
     last_draft_step: payload.lastStep,
-    submitted_at: mode === "draft" ? null : new Date().toISOString(),
+    submitted_at: null,
   };
 
   const writeRequest = () => {
@@ -362,14 +457,15 @@ async function persistPatentSelection(
   const searchId = randomUUID();
   const candidateId = randomUUID();
   const selectedFiles = resolvePatentFiles(payload);
+  const analysis = payload.analysis;
 
   await supabase.from("patent_searches").insert({
     id: searchId,
     request_id: requestId,
     query: payload.patentQuery ?? patent.patentNumber,
     detected_patent_type: "Publication",
-    status: "mocked",
-    raw_response: { todo: "Replace with real patent search API.", patent },
+    status: "completed",
+    raw_response: stripPatentReceipts(patent.sourceSnapshot ?? patent),
   });
   await supabase.from("patent_candidates").insert({
     id: candidateId,
@@ -380,7 +476,7 @@ async function persistPatentSelection(
     application_no: patent.applicationNo,
     publication_no: patent.publicationNo,
     applicants: patent.applicants,
-    metadata: patent,
+    metadata: stripPatentReceipts(patent),
   });
   const { error: patentSnapshotError } = await supabase.from("request_patents").upsert({
     request_id: requestId,
@@ -404,12 +500,19 @@ async function persistPatentSelection(
     legal_status: patent.legalStatus || null,
     ipc_codes: patent.ipcCodes ?? [],
     cpc_codes: patent.cpcCodes ?? [],
-    abstract_word_count: patent.abstractWordCount ?? 0,
-    description_word_count: patent.descriptionWordCount ?? 0,
-    claims_word_count: patent.claimsWordCount ?? 0,
+    abstract_word_count: analysis?.aggregate.abstract_words
+      ?? patent.abstractWordCount
+      ?? 0,
+    description_word_count: analysis
+      ? analysis.aggregate.description_words
+        + analysis.aggregate.description_drawings_words
+      : patent.descriptionWordCount ?? 0,
+    claims_word_count: analysis?.aggregate.claims_words
+      ?? patent.claimsWordCount
+      ?? 0,
     claims_count: selectedFiles.reduce((sum, file) => sum + file.claimCount, 0),
     drawing_count: selectedFiles.reduce((sum, file) => sum + file.drawingCount, 0),
-    source_snapshot: patent.sourceSnapshot ?? patent,
+    source_snapshot: stripPatentReceipts(patent.sourceSnapshot ?? patent),
   }, { onConflict: "request_id" });
   if (patentSnapshotError) throw new Error(patentSnapshotError.message);
 
@@ -494,12 +597,30 @@ async function clearDraftSourceArtifacts(
   if (deletePatentError) throw new Error(deletePatentError.message);
 }
 
+async function clearIncompleteSubmissionArtifacts(
+  supabase: SupabaseClient,
+  requestId: string,
+) {
+  for (const table of [
+    "quote_negotiations",
+    "quotes",
+    "request_config_versions",
+    "translation_requirements",
+  ] as const) {
+    const { error } = await supabase.from(table).delete().eq("request_id", requestId);
+    if (error) {
+      throw new Error(`Unable to clean incomplete ${table}: ${error.message}`);
+    }
+  }
+}
+
 async function persistSubmissionArtifacts(
   supabase: SupabaseClient,
   requestId: string,
   userId: string,
   payload: WizardPayload,
   requestFileIds: string[],
+  finalizeSubmission: boolean,
 ) {
   await createParseResults(supabase, requestFileIds, payload);
   const requirementId = randomUUID();
@@ -509,7 +630,14 @@ async function persistSubmissionArtifacts(
   await supabase.from("request_config_files").insert(
     requestFileIds.map((fileId) => ({ config_version_id: configId, request_file_id: fileId })),
   );
-  await createInitialQuote(supabase, requestId, userId, payload, requestFileIds);
+  await createInitialQuote(
+    supabase,
+    requestId,
+    userId,
+    payload,
+    requestFileIds,
+    finalizeSubmission,
+  );
 }
 
 async function createParseResults(
@@ -518,29 +646,62 @@ async function createParseResults(
   payload: WizardPayload,
 ) {
   const selectedPatentFiles = resolvePatentFiles(payload);
+  const analysisFiles = payload.analysis?.files ?? [];
 
   for (const [index, fileId] of requestFileIds.entries()) {
     const patentFile = selectedPatentFiles[index];
+    const analysisFile = payload.sourceMode === "patent_search"
+      ? analysisFiles[index] ?? analysisFiles[0]
+      : undefined;
+    const analysisStatus = payload.analysis?.status ?? analysisFile?.status;
+    const hasRealPatentAnalysis = payload.sourceMode === "patent_search"
+      && Boolean(analysisFile);
     await supabase.from("file_parse_jobs").insert({
       file_id: fileId,
-      status: "success",
+      status: analysisStatus === "partial" ? "needs_review" : "success",
       attempt_count: 1,
       started_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
-      payload: { todo: "Replace mock parse job with async parser worker." },
+      payload: hasRealPatentAnalysis
+        ? {
+            input_mode: "patent_number",
+            status: analysisStatus,
+            warnings: payload.analysis?.warnings ?? [],
+          }
+        : { todo: "Replace upload parse preview with async parser worker." },
     });
     await supabase.from("file_parse_results").insert({
       file_id: fileId,
-      parse_status: "completed",
-      word_count: patentFile?.wordCount ?? 12000,
-      page_count: patentFile?.pageCount ?? 32,
-      claim_count: patentFile?.claimCount ?? 18,
+      parse_status: analysisStatus === "partial" ? "needs_review" : "completed",
+      word_count: analysisFile?.total_words ?? patentFile?.wordCount ?? 12000,
+      page_count: patentFile?.pageCount ?? 0,
+      claim_count: patentFile?.claimCount ?? 0,
       technical_fields: [payload.selectedPatent?.technicalField ?? "patent"],
-      structure_json: { sections: ["abstract", "description", "claims"] },
+      structure_json: analysisFile
+        ? {
+            parts: analysisFile.parts,
+            document_text_words: analysisFile.document_text_words,
+            drawing_ocr_words: analysisFile.drawing_ocr_words,
+            aggregate: payload.analysis?.aggregate,
+            warnings: analysisFile.warnings,
+          }
+        : { sections: ["abstract", "description", "claims"] },
       ocr_required: false,
       manual_review_required: false,
     });
   }
+}
+
+function stripPatentReceipts(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stripPatentReceipts);
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !["lookupReceipt", "lookup_receipt", "analysis_receipt"].includes(key))
+      .map(([key, entry]) => [key, stripPatentReceipts(entry)]),
+  );
 }
 
 function resolvePatentFiles(payload: WizardPayload) {
@@ -614,6 +775,7 @@ async function createInitialQuote(
   userId: string,
   payload: WizardPayload,
   requestFileIds: string[],
+  finalizeSubmission: boolean,
 ) {
   const { data: files, error: filesError } = await supabase
     .from("request_files")
@@ -695,24 +857,27 @@ async function createInitialQuote(
   const { error: requestError } = await supabase
     .from("translation_requests")
     .update({
-      workflow_stage: "quoted",
+      workflow_stage: finalizeSubmission ? "quoted" : "draft",
       requester_status: "responding",
       pm_status: "responding",
+      submitted_at: finalizeSubmission ? new Date().toISOString() : null,
     })
     .eq("id", requestId);
   if (requestError) {
     throw new Error(`Unable to finalize translation request: ${requestError.message}`);
   }
 
-  await writeRequestEvent(
-    supabase,
-    requestId,
-    userId,
-    "quote.accepted.requester_preview",
-    "configured",
-    "quoted",
-    { quoteId: quote.id, amount, currency: "USD" },
-  );
+  if (finalizeSubmission) {
+    await writeRequestEvent(
+      supabase,
+      requestId,
+      userId,
+      "quote.accepted.requester_preview",
+      "configured",
+      "quoted",
+      { quoteId: quote.id, amount, currency: "USD" },
+    );
+  }
 }
 
 function serviceTypeLabel(serviceType: string) {

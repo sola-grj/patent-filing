@@ -67,6 +67,13 @@ export type WizardPatentCandidate = {
   cpcCodes?: string[];
   designatedStates?: WizardPatentDesignatedStates;
   relatedPatentDocuments?: string[];
+  dataOrigin?: "official" | "cache_fallback";
+  cache?: {
+    isCached: boolean;
+    reason?: "official_source_no_result";
+    lastSuccessfulFetchAt?: string;
+  };
+  lookupReceipt?: string;
   sourceSnapshot?: Record<string, unknown>;
 };
 
@@ -141,6 +148,15 @@ export type WizardPatentAnalysisResult = {
   input_mode: "upload" | "patent_number";
   status: "success" | "partial" | "failed";
   patent_number?: string | null;
+  analysis_receipt?: string | null;
+  artifact?: {
+    artifact_id: string;
+    filename: string;
+    mime_type: string;
+    byte_size: number;
+    sha256: string;
+    expires_at: string;
+  } | null;
   counting_standard: string;
   excluded_content: string[];
   files: WizardPatentAnalysisFile[];

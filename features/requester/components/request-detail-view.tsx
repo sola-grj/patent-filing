@@ -5,6 +5,7 @@ import { mapPatentLookupResponse } from "@/features/requester/actions/patent-loo
 import { DeliverableDownloadButton } from "@/features/requester/components/deliverable-download-button";
 import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
+import { PatentCacheStatus } from "@/features/requester/components/patent-cache-status";
 import {
   RequestFileInformation,
   type RequestInformationFile,
@@ -185,6 +186,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const isPatentSearch = request.source_mode === "patent_search";
   const patentNumber = isPatentSearch ? patent?.patent_number ?? null : null;
   const patentCandidate = isPatentSearch && patent ? toPatentCandidate(patent) : null;
+  const patentFileStatus = files.find((file) => file.source === "patent_search")?.status;
   const translationWordCount = resolveTranslationWordCount(
     config,
     latestQuote,
@@ -312,10 +314,17 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
               title="Patent Information"
               action={
                 patentNumber ? (
-                  <PatentFileDownloadButton requestId={request.id} />
+                  <PatentFileDownloadButton
+                    requestId={request.id}
+                    status={patentFileStatus}
+                  />
                 ) : null
               }
             >
+              <PatentCacheStatus
+                requestId={request.id}
+                status={patentFileStatus}
+              />
               {patentCandidate ? (
                 <PatentDetailStep
                   patent={patentCandidate}
@@ -406,7 +415,7 @@ function resolveTranslationWordCount(
   }
 
   if (config.scopeType === "claims_only") {
-    return patent?.claims_word_count ?? 3324;
+    return patent?.claims_word_count ?? 0;
   }
 
   const patentWordCount = patent
@@ -422,7 +431,7 @@ function resolveTranslationWordCount(
   return quote?.pricing_snapshot?.wordCount
     || patentWordCount
     || uploadedFileWordCount
-    || 23705;
+    || 0;
 }
 
 function toPatentCandidate(patent: RequestPatent): WizardPatentCandidate {

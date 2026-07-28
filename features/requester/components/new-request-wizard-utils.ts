@@ -98,7 +98,27 @@ export function validateWizardPayload(payload: WizardPayload) {
     const error = validateWizardStep(index, payload);
     if (error) return error;
   }
+  if (
+    payload.sourceMode === "patent_search"
+    && !hasUsablePatentAnalysis(payload)
+  ) {
+    if (payload.analysis?.status === "failed") {
+      return "Patent data processing failed. Retry before submitting.";
+    }
+    return "Patent data is still being processed. Wait for usable word counts before submitting.";
+  }
   return null;
+}
+
+export function hasUsablePatentAnalysis(payload: WizardPayload) {
+  if (payload.sourceMode !== "patent_search") return true;
+  const analysis = payload.analysis;
+  if (!analysis || !["success", "partial"].includes(analysis.status)) return false;
+  if (payload.config.scopeType === "no_translation") return true;
+  if (payload.config.scopeType === "claims_only") {
+    return analysis.aggregate.claims_words > 0;
+  }
+  return analysis.aggregate.total_words > 0;
 }
 
 export function parsePreviewFiles(payload: WizardPayload): WizardPatentFile[] {

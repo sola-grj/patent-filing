@@ -205,6 +205,9 @@ export function PmRequestDetail({
   const order = firstRelation(request.orders);
   const files = request.request_files ?? [];
   const uploadedFiles = files.filter((file) => file.source === "upload");
+  const patentFileStatus = files.find(
+    (file) => file.source === "patent_search",
+  )?.status;
   const quoteById = new Map((request.quotes ?? []).map((quote) => [quote.id, quote]));
   const negotiations = [...(request.quote_negotiations ?? [])].sort((left, right) =>
     new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
@@ -260,7 +263,12 @@ export function PmRequestDetail({
               <PmPatentInfo
                 patent={patent}
                 candidate={patentCandidate}
-                action={<PatentFileDownloadButton requestId={request.id} />}
+                action={
+                  <PatentFileDownloadButton
+                    requestId={request.id}
+                    status={patentFileStatus}
+                  />
+                }
               />
             ) : (
               <RequestFileInformation

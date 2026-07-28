@@ -2,7 +2,7 @@
 
 import { CircleHelp, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { useState, useTransition } from "react";
 
@@ -55,6 +55,7 @@ import { SourceStep } from "./new-request-source-steps";
 import {
   buildWizardPayload,
   defaultWizardConfig,
+  hasUsablePatentAnalysis,
   normalizeWizardConfig,
   toWizardFormData,
   type WizardConfigFieldErrors,
@@ -65,6 +66,8 @@ import {
 } from "./new-request-wizard-utils";
 import { useRequestWizardController } from "./requester-create-request-controller";
 import { usePatentAnalysis } from "./use-patent-analysis";
+import { PatentProcessingNotice } from "./patent-processing-notice";
+import { PatentCacheWarning } from "./patent-cache-warning";
 
 type WizardNegotiationDraft = {
   adjustmentNotes: string;
@@ -84,6 +87,8 @@ export function NewRequestWizard({
   const initialPayload = initialDraft?.payload;
   const initialConfig = normalizeWizardConfig(initialPayload?.config);
   const analysis = usePatentAnalysis(initialPayload?.analysis);
+  const analysisStatus = analysis.status;
+  const startAnalysis = analysis.start;
   const [requestId, setRequestId] = useState<string | undefined>(initialDraft?.requestId);
   const [step, setStep] = useState(resolveInitialStep(initialPayload?.lastStep));
   const [sourceMode, setSourceMode] = useState<WizardSourceMode>(initialPayload?.sourceMode ?? "patent_search");
@@ -154,6 +159,14 @@ export function NewRequestWizard({
     setSelectedPatentFileIds(candidate.downloadableFiles.map((file) => file.id));
   }
 
+  function retryPatentAnalysis() {
+    analysis.start({
+      sourceMode: "patent_search",
+      patentNumber: selectedPatent?.patentNumber ?? patentQuery,
+      files: [],
+    });
+  }
+
   function clearPatentSearchResult() {
     analysis.reset();
     setSelectedPatent(undefined);
@@ -213,7 +226,7 @@ export function NewRequestWizard({
     setShowConfigValidation(false);
     setError(null);
 
-    if (step === 0) {
+    if (step === 0 && sourceMode === "upload") {
       analysis.start({
         sourceMode,
         patentNumber: selectedPatent?.patentNumber ?? patentQuery,
@@ -332,31 +345,43 @@ export function NewRequestWizard({
     });
   }
 
+  const resetWizardRef = useRef(resetWizard);
+  const persistRef = useRef(persist);
+  resetWizardRef.current = resetWizard;
+  persistRef.current = persist;
+
+  useEffect(() => {
+    if (
+      sourceMode === "patent_search"
+      && selectedPatent
+      && analysisStatus === "idle"
+    ) {
+      startAnalysis({
+        sourceMode,
+        patentNumber: selectedPatent.patentNumber,
+        files: [],
+      });
+    }
+  }, [analysisStatus, selectedPatent, sourceMode, startAnalysis]);
+
   useEffect(() => {
     registerController({
       isDirty,
-      resetToStart: resetWizard,
+      resetToStart: () => resetWizardRef.current(),
       saveDraftAndReset: async () => {
-        const saved = await persist(saveRequestDraft, { redirectOnSuccess: false });
+        const saved = await persistRef.current(
+          saveRequestDraft,
+          { redirectOnSuccess: false },
+        );
         if (saved) {
-          resetWizard();
+          resetWizardRef.current();
         }
         return saved;
       },
     });
 
     return () => registerController(null);
-  }, [
-    config,
-    isDirty,
-    patentQuery,
-    selectedPatent,
-    selectedPatentFileIds,
-    step,
-    uploadedFiles,
-    uploadedFileSnapshots,
-    registerController,
-  ]);
+  }, [isDirty, registerController]);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-5 overflow-hidden">
@@ -375,7 +400,9 @@ export function NewRequestWizard({
                 configFieldErrors={configFieldErrors}
                 payload={payload}
                 analysisStatus={analysis.status}
+                analysisResult={analysis.result}
                 analysisError={analysis.error}
+                onAnalysisRetry={retryPatentAnalysis}
                 isPending={isBusy}
                 setSourceMode={(value) => {
                   clearStepError(0);
@@ -383,7 +410,6 @@ export function NewRequestWizard({
                 }}
                 setPatentQuery={(value) => {
                   clearStepError(0);
-                  analysis.reset();
                   setPatentQuery(value);
                 }}
                 setPatentSearchResult={(value) => {
@@ -443,6 +469,10 @@ export function NewRequestWizard({
                     : "Next"
                 }
                 isPending={isBusy}
+                submitDisabled={
+                  sourceMode === "patent_search"
+                  && !hasUsablePatentAnalysis(payload)
+                }
                 onCancel={handleCancel}
                 onPrevious={() => setStep((current) => current - 1)}
                 onNext={goNext}
@@ -507,7 +537,9 @@ function StepContent(props: {
   configFieldErrors: WizardConfigFieldErrors;
   payload: WizardPayload;
   analysisStatus: WizardPatentAnalysisStatus;
+  analysisResult?: WizardPayload["analysis"];
   analysisError?: string;
+  onAnalysisRetry: () => void;
   quoteAction?: ReactNode;
   isPending: boolean;
   setSourceMode: (value: WizardSourceMode) => void;
@@ -526,6 +558,9 @@ function StepContent(props: {
         channelCode={props.config.channelCode}
         patentQuery={props.patentQuery}
         patent={props.selectedPatent}
+        analysisStatus={props.analysisStatus}
+        analysisResult={props.analysisResult}
+        analysisError={props.analysisError}
         uploadedFiles={props.uploadedFiles}
         uploadedFileSnapshots={props.uploadedFileSnapshots}
         isPending={props.isPending}
@@ -548,6 +583,7 @@ function StepContent(props: {
         onPatentQueryChange={props.setPatentQuery}
         onPatentSearch={props.setPatentSearchResult}
         onPatentSearchStart={props.clearPatentSearchResult}
+        onAnalysisRetry={props.onAnalysisRetry}
         onFilesChange={props.setUploadedFiles}
         onRemoveFile={props.removeUploadedFile}
       />
@@ -566,6 +602,21 @@ function StepContent(props: {
         }
         onChange={props.setConfig}
         dictionaries={props.dictionaries}
+        processingNotice={
+          props.sourceMode === "patent_search" ? (
+            <div className="space-y-3">
+              {props.selectedPatent?.dataOrigin === "cache_fallback" ? (
+                <PatentCacheWarning />
+              ) : null}
+              <PatentProcessingNotice
+                status={props.analysisStatus}
+                result={props.analysisResult}
+                error={props.analysisError}
+                onRetry={props.onAnalysisRetry}
+              />
+            </div>
+          ) : undefined
+        }
       />
     );
   }
@@ -576,6 +627,7 @@ function StepContent(props: {
       dictionaries={props.dictionaries}
       analysisStatus={props.analysisStatus}
       analysisError={props.analysisError}
+      onAnalysisRetry={props.onAnalysisRetry}
     />
   );
 }
@@ -584,6 +636,7 @@ function WizardFooter(props: {
   step: number;
   nextLabel?: string;
   isPending: boolean;
+  submitDisabled?: boolean;
   onCancel: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -597,7 +650,11 @@ function WizardFooter(props: {
         {props.step < wizardSteps.length - 1 ? (
           <Button type="button" disabled={props.isPending} onClick={props.onNext}>{props.nextLabel ?? "Next"}</Button>
         ) : (
-          <Button type="button" disabled={props.isPending} onClick={props.onSubmit}>
+          <Button
+            type="button"
+            disabled={props.isPending || props.submitDisabled}
+            onClick={props.onSubmit}
+          >
             {props.isPending ? "Submitting..." : "Submit Request"}
           </Button>
         )}
