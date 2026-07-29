@@ -1,4 +1,5 @@
 import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
+import { buildDashboardAttentionItems } from "./dashboard-attention";
 import type {
   DictionaryOption,
   WizardDictionaries,
@@ -155,17 +156,43 @@ export async function getRequesterDashboard() {
   const { supabase, userId, email, organization } = await getRequesterOrganization();
 
   if (!organization) {
-    return { organization: null, email, stats: null, recentRequests: [], recentDrafts: [], draftCount: 0, orders: [], dictionaries: null };
+    return {
+      organization: null,
+      email,
+      stats: null,
+      recentRequests: [],
+      recentDrafts: [],
+      draftCount: 0,
+      attentionItems: [],
+      orders: [],
+      dictionaries: null,
+    };
   }
 
-  const [{ data: requests }, dictionaries] = await Promise.all([
+  const [
+    { data: requests, error: requestsError },
+    { data: orders, error: ordersError },
+    dictionaries,
+  ] = await Promise.all([
     supabase
       .from("translation_requests")
       .select("id, request_no, title, channel_code, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types), request_patents(patent_number)")
       .eq("requester_id", userId)
       .order("updated_at", { ascending: false }),
+    supabase
+      .from("orders")
+      .select("id, request_id, completed_at, updated_at, translation_tasks(id, task_deliverables(id, status, created_at))")
+      .eq("requester_id", userId)
+      .order("updated_at", { ascending: false }),
     getRequesterDictionaries(),
   ]);
+
+  if (requestsError) {
+    throw new Error(requestsError.message);
+  }
+  if (ordersError) {
+    throw new Error(ordersError.message);
+  }
 
   const requestRows = requests ?? [];
   const activeRequests = requestRows.filter((request) => request.workflow_stage !== "draft");
@@ -184,7 +211,8 @@ export async function getRequesterDashboard() {
     recentRequests: activeRequests.slice(0, 3),
     recentDrafts: drafts.slice(0, 8),
     draftCount: drafts.length,
-    orders: [],
+    attentionItems: buildDashboardAttentionItems(requestRows, orders ?? []),
+    orders: orders ?? [],
     dictionaries,
   };
 }

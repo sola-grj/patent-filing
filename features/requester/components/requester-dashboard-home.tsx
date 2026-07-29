@@ -44,7 +44,7 @@ export function RequesterDashboardHome({
         organizationName={organization.name}
       />
 
-      <DashboardFocusGrid />
+      <DashboardFocusGrid attentionItems={dashboard.attentionItems} />
 
       <section className="grid min-h-0 grid-rows-2 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(20rem,2fr)] xl:grid-rows-1">
         <RecentRequestsPanel

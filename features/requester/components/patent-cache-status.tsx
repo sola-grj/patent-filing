@@ -19,15 +19,19 @@ export function PatentCacheStatus({
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (status !== "parsing") return;
+    if (!["validated", "parsing"].includes(status ?? "")) return;
     const timer = window.setInterval(() => router.refresh(), 2500);
     return () => window.clearInterval(timer);
   }, [router, status]);
 
-  if (!["parsing", "failed"].includes(status ?? "") && !isPending && !error) {
+  if (
+    !["validated", "parsing", "failed"].includes(status ?? "")
+    && !isPending
+    && !error
+  ) {
     return null;
   }
-  if (status === "parsing" || isPending) {
+  if (status === "validated" || status === "parsing" || isPending) {
     return (
       <div className="flex items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />

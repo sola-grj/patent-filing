@@ -1,0 +1,9 @@
+update public.request_files as request_file
+set status = 'parsed'
+from public.patent_documents as document
+where request_file.patent_document_id = document.id
+  and request_file.source = 'patent_search'
+  and request_file.status <> 'parsed'
+  and document.status = 'available'
+  and request_file.storage_bucket = document.storage_bucket
+  and request_file.storage_path = document.storage_path;

@@ -88,6 +88,7 @@ export async function persistWizardRequest(
       payload,
       formData,
       reuseExistingUploadFiles,
+      mode,
     );
 
     if (mode === "draft") {
@@ -406,6 +407,7 @@ async function persistSourceFiles(
   payload: WizardPayload,
   formData: FormData,
   reuseExistingUploadFiles: boolean,
+  mode: "draft" | "submit",
 ) {
   if (payload.sourceMode === "upload") {
     if (reuseExistingUploadFiles) {
@@ -413,7 +415,7 @@ async function persistSourceFiles(
     }
     return persistUploadedFiles(supabase, requestId, userId, formData);
   }
-  return persistPatentSelection(supabase, requestId, payload);
+  return persistPatentSelection(supabase, requestId, payload, mode);
 }
 
 async function persistUploadedFiles(
@@ -475,6 +477,7 @@ async function persistPatentSelection(
   supabase: SupabaseClient,
   requestId: string,
   payload: WizardPayload,
+  mode: "draft" | "submit",
 ) {
   const patent = payload.selectedPatent;
   if (!patent) return [];
@@ -576,7 +579,7 @@ async function persistPatentSelection(
         language: entry.file.language,
         version_label: entry.file.label,
         confirmed_for_translation: true,
-        status: "validated",
+        status: mode === "submit" ? "parsing" : "validated",
         metadata: {
           source_url: entry.file.sourceUrl,
           patent_file: entry.file,

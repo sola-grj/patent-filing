@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,12 @@ import { buildFreshRequestHref } from "@/features/requester/requester-routes";
 export default async function RequesterRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; page?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    q?: string;
+    page?: string;
+    from?: string;
+  }>;
 }) {
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Loading requests...</p>}>
@@ -27,7 +33,12 @@ export default async function RequesterRequestsPage({
 async function RequestsContent({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; page?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    q?: string;
+    page?: string;
+    from?: string;
+  }>;
 }) {
   const params = await searchParams;
   const page = Number(params.page ?? "1");
@@ -39,6 +50,15 @@ async function RequestsContent({
 
   if (!organization) {
     return <RequesterHeader title="Requests" description="Create a requester workspace from the dashboard first." />;
+  }
+
+  const dashboardQuery = params.q?.trim();
+  if (
+    params.from === "dashboard" &&
+    dashboardQuery &&
+    totalCount === 0
+  ) {
+    redirect(buildFreshRequestHref(Date.now(), dashboardQuery));
   }
 
   return (

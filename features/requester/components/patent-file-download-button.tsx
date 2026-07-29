@@ -82,7 +82,7 @@ export function PatentFileDownloadButton({
 
   const isReady = status === "parsed";
   const tooltip = error
-    ?? (status === "parsing"
+    ?? (status === "validated" || status === "parsing"
       ? "Original patent file is being prepared..."
       : status === "failed"
         ? "Original patent file preparation failed. Retry it first."

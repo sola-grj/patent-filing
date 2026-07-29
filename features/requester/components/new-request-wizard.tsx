@@ -77,14 +77,16 @@ type WizardNegotiationDraft = {
 
 export function NewRequestWizard({
   initialDraft,
+  initialPayload: seededPayload,
   dictionaries,
 }: {
   initialDraft?: WizardDraftSession;
+  initialPayload?: Partial<WizardPayload>;
   dictionaries: WizardDictionaries;
 }) {
   const router = useRouter();
   const { registerController } = useRequestWizardController();
-  const initialPayload = initialDraft?.payload;
+  const initialPayload = initialDraft?.payload ?? seededPayload;
   const initialConfig = normalizeWizardConfig(initialPayload?.config);
   const analysis = usePatentAnalysis(initialPayload?.analysis);
   const analysisStatus = analysis.status;

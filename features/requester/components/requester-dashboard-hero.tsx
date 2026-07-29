@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Plus, Search, ShieldCheck } from "lucide-react";
+import { ArrowRight, Plus, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -20,8 +20,8 @@ export function HeroSection({
   const organizationInitials = getInitials(organizationName);
 
   return (
-    <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="space-y-5">
+    <section className="space-y-5">
+      <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex items-center gap-5">
           <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-orange-500 text-xl font-semibold text-white shadow-sm">
             {organizationInitials}
@@ -36,30 +36,26 @@ export function HeroSection({
           </div>
         </div>
 
-        <form action="/requester/requests" className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-500" />
-          <input
-            type="search"
-            name="q"
-            aria-label="Search requests"
-            placeholder="Search by patent, application or request number"
-            className="h-[52px] w-full rounded-xl border bg-background py-3.5 pl-12 pr-4 text-sm shadow-sm outline-none transition focus:border-emerald-800 focus:ring-2 focus:ring-emerald-900/10"
-          />
-        </form>
-      </div>
-
-      <div className="flex flex-col justify-between gap-5 lg:items-stretch">
         <RequesterCreateRequestButton
           size="lg"
           label="New request"
           icon={<Plus className="size-5" />}
           className="h-14 w-full rounded-lg bg-emerald-950 text-base text-white shadow-sm hover:bg-emerald-900"
         />
-        <div className="flex items-center gap-3 px-1 text-sm font-medium text-emerald-950">
-          <ShieldCheck className="size-5" />
-          <span>Patent data sources: EPO · WIPO</span>
-        </div>
       </div>
+
+      <form action="/requester/requests" className="relative w-full">
+        <input type="hidden" name="from" value="dashboard" />
+        <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-500" />
+        <input
+          type="search"
+          name="q"
+          required
+          aria-label="Search requests"
+          placeholder="Search by patent, application or request number"
+          className="h-[52px] w-full rounded-xl border bg-background py-3.5 pl-12 pr-4 text-sm shadow-sm outline-none transition focus:border-emerald-800 focus:ring-2 focus:ring-emerald-900/10"
+        />
+      </form>
     </section>
   );
 }
