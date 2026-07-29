@@ -152,10 +152,10 @@ type OrderAssignmentContacts = {
 };
 
 export async function getRequesterDashboard() {
-  const { supabase, userId, organization } = await getRequesterOrganization();
+  const { supabase, userId, email, organization } = await getRequesterOrganization();
 
   if (!organization) {
-    return { organization: null, stats: null, recentRequests: [], recentDrafts: [], draftCount: 0, orders: [], dictionaries: null };
+    return { organization: null, email, stats: null, recentRequests: [], recentDrafts: [], draftCount: 0, orders: [], dictionaries: null };
   }
 
   const [{ data: requests }, dictionaries] = await Promise.all([
@@ -173,6 +173,7 @@ export async function getRequesterDashboard() {
 
   return {
     organization,
+    email,
     stats: {
       responding: activeRequests.filter((request) => request.requester_status === "responding").length,
       negotiating: activeRequests.filter((request) => request.requester_status === "negotiation").length,
@@ -180,7 +181,7 @@ export async function getRequesterDashboard() {
       rejected: activeRequests.filter((request) => request.requester_status === "rejected").length,
       completed: activeRequests.filter((request) => request.requester_status === "completed").length,
     },
-    recentRequests: activeRequests.slice(0, 8),
+    recentRequests: activeRequests.slice(0, 3),
     recentDrafts: drafts.slice(0, 8),
     draftCount: drafts.length,
     orders: [],

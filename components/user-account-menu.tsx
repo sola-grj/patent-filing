@@ -22,6 +22,7 @@ export function UserAccountMenu({ email }: { email: string | null }) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const initials = getAccountInitials(email);
 
   useEffect(() => {
     setMounted(true);
@@ -41,7 +42,10 @@ export function UserAccountMenu({ email }: { email: string | null }) {
           variant="ghost"
           className="h-auto max-w-[260px] justify-end gap-2 px-0 py-0 text-sm font-normal hover:bg-transparent"
         >
-          <span className="truncate text-right text-foreground">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-emerald-950 text-xs font-semibold text-white">
+            {initials}
+          </span>
+          <span className="hidden truncate text-right text-foreground sm:block">
             {email ?? "Signed in"}
           </span>
           <ChevronDown className="size-4 text-muted-foreground" />
@@ -72,4 +76,16 @@ export function UserAccountMenu({ email }: { email: string | null }) {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function getAccountInitials(email: string | null) {
+  const accountName = email?.split("@")[0]?.trim();
+  if (!accountName) return "U";
+
+  return accountName
+    .split(/[._\-\s]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
 }

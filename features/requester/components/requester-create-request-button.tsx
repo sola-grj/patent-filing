@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import {
   AlertDialog,
@@ -19,6 +19,7 @@ import { useRequestWizardController } from "./requester-create-request-controlle
 
 export function RequesterCreateRequestButton(
   props: Omit<ComponentProps<typeof Button>, "type" | "onClick" | "children"> & {
+    icon?: ReactNode;
     label?: string;
   },
 ) {
@@ -74,6 +75,7 @@ export function RequesterCreateRequestButton(
         disabled={props.disabled}
         onClick={handleClick}
       >
+        {props.icon}
         {props.label ?? "Create Request"}
       </Button>
       <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>

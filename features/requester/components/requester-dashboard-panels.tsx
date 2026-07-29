@@ -1,17 +1,18 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { CalendarDays, ChevronRight } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { UrgentBadge } from "@/features/requester/components/urgent-badge";
-import { RequestSummaryBadges } from "@/features/requester/components/request-summary-badges";
+import { Card } from "@/components/ui/card";
 import { formatDate } from "@/features/requester/format";
 import type { getRequesterDashboard } from "@/features/requester/queries";
-import { RequesterCreateRequestButton } from "./requester-create-request-button";
+import {
+  getRequesterStatusMeta,
+  RequesterStatusBadge,
+  type RequesterLifecycleStatus,
+} from "@/features/requester/requester-status";
 
 type DashboardData = Awaited<ReturnType<typeof getRequesterDashboard>>;
 type DashboardRequest = DashboardData["recentRequests"][number];
-type DashboardDraft = DashboardData["recentDrafts"][number];
+type DashboardStats = NonNullable<DashboardData["stats"]>;
 
 export function RecentRequestsPanel({
   requests,
@@ -21,175 +22,155 @@ export function RecentRequestsPanel({
   dictionaries: NonNullable<DashboardData["dictionaries"]>;
 }) {
   return (
-    <Card className="flex h-[27rem] min-h-[27rem] flex-col overflow-hidden rounded-[28px] border shadow-sm">
-      <CardHeader className="flex shrink-0 flex-row items-start justify-between gap-4 space-y-0 border-b bg-slate-50/70 px-6 py-5">
-        <div>
-          <CardTitle className="text-xl">Recent Requests</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Recent requests that may need follow-up, feedback, or delivery
-            review.
-          </p>
-        </div>
-        <Button asChild variant="link" size="sm" className="px-0">
-          <Link href="/requester/requests">View all</Link>
-        </Button>
-      </CardHeader>
-      <CardContent className="hide-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-2">
-        {requests.length ? (
-          <div className="divide-y">
-            {requests.map((request) => {
-              const requirement = Array.isArray(
-                request.translation_requirements,
-              )
-                ? request.translation_requirements[0]
-                : request.translation_requirements;
-              const patent = Array.isArray(request.request_patents)
-                ? request.request_patents[0]
-                : request.request_patents;
-              const channelLabel = requestsDictionaryLabel(
-                request.channel_code,
-                "channels",
-                dictionaries,
-              );
-              return (
-                <Link
-                  key={request.id}
-                  href={`/requester/requests/${request.id}`}
-                  className="group grid items-center gap-4 py-4 text-sm md:grid-cols-[minmax(0,1fr)_minmax(22rem,auto)_auto]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-base font-semibold text-foreground">
-                        {patent?.patent_number || "Request"}
-                      </span>
-                      {requirement?.is_urgent ? <UrgentBadge /> : null}
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-                      <span>{request.request_no}</span>
-                      <span className="h-1 w-1 rounded-full bg-slate-300" />
-                      <span>Updated {formatDate(request.updated_at)}</span>
-                    </div>
-                  </div>
-                  <RequestSummaryBadges
-                    channelCode={request.channel_code}
-                    channelLabel={channelLabel}
-                    serviceTypes={requirement?.service_types ?? []}
-                    serviceOptions={dictionaries.serviceTypes}
-                    status={request.requester_status}
-                  />
-                  <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
-                </Link>
-              );
-            })}
-          </div>
-        ) : (
-          <EmptyPanelCopy
-            title="No active requests yet"
-            description="Requests you submit will appear here with status, urgency, and latest update timestamps."
-          />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function requestsDictionaryLabel(
-  value: string | null,
-  key: "channels" | "serviceTypes",
-  dictionaries: NonNullable<DashboardData["dictionaries"]>,
-) {
-  if (!value) return "-";
-  return (
-    dictionaries[key].find((option) => option.value === value)?.label ?? value
-  );
-}
-
-export function DraftsPanel({
-  drafts,
-  draftCount,
-}: {
-  drafts: DashboardDraft[];
-  draftCount: number;
-}) {
-  return (
-    <Card className="flex h-[27rem] min-h-[27rem] flex-col overflow-hidden rounded-[28px] border shadow-sm">
-      <CardHeader className="flex shrink-0 flex-row items-start justify-between gap-4 space-y-0 border-b bg-slate-50/70 px-6 py-5">
-        <div>
-          <CardTitle className="text-xl">Drafts in Progress</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {draftCount} draft requests saved and ready to resume.
-          </p>
-        </div>
-        <Button asChild variant="link" size="sm" className="px-0">
-          <Link href="/requester/drafts">Open drafts</Link>
-        </Button>
-      </CardHeader>
-      <CardContent className="hide-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-2">
-        {drafts.length ? (
-          <div className="divide-y">
-            {drafts.map((draft) => (
-              <Link
-                key={draft.id}
-                href={`/requester/drafts/${draft.id}`}
-                className="flex items-center justify-between gap-4 py-4 text-sm"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-foreground">
-                    {draft.request_no}
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    {draft.title?.trim() || "Draft request"}
-                    {" · "}
-                    Resume from {draft.last_draft_step ?? "Source"}
-                  </p>
-                </div>
-                <span className="shrink-0 text-muted-foreground">
-                  {formatDate(draft.updated_at)}
-                </span>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <EmptyPanelCopy
-            title="No saved drafts"
-            description="Draft requests will be listed here after you save work in progress from the request wizard."
-          />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-export function DashboardEmptyState() {
-  return (
-    <Card className="flex min-h-[22rem] flex-col rounded-[28px] border shadow-sm">
-      <CardContent className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
-        <div className="space-y-2">
-          <p className="text-lg font-semibold">No requests yet</p>
-          <p className="max-w-md text-sm text-muted-foreground">
-            Start your first Patentia request to track quotes, negotiations, and
-            delivery in one operational workspace.
-          </p>
-        </div>
-        <RequesterCreateRequestButton label="Start First Request" />
-      </CardContent>
-    </Card>
-  );
-}
-
-function EmptyPanelCopy({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex min-h-[12rem] items-center justify-center rounded-2xl border border-dashed bg-background px-6 py-10 text-center">
-      <div className="max-w-sm space-y-2">
-        <p className="font-semibold text-foreground">{title}</p>
-        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl shadow-sm">
+      <div className="flex shrink-0 items-center justify-between border-b px-5 py-4">
+        <h2 className="text-lg font-semibold">Recent Requests</h2>
+        <Link
+          href="/requester/requests"
+          className="flex items-center gap-1 text-xs font-medium text-emerald-950"
+        >
+          View all requests
+          <ChevronRight className="size-4" />
+        </Link>
       </div>
-    </div>
+
+      <div className="hidden shrink-0 grid-cols-[1.25fr_1.5fr_1fr_1fr_8rem] gap-4 border-b bg-slate-50/70 px-5 py-3 text-xs font-medium text-slate-600 md:grid">
+        <span>Matter</span>
+        <span>Request ID</span>
+        <span>Service</span>
+        <span>Updated</span>
+        <span>Status</span>
+      </div>
+
+      {requests.length ? (
+        <div className="hide-scrollbar flex min-h-0 flex-1 flex-col divide-y overflow-y-auto px-5">
+          {requests.slice(0, 3).map((request) => (
+            <RecentRequestRow
+              key={request.id}
+              request={request}
+              serviceOptions={dictionaries.serviceTypes}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 text-center">
+          <div>
+            <p className="font-medium">No active requests yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Submitted requests will appear here.
+            </p>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function RecentRequestRow({
+  request,
+  serviceOptions,
+}: {
+  request: DashboardRequest;
+  serviceOptions: Array<{ value: string; label: string }>;
+}) {
+  const requirement = Array.isArray(request.translation_requirements)
+    ? request.translation_requirements[0]
+    : request.translation_requirements;
+  const patent = Array.isArray(request.request_patents)
+    ? request.request_patents[0]
+    : request.request_patents;
+  const serviceCode = requirement?.service_types?.[0] ?? null;
+  const service =
+    serviceOptions.find((option) => option.value === serviceCode)?.label ??
+    serviceCode ??
+    "-";
+
+  return (
+    <Link
+      href={`/requester/requests/${request.id}`}
+      className="grid min-h-[56px] flex-1 gap-2 py-4 text-sm transition-colors hover:bg-slate-50/70 md:grid-cols-[1.25fr_1.5fr_1fr_1fr_8rem] md:items-center md:gap-4"
+    >
+      <span className="truncate font-semibold">
+        {patent?.patent_number || request.title || "Request"}
+      </span>
+      <span className="truncate text-slate-600">{request.request_no}</span>
+      <span className="truncate text-slate-600">{service}</span>
+      <span className="flex items-center gap-1.5 text-slate-600">
+        <CalendarDays className="size-4" />
+        {formatDate(request.updated_at)}
+      </span>
+      <RequesterStatusBadge
+        status={request.requester_status}
+        size="compact"
+      />
+    </Link>
+  );
+}
+
+const lifecycleItems: Array<{
+  status: RequesterLifecycleStatus;
+  statKey: keyof Pick<DashboardStats, "responding" | "inProgress" | "completed">;
+  href: string;
+  rowClassName: string;
+  iconClassName: string;
+}> = [
+  {
+    status: "responding",
+    statKey: "responding",
+    href: "/requester/requests?status=responding",
+    rowClassName: "border-sky-200 bg-sky-50/55",
+    iconClassName: "bg-sky-600 text-white",
+  },
+  {
+    status: "in_progress",
+    statKey: "inProgress",
+    href: "/requester/requests?status=in_progress",
+    rowClassName: "border-violet-200 bg-violet-50/55",
+    iconClassName: "bg-violet-600 text-white",
+  },
+  {
+    status: "completed",
+    statKey: "completed",
+    href: "/requester/requests?status=completed",
+    rowClassName: "border-emerald-200 bg-emerald-50/55",
+    iconClassName: "bg-emerald-600 text-white",
+  },
+];
+
+export function LifecyclePanel({ stats }: { stats: DashboardStats }) {
+  return (
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl shadow-sm">
+      <div className="shrink-0 border-b px-5 py-4">
+        <h2 className="text-lg font-semibold">Request lifecycle</h2>
+      </div>
+      <div className="hide-scrollbar min-h-0 flex-1 space-y-2.5 overflow-y-auto p-4">
+        {lifecycleItems.map((item) => {
+          const meta = getRequesterStatusMeta(item.status);
+
+          return (
+            <Link
+              key={item.status}
+              href={item.href}
+              className={`grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center rounded-lg border px-3 py-2.5 transition-transform hover:-translate-y-0.5 ${item.rowClassName}`}
+            >
+              <span
+                className={`flex size-10 items-center justify-center rounded-full ${item.iconClassName}`}
+              >
+                <meta.icon className="size-5" />
+              </span>
+              <span>
+                <span className="block text-xl font-semibold leading-5 text-emerald-950">
+                  {stats[item.statKey]}
+                </span>
+                <span className="mt-1 block text-sm text-slate-600">
+                  {meta.label}
+                </span>
+              </span>
+              <ChevronRight className="size-4 text-slate-600" />
+            </Link>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

@@ -1,7 +1,12 @@
 import type { getRequesterDashboard } from "@/features/requester/queries";
+
+import { DashboardFocusGrid } from "./requester-dashboard-focus";
+import {
+  LifecyclePanel,
+  RecentRequestsPanel,
+} from "./requester-dashboard-panels";
+import { HeroSection } from "./requester-dashboard-hero";
 import { WorkspaceSetupForm } from "./workspace-setup-form";
-import { DashboardEmptyState, RecentRequestsPanel } from "./requester-dashboard-panels";
-import { HeroSection, MetricCard } from "./requester-dashboard-hero";
 
 type DashboardData = Awaited<ReturnType<typeof getRequesterDashboard>>;
 
@@ -10,8 +15,7 @@ export function RequesterDashboardHome({
 }: {
   dashboard: DashboardData;
 }) {
-  const { organization, stats, recentRequests, draftCount } =
-    dashboard;
+  const { organization, stats, recentRequests } = dashboard;
 
   if (!organization || !stats) {
     return (
@@ -33,55 +37,22 @@ export function RequesterDashboardHome({
     );
   }
 
-  const activeRequestCount =
-    stats.responding +
-    stats.negotiating +
-    stats.inProgress +
-    stats.rejected +
-    stats.completed;
-  const showEmptyState = activeRequestCount === 0 && draftCount === 0;
   return (
-    <div className="flex min-h-full flex-col gap-8 pb-2">
-      <HeroSection organizationName={organization.name} />
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)] gap-4 overflow-hidden">
+      <HeroSection
+        email={dashboard.email}
+        organizationName={organization.name}
+      />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard
-          status="responding"
-          value={stats.responding}
-          href="/requester/requests?status=responding"
+      <DashboardFocusGrid />
+
+      <section className="grid min-h-0 grid-rows-2 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(20rem,2fr)] xl:grid-rows-1">
+        <RecentRequestsPanel
+          requests={recentRequests}
+          dictionaries={dashboard.dictionaries}
         />
-        <MetricCard
-          status="negotiation"
-          value={stats.negotiating}
-          href="/requester/requests?status=negotiation"
-        />
-        <MetricCard
-          status="in_progress"
-          value={stats.inProgress}
-          href="/requester/requests?status=in_progress"
-        />
-        <MetricCard
-          status="rejected"
-          value={stats.rejected}
-          href="/requester/requests?status=rejected"
-        />
-        <MetricCard
-          status="completed"
-          value={stats.completed}
-          href="/requester/requests?status=completed"
-        />
+        <LifecyclePanel stats={stats} />
       </section>
-
-      {showEmptyState ? (
-        <DashboardEmptyState />
-      ) : (
-        <section className="grid min-h-[27rem] flex-1 grid-cols-1 items-stretch gap-6 pb-px">
-          <RecentRequestsPanel
-            requests={recentRequests}
-            dictionaries={dashboard.dictionaries}
-          />
-        </section>
-      )}
     </div>
   );
 }

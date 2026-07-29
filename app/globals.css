@@ -76,4 +76,36 @@
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  .dashboard-tone-red {
+    @apply border-red-200 bg-red-50 text-red-500;
+  }
+
+  .dashboard-tone-amber {
+    @apply border-amber-200 bg-amber-50 text-amber-500;
+  }
+
+  .dashboard-tone-green {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-600;
+  }
+
+  .dashboard-badge-red {
+    @apply border-red-200 bg-red-50 text-red-600;
+  }
+
+  .dashboard-badge-amber {
+    @apply border-amber-200 bg-amber-50 text-amber-600;
+  }
+
+  .dashboard-badge-green {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-700;
+  }
+
+  .dashboard-badge-blue {
+    @apply border-sky-200 bg-sky-50 text-sky-700;
+  }
+
+  .dashboard-badge-violet {
+    @apply border-violet-200 bg-violet-50 text-violet-700;
+  }
 }
