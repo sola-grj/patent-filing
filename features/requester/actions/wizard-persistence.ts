@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 
 import {
   type ActionResult,
@@ -24,9 +23,9 @@ import {
   writeRequestEvent,
 } from "./helpers";
 import {
-  enqueueSubmittedPatentCache,
   verifyPatentReceipts,
 } from "./patent-service";
+import { ensureSubmittedPatentFileReady } from "./patent-file-readiness";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 const DEFAULT_DELIVERY_OPTION = "standard";
@@ -39,6 +38,7 @@ export async function persistWizardRequest(
     deferFormalSubmission?: boolean;
   },
 ): Promise<ActionResult<WizardPersistResult>> {
+  let persistedResult: WizardPersistResult | undefined;
   try {
     let payload = parseWizardPayload(formData);
     const { supabase, userId, organization } = await getRequesterOrganization();
@@ -59,6 +59,29 @@ export async function persistWizardRequest(
     const requestId = payload.requestId ?? randomUUID();
     const uploadedFormFiles = formData.getAll("files").filter((file): file is File => file instanceof File);
     validateUploadFiles(uploadedFormFiles);
+    const submittedRequestNo = mode === "submit"
+      && payload.requestId
+      && payload.sourceMode === "patent_search"
+      && !options?.deferFormalSubmission
+      && !options?.deferPatentCache
+      ? await findSubmittedPatentRequest(
+          supabase,
+          requestId,
+          userId,
+        )
+      : null;
+    if (submittedRequestNo) {
+      persistedResult = { requestId, requestNo: submittedRequestNo };
+      await prepareSubmittedPatentFile({
+        supabase,
+        requestId,
+        userId,
+        lookupReceipt: payload.selectedPatent!.lookupReceipt!,
+        analysisReceipt: payload.analysis!.analysis_receipt!,
+      });
+      revalidateRequestPaths(requestId);
+      return { success: true, data: persistedResult };
+    }
     const reuseExistingUploadFiles = Boolean(payload.requestId)
       && payload.sourceMode === "upload"
       && uploadedFormFiles.length === 0;
@@ -90,6 +113,7 @@ export async function persistWizardRequest(
       reuseExistingUploadFiles,
       mode,
     );
+    persistedResult = { requestId, requestNo };
 
     if (mode === "draft") {
       await writeRequestEvent(
@@ -125,7 +149,7 @@ export async function persistWizardRequest(
         payload.sourceMode === "patent_search"
         && !options?.deferPatentCache
       ) {
-        scheduleSubmittedPatentCache({
+        await prepareSubmittedPatentFile({
           supabase,
           requestId,
           userId,
@@ -135,63 +159,75 @@ export async function persistWizardRequest(
       }
     }
 
-    revalidatePath("/requester");
-    revalidatePath("/requester/requests");
-    revalidatePath(`/requester/requests/${requestId}`);
-    revalidatePath(`/requester/requests/${requestId}/quote`);
-    revalidatePath("/pm");
-    revalidatePath("/pm/requests");
-    revalidatePath(`/pm/requests/${requestId}`);
-    return { success: true, data: { requestId, requestNo } };
+    revalidateRequestPaths(requestId);
+    return { success: true, data: persistedResult };
   } catch (error) {
-    return { success: false, error: toErrorMessage(error) };
+    return {
+      success: false,
+      data: persistedResult,
+      error: toErrorMessage(error),
+    };
   }
 }
 
-function scheduleSubmittedPatentCache(input: {
+async function findSubmittedPatentRequest(
+  supabase: SupabaseClient,
+  requestId: string,
+  userId: string,
+) {
+  const { data, error } = await supabase
+    .from("translation_requests")
+    .select("request_no, requester_id, source_mode, submitted_at")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!data?.submitted_at) {
+    return null;
+  }
+  if (data.requester_id !== userId || data.source_mode !== "patent_search") {
+    throw new Error("This submitted patent Request is not available.");
+  }
+  return data.request_no as string;
+}
+
+async function prepareSubmittedPatentFile(input: {
   supabase: SupabaseClient;
   requestId: string;
   userId: string;
   lookupReceipt: string;
   analysisReceipt: string;
 }) {
-  after(async () => {
-    try {
-      await enqueueSubmittedPatentCache({
-        requestId: input.requestId,
-        lookupReceipt: input.lookupReceipt,
-        analysisReceipt: input.analysisReceipt,
-      });
-    } catch (cacheError) {
-      try {
-        await input.supabase
-          .from("request_files")
-          .update({ status: "failed" })
-          .eq("request_id", input.requestId)
-          .eq("source", "patent_search");
-      } catch {
-        // The Request and quote are already complete.
-      }
-      try {
-        await writeRequestEvent(
-          input.supabase,
-          input.requestId,
-          input.userId,
-          "patent.cache.enqueue_failed",
-          "quoted",
-          "quoted",
-          {
-            message: cacheError instanceof Error
-              ? cacheError.message
-              : "Patent cache preparation failed.",
-            retryable: true,
-          },
-        );
-      } catch {
-        // Cache preparation is non-transactional and must not undo submission.
-      }
-    }
-  });
+  try {
+    await ensureSubmittedPatentFileReady(input);
+  } catch (cacheError) {
+    await writeRequestEvent(
+      input.supabase,
+      input.requestId,
+      input.userId,
+      "patent.cache.prepare_failed",
+      "quoted",
+      "quoted",
+      {
+        message: cacheError instanceof Error
+          ? cacheError.message
+          : "Patent cache preparation failed.",
+        retryable: true,
+      },
+    ).catch(() => undefined);
+    throw cacheError;
+  }
+}
+
+function revalidateRequestPaths(requestId: string) {
+  revalidatePath("/requester");
+  revalidatePath("/requester/requests");
+  revalidatePath(`/requester/requests/${requestId}`);
+  revalidatePath(`/requester/requests/${requestId}/quote`);
+  revalidatePath("/pm");
+  revalidatePath("/pm/requests");
+  revalidatePath(`/pm/requests/${requestId}`);
 }
 
 async function verifySubmittedPatentPayload(
@@ -238,10 +274,14 @@ function validateCommercialFields(payload: WizardPayload) {
   if (!config.jurisdictionCodes.length) {
     throw new Error("Select at least one jurisdiction.");
   }
-  const hasTranslationGrant = config.serviceTypes.includes("translation")
-    && config.serviceTypes.includes("european_patent_grant_registration");
-  if (config.channelCode !== "ep" && (config.serviceTypes.includes("epv") || hasTranslationGrant)) {
-    throw new Error("EPV and Translation + Grant are only available for EPO.");
+  const hasGrantService = config.serviceTypes.includes(
+    "european_patent_grant_registration",
+  );
+  if (
+    config.channelCode !== "ep"
+    && (config.serviceTypes.includes("epv") || hasGrantService)
+  ) {
+    throw new Error("Grant and EPV are only available for EPO.");
   }
   if (config.serviceTypes.includes("filing")) {
     if (!config.filingType || !config.filingApplicationType || !config.entityType) {

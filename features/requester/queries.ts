@@ -176,7 +176,7 @@ export async function getRequesterDashboard() {
   ] = await Promise.all([
     supabase
       .from("translation_requests")
-      .select("id, request_no, title, channel_code, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types), request_patents(patent_number)")
+      .select("id, request_no, title, source_mode, channel_code, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types), request_patents(patent_number)")
       .eq("requester_id", userId)
       .order("updated_at", { ascending: false }),
     supabase

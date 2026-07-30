@@ -40,7 +40,7 @@ export function PmRequestOverview({
       value: channelLabel(config.channelCode || request.channel_code),
     },
     { label: "Service type", value: labelForMany(serviceTypeOptions, serviceTypes) },
-    { label: "Patent language", value: labelFor(sourceLanguageOptions, config.sourceLanguage) },
+    { label: "Source Language", value: labelFor(sourceLanguageOptions, config.sourceLanguage) },
     {
       label: "Jurisdictions",
       value: labelForMany(jurisdictionOptions, config.jurisdictionCodes),

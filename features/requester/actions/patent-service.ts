@@ -52,12 +52,13 @@ export async function enqueueSubmittedPatentCache(input: {
     request_id: input.requestId,
     lookup_receipt: input.lookupReceipt,
     analysis_receipt: input.analysisReceipt,
-  });
+  }, 120_000);
 }
 
 async function callPatentService<T>(
   path: string,
   body: Record<string, unknown>,
+  timeoutMs = 15_000,
 ): Promise<T> {
   const apiKey = process.env.PATENT_SERVICE_API_KEY?.trim();
   if (!apiKey) {
@@ -76,7 +77,7 @@ async function callPatentService<T>(
       },
       body: JSON.stringify(body),
       cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     throw new Error("The patent service is unavailable. Please retry.");

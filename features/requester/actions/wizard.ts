@@ -117,7 +117,13 @@ export async function submitNegotiationFromWizard(
       { sourceMode, negotiation: true },
     );
     if (sourceMode === "patent_search") {
-      await retrySubmittedPatentCache(requestId);
+      const cacheResult = await retrySubmittedPatentCache(requestId);
+      if (!cacheResult.success) {
+        throw new Error(
+          cacheResult.error
+          || "The original patent file could not be prepared.",
+        );
+      }
     }
 
     revalidatePath("/requester");

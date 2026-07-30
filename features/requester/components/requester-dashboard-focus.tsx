@@ -65,7 +65,9 @@ function AttentionPanel({ items }: { items: DashboardAttentionItem[] }) {
           {items.map((item) => (
             <div
               key={item.id}
-              className="grid min-h-[64px] flex-1 items-center gap-4 py-3 sm:grid-cols-[minmax(0,1fr)_7rem_9rem]"
+              className={`grid min-h-[64px] items-center gap-4 py-3 sm:grid-cols-[minmax(0,1fr)_7rem_9rem] ${
+                items.length === 1 ? "basis-1/3 flex-none" : "flex-1"
+              }`}
             >
               <div className="flex min-w-0 items-center gap-4">
                 <span
@@ -151,12 +153,12 @@ function DeadlinesPanel() {
         </div>
         <CalendarDays className="size-5 text-slate-500" />
       </div>
-      <div className="hide-scrollbar min-h-0 flex-1 divide-y overflow-y-auto px-5">
+      <div className="hide-scrollbar flex min-h-0 flex-1 flex-col divide-y overflow-y-auto px-5">
         {deadlineItems.map((item) => (
           <Link
             key={`${item.date}-${item.title}`}
             href="/requester/requests"
-            className="grid items-center gap-3 py-3 text-sm sm:grid-cols-[4.5rem_minmax(0,1fr)_auto_auto]"
+            className="grid min-h-[64px] flex-1 items-center gap-3 py-3 text-sm sm:grid-cols-[4.5rem_minmax(0,1fr)_auto_auto]"
           >
             <span className="font-semibold text-red-500">{item.date}</span>
             <span className="min-w-0">

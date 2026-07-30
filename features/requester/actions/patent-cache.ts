@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { ActionResult } from "@/lib/validators/requester";
 import type { WizardPayload } from "@/features/requester/wizard-types";
 import { getAuthenticatedUser, toErrorMessage } from "../server-utils";
-import { enqueueSubmittedPatentCache } from "./patent-service";
+import { ensureSubmittedPatentFileReady } from "./patent-file-readiness";
 
 export async function retrySubmittedPatentCache(
   requestId: string,
@@ -34,24 +34,14 @@ export async function retrySubmittedPatentCache(
         "Verified patent data is unavailable. Search the patent again to create a new Request.",
       );
     }
-    let result;
-    try {
-      result = await enqueueSubmittedPatentCache({
-        requestId,
-        lookupReceipt,
-        analysisReceipt,
-      });
-    } catch (cacheError) {
-      await supabase
-        .from("request_files")
-        .update({ status: "failed" })
-        .eq("request_id", requestId)
-        .eq("source", "patent_search");
-      revalidatePath(`/requester/requests/${requestId}`);
-      throw cacheError;
-    }
+    await ensureSubmittedPatentFileReady({
+      supabase,
+      requestId,
+      lookupReceipt,
+      analysisReceipt,
+    });
     revalidatePath(`/requester/requests/${requestId}`);
-    return { success: true, data: { status: result.status } };
+    return { success: true, data: { status: "completed" } };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
   }

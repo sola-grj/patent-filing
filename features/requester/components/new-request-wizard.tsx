@@ -59,6 +59,7 @@ import {
   normalizeWizardConfig,
   toWizardFormData,
   type WizardConfigFieldErrors,
+  updateWizardChannel,
   validateWizardConfigFields,
   validateWizardPayload,
   validateWizardStep,
@@ -334,6 +335,12 @@ export function NewRequestWizard({
 
         if (result.data?.requestId) {
           setRequestId(result.data.requestId);
+        }
+        if (!result.success) {
+          resolve(false);
+          return;
+        }
+        if (result.data?.requestId) {
           options?.onSuccess?.(result.data.requestId);
           if (options?.redirectOnSuccess !== false) {
             router.push(`/requester/requests/${result.data.requestId}`);
@@ -462,6 +469,19 @@ export function NewRequestWizard({
               />
             </div>
             <div className="shrink-0 px-6 py-4">
+              {step === 1 && sourceMode === "patent_search" ? (
+                <div className="mb-3 space-y-3">
+                  {selectedPatent?.dataOrigin === "cache_fallback" ? (
+                    <PatentCacheWarning />
+                  ) : null}
+                  <PatentProcessingNotice
+                    status={analysis.status}
+                    result={analysis.result}
+                    error={analysis.error}
+                    onRetry={retryPatentAnalysis}
+                  />
+                </div>
+              ) : null}
               {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
               <WizardFooter
                 step={step}
@@ -481,6 +501,11 @@ export function NewRequestWizard({
                 onSubmit={() => {
                   void persist(submitRequestFromWizard);
                 }}
+                pendingLabel={
+                  sourceMode === "patent_search"
+                    ? "Preparing original file..."
+                    : "Submitting..."
+                }
               />
             </div>
           </CardContent>
@@ -570,7 +595,7 @@ function StepContent(props: {
           if (props.sourceMode !== "patent_search" || props.config.channelCode !== value) {
             props.clearSourceState();
           }
-          props.setConfig({ ...props.config, channelCode: value });
+          props.setConfig(updateWizardChannel(props.config, value));
         }}
         onSourceModeChange={(value) => {
           const activeRoute = props.sourceMode === "upload"
@@ -604,21 +629,6 @@ function StepContent(props: {
         }
         onChange={props.setConfig}
         dictionaries={props.dictionaries}
-        processingNotice={
-          props.sourceMode === "patent_search" ? (
-            <div className="space-y-3">
-              {props.selectedPatent?.dataOrigin === "cache_fallback" ? (
-                <PatentCacheWarning />
-              ) : null}
-              <PatentProcessingNotice
-                status={props.analysisStatus}
-                result={props.analysisResult}
-                error={props.analysisError}
-                onRetry={props.onAnalysisRetry}
-              />
-            </div>
-          ) : undefined
-        }
       />
     );
   }
@@ -638,6 +648,7 @@ function WizardFooter(props: {
   step: number;
   nextLabel?: string;
   isPending: boolean;
+  pendingLabel?: string;
   submitDisabled?: boolean;
   onCancel: () => void;
   onPrevious: () => void;
@@ -657,7 +668,9 @@ function WizardFooter(props: {
             disabled={props.isPending || props.submitDisabled}
             onClick={props.onSubmit}
           >
-            {props.isPending ? "Submitting..." : "Submit Request"}
+            {props.isPending
+              ? props.pendingLabel ?? "Submitting..."
+              : "Submit Request"}
           </Button>
         )}
       </div>

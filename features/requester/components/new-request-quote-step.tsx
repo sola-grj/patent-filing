@@ -96,7 +96,7 @@ export function QuoteStepContent({
                 <Table.Header>
                   <Table.Row className="hover:bg-transparent">
                     <Table.ColumnHeaderCell className={includeTranslation ? "w-[10%]" : undefined}>Jurisdiction</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell className={includeTranslation ? "w-[10%]" : undefined}>Patent Language</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell className={includeTranslation ? "w-[10%]" : undefined}>Source Language</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell className={includeTranslation ? "w-[8%]" : undefined} justify="end">Filing Fee</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell className={includeTranslation ? "w-[8%]" : undefined} justify="end">Official Fee</Table.ColumnHeaderCell>
                     {includeTranslation ? (

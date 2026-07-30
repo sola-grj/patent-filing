@@ -40,6 +40,7 @@ import {
   onConfigValueChange,
   parsePreviewFiles,
   type WizardConfigFieldErrors,
+  updateWizardChannel,
 } from "./new-request-wizard-utils";
 import { Field, Metric } from "./new-request-wizard-shared";
 
@@ -165,7 +166,6 @@ export function ConfigStep({
   patentNumber,
   onChange,
   dictionaries,
-  processingNotice,
 }: {
   config: WizardConfig;
   configFieldErrors: WizardConfigFieldErrors;
@@ -173,7 +173,6 @@ export function ConfigStep({
   patentNumber?: string;
   onChange: (config: WizardConfig) => void;
   dictionaries: WizardDictionaries;
-  processingNotice?: ReactNode;
 }) {
   const dueDateRef = useRef<HTMLInputElement | null>(null);
   const channelLabel = config.channelCode === "ep"
@@ -219,17 +218,7 @@ export function ConfigStep({
   }
 
   function handleChannelChange(channelCode: string) {
-    const hasEpoOnlyService = config.serviceTypes.includes("epv")
-      || (
-        config.serviceTypes.includes("translation")
-        && config.serviceTypes.includes("european_patent_grant_registration")
-      );
-    onChange({
-      ...config,
-      channelCode,
-      serviceTypes: channelCode !== "ep" && hasEpoOnlyService ? [] : config.serviceTypes,
-      epvType: channelCode !== "ep" ? "" : config.epvType,
-    });
+    onChange(updateWizardChannel(config, channelCode));
   }
 
   const channelOptions = dictionaries.channels
@@ -345,9 +334,9 @@ export function ConfigStep({
             />
           ) : null}
           <SearchableSingleSelectField
-            label="Patent Language"
+            label="Source Language"
             value={config.sourceLanguage}
-            placeholder="Choose a patent language"
+            placeholder="Choose a source language"
             options={sourceLanguageOptions}
             error={configFieldErrors.sourceLanguage}
             required
@@ -425,7 +414,6 @@ export function ConfigStep({
             Urgent
           </label>
         </div>
-        {processingNotice}
       </div>
     </div>
   );
@@ -469,7 +457,7 @@ function ServiceTypeField(props: {
 
 const serviceTypeSelections = [
   { value: "translation", label: "Translation", epoOnly: false },
-  { value: "grant", label: "Grant", epoOnly: false },
+  { value: "grant", label: "Grant", epoOnly: true },
   { value: "filing", label: "Filing", epoOnly: false },
   { value: "translation_filing", label: "Translation + Filing", epoOnly: false },
   { value: "translation_grant", label: "Translation + Grant", epoOnly: true },

@@ -220,7 +220,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       value: formatConfigLabels(serviceTypeOptions, serviceTypes),
     },
     {
-      label: "Patent language",
+      label: "Source Language",
       value: formatConfigLabel(
         sourceLanguageOptions,
         config.sourceLanguage,

@@ -43,8 +43,13 @@ export function PatentFileDownloadButton({
         throw new Error("The download request was redirected. Please sign in again.");
       }
       if (!response.ok) {
-        const body = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(body?.error || "Unable to download the original patent file.");
+        const body = await response.json().catch(() => null) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          body?.error
+          || `Unable to download the original patent file (${response.status}).`,
+        );
       }
 
       const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
@@ -72,7 +77,7 @@ export function PatentFileDownloadButton({
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Download failed.");
     } finally {
@@ -93,28 +98,35 @@ export function PatentFileDownloadButton({
             : "Original patent file is unavailable.");
 
   return (
-    <TooltipProvider delayDuration={120}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label="Download original file"
-            disabled={isDownloading || !isReady}
-            onClick={handleDownload}
-          >
-            {isDownloading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Download className="size-4" />
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{tooltip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <div className="flex flex-col items-end gap-1">
+      <TooltipProvider delayDuration={120}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="Download original file"
+              disabled={isDownloading || !isReady}
+              onClick={handleDownload}
+            >
+              {isDownloading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Download className="size-4" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{tooltip}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      {error ? (
+        <p role="alert" className="max-w-72 text-right text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

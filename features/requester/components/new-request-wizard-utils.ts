@@ -168,6 +168,29 @@ export function onConfigValueChange<K extends keyof WizardConfig>(
   return (value: string) => onChange({ ...config, [key]: value });
 }
 
+const epoOnlyServiceTypes = new Set([
+  "epv",
+  "european_patent_grant_registration",
+]);
+
+export function updateWizardChannel(
+  config: WizardConfig,
+  channelCode: string,
+): WizardConfig {
+  const serviceTypes = channelCode === "ep"
+    ? config.serviceTypes
+    : config.serviceTypes.filter(
+        (serviceType) => !epoOnlyServiceTypes.has(serviceType),
+      );
+
+  return {
+    ...config,
+    channelCode,
+    serviceTypes,
+    epvType: serviceTypes.includes("epv") ? config.epvType : "",
+  };
+}
+
 export function normalizeWizardConfig(
   config?: Partial<WizardConfig> & {
     targetLanguage?: string;
@@ -184,19 +207,26 @@ export function normalizeWizardConfig(
     : config?.purpose === "paris_convention"
       ? "paris_convention"
       : "ep";
-  const serviceTypes = Array.isArray(config?.serviceTypes)
+  const channelCode = config?.channelCode === "upload_files"
+    ? "ep"
+    : config?.channelCode || legacyChannel;
+  const configuredServiceTypes = Array.isArray(config?.serviceTypes)
     ? config.serviceTypes.filter(Boolean)
     : [];
+  const serviceTypes = channelCode === "ep"
+    ? configuredServiceTypes
+    : configuredServiceTypes.filter(
+        (serviceType) => !epoOnlyServiceTypes.has(serviceType),
+      );
   const isTranslationOnlyService = serviceTypes.length === 1
     && serviceTypes[0] === "translation";
 
   return {
     ...merged,
-    channelCode: config?.channelCode === "upload_files"
-      ? "ep"
-      : config?.channelCode || legacyChannel,
+    channelCode,
     serviceTypes,
     dueAt: isTranslationOnlyService ? merged.dueAt : "",
+    epvType: serviceTypes.includes("epv") ? merged.epvType : "",
     jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
@@ -227,10 +257,11 @@ export function validateWizardConfigFields(
     errors.serviceTypes = "Select at least one service type before continuing.";
   }
 
-  const hasTranslationGrant = config.serviceTypes.includes("translation")
-    && config.serviceTypes.includes("european_patent_grant_registration");
-  if (config.channelCode !== "ep" && (hasEpvService || hasTranslationGrant)) {
-    errors.serviceTypes = "EPV and Translation + Grant are only available for EPO.";
+  const hasGrantService = config.serviceTypes.includes(
+    "european_patent_grant_registration",
+  );
+  if (config.channelCode !== "ep" && (hasEpvService || hasGrantService)) {
+    errors.serviceTypes = "Grant and EPV are only available for EPO.";
   }
 
   if (hasFilingService) {
@@ -252,7 +283,7 @@ export function validateWizardConfigFields(
   }
 
   if (!config.sourceLanguage) {
-    errors.sourceLanguage = "Select a patent language before continuing.";
+    errors.sourceLanguage = "Select a source language before continuing.";
   }
 
   if (!config.jurisdictionCodes.length) {

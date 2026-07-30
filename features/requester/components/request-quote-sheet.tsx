@@ -81,7 +81,7 @@ export function RequestQuoteSheet({
               <Table.Header>
                 <Table.Row className="hover:bg-transparent">
                   <Table.ColumnHeaderCell>Jurisdiction</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Patent Language</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Source Language</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell justify="end">Filing Fee</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell justify="end">Official Fee</Table.ColumnHeaderCell>
                   {includeTranslation ? (

@@ -23,14 +23,10 @@ export function RequestSummaryBadges({
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2 md:grid md:grid-cols-[7rem_10rem_10rem]">
       <span className="flex min-w-0 justify-start">
-        <span
-          className={`max-w-full truncate rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${
-            channelToneClassNames[channelCode ?? ""]
-              ?? "border-slate-300 bg-slate-100 text-slate-700"
-          }`}
-        >
-          {channelLabel}
-        </span>
+        <RequestChannelBadge
+          channelCode={channelCode}
+          label={channelLabel}
+        />
       </span>
       <span className="flex min-w-0 justify-start">
         <span className="max-w-full truncate rounded-full border bg-background px-3 py-1 text-xs font-medium text-foreground">
@@ -41,6 +37,25 @@ export function RequestSummaryBadges({
         <RequesterStatusBadge status={status} />
       </span>
     </div>
+  );
+}
+
+export function RequestChannelBadge({
+  channelCode,
+  label,
+}: {
+  channelCode?: string | null;
+  label: string;
+}) {
+  return (
+    <span
+      className={`inline-flex max-w-full items-center justify-center truncate rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${
+        channelToneClassNames[channelCode ?? ""]
+          ?? "border-slate-300 bg-slate-100 text-slate-700"
+      }`}
+    >
+      {label}
+    </span>
   );
 }
 
