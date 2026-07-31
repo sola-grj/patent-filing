@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
@@ -45,6 +46,16 @@ export default {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        brand: {
+          DEFAULT: "rgb(var(--brand) / <alpha-value>)",
+          hover: "rgb(var(--brand-hover) / <alpha-value>)",
+          foreground: "rgb(var(--brand-foreground) / <alpha-value>)",
+          soft: "rgb(var(--brand-soft) / <alpha-value>)",
+          "soft-foreground":
+            "rgb(var(--brand-soft-foreground) / <alpha-value>)",
+          border: "rgb(var(--brand-border) / <alpha-value>)",
+          ring: "rgb(var(--brand-ring) / <alpha-value>)",
+        },
         chart: {
           "1": "hsl(var(--chart-1))",
           "2": "hsl(var(--chart-2))",
@@ -60,5 +71,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;

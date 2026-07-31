@@ -27,12 +27,12 @@ export function AppTopNavLinks({ links }: { links: AppTopNavLink[] }) {
             href={link.href}
             className={cn(
               "relative flex h-full items-center text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
-              active && "text-emerald-950",
+              active && "text-brand-soft-foreground",
             )}
           >
             {link.label}
             {active ? (
-              <span className="absolute inset-x-0 -bottom-[1px] h-0.5 bg-emerald-900" />
+              <span className="absolute inset-x-0 -bottom-[1px] h-0.5 bg-brand" />
             ) : null}
           </Link>
         );

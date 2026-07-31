@@ -4,12 +4,12 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --background: 354 54% 97%;
+    --foreground: 226 34% 15%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 226 34% 15%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
+    --popover-foreground: 226 34% 15%;
     --primary: 0 0% 9%;
     --primary-foreground: 0 0% 98%;
     --secondary: 0 0% 96.1%;
@@ -20,15 +20,42 @@
     --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --border: 0 0% 91%;
+    --input: 0 0% 85%;
+    --ring: 0 75% 51%;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    --brand: 224 34 34;
+    --brand-hover: 197 29 29;
+    --brand-foreground: 255 255 255;
+    --brand-soft: 244 227 220;
+    --brand-soft-foreground: 61 9 9;
+    --brand-border: 224 34 34;
+    --brand-ring: 224 34 34;
+  }
+  [data-color-theme="midnight"] {
+    --ring: 226 34% 15%;
+    --brand: 25 32 51;
+    --brand-hover: 44 54 82;
+    --brand-foreground: 255 255 255;
+    --brand-soft: 238 240 245;
+    --brand-soft-foreground: 25 32 51;
+    --brand-border: 25 32 51;
+    --brand-ring: 25 32 51;
+  }
+  [data-color-theme="forest"] {
+    --ring: 158 71% 31%;
+    --brand: 18 104 77;
+    --brand-hover: 25 126 94;
+    --brand-foreground: 255 255 255;
+    --brand-soft: 236 253 245;
+    --brand-soft-foreground: 15 86 65;
+    --brand-border: 18 104 77;
+    --brand-ring: 25 126 94;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -55,6 +82,31 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+  }
+  .dark[data-color-theme="crimson"] {
+    --ring: 0 75% 51%;
+    --brand-soft: 61 9 9;
+    --brand-soft-foreground: 252 245 246;
+    --brand-border: 224 34 34;
+    --brand-ring: 224 34 34;
+  }
+  .dark[data-color-theme="midnight"] {
+    --ring: 225 30% 72%;
+    --brand: 59 73 112;
+    --brand-hover: 82 96 137;
+    --brand-soft: 35 43 64;
+    --brand-soft-foreground: 238 240 245;
+    --brand-border: 92 105 142;
+    --brand-ring: 148 163 184;
+  }
+  .dark[data-color-theme="forest"] {
+    --ring: 158 64% 45%;
+    --brand: 18 128 94;
+    --brand-hover: 27 153 112;
+    --brand-soft: 8 72 57;
+    --brand-soft-foreground: 236 253 245;
+    --brand-border: 38 166 123;
+    --brand-ring: 52 211 153;
   }
 }
 
@@ -101,11 +153,20 @@
     @apply border-emerald-200 bg-emerald-50 text-emerald-700;
   }
 
-  .dashboard-badge-blue {
-    @apply border-sky-200 bg-sky-50 text-sky-700;
+  .dashboard-badge-blue,
+  .dashboard-badge-violet {
+    @apply border-brand-border/20 bg-brand-soft text-brand-soft-foreground;
   }
 
-  .dashboard-badge-violet {
-    @apply border-violet-200 bg-violet-50 text-violet-700;
+  .dark .dashboard-tone-red {
+    @apply border-red-900 bg-red-950/50 text-red-300;
+  }
+
+  .dark .dashboard-tone-amber {
+    @apply border-amber-900 bg-amber-950/50 text-amber-300;
+  }
+
+  .dark .dashboard-tone-green {
+    @apply border-emerald-900 bg-emerald-950/50 text-emerald-300;
   }
 }

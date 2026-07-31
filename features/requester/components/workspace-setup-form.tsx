@@ -16,7 +16,7 @@ export function WorkspaceSetupForm() {
   return (
     <Card className="w-full max-w-xl shadow-sm">
       <CardHeader>
-        <CardTitle>Initialize your Patentia workspace</CardTitle>
+        <CardTitle>Initialize your Pat workspace</CardTitle>
       </CardHeader>
       <CardContent>
         <form

@@ -30,14 +30,14 @@ export function RecentRequestsPanel({
         <h2 className="text-lg font-semibold">Recent Requests</h2>
         <Link
           href="/requester/requests"
-          className="flex items-center gap-1 text-xs font-medium text-emerald-950"
+          className="flex items-center gap-1 text-xs font-medium text-brand-soft-foreground"
         >
           View all requests
           <ChevronRight className="size-4" />
         </Link>
       </div>
 
-      <div className="hidden shrink-0 grid-cols-[1.25fr_1fr_1fr_1fr_8rem] gap-4 border-b bg-slate-50/70 px-5 py-3 text-xs font-medium text-slate-600 md:grid">
+      <div className="hidden shrink-0 grid-cols-[1.25fr_1fr_1fr_1fr_8rem] gap-4 border-b bg-muted/50 px-5 py-3 text-xs font-medium text-muted-foreground md:grid">
         <span>Matter</span>
         <span>Channel</span>
         <span>Service</span>
@@ -95,7 +95,7 @@ function RecentRequestRow({
   return (
     <Link
       href={`/requester/requests/${request.id}`}
-      className={`grid min-h-[56px] gap-2 py-4 text-sm transition-colors hover:bg-slate-50/70 md:grid-cols-[1.25fr_1fr_1fr_1fr_8rem] md:items-center md:gap-4 ${
+      className={`grid min-h-[56px] gap-2 py-4 text-sm transition-colors hover:bg-brand-soft/45 md:grid-cols-[1.25fr_1fr_1fr_1fr_8rem] md:items-center md:gap-4 ${
         fillAvailableHeight ? "flex-1" : "basis-1/3 flex-none"
       }`}
     >
@@ -106,10 +106,11 @@ function RecentRequestRow({
         <RequestChannelBadge
           channelCode={channel.code}
           label={channel.label}
+          variant="neutral"
         />
       </span>
-      <span className="truncate text-slate-600">{service}</span>
-      <span className="flex items-center gap-1.5 text-slate-600">
+      <span className="truncate text-muted-foreground">{service}</span>
+      <span className="flex items-center gap-1.5 text-muted-foreground">
         <CalendarDays className="size-4" />
         {formatDate(request.updated_at)}
       </span>
@@ -148,21 +149,21 @@ const lifecycleItems: Array<{
     status: "responding",
     statKey: "responding",
     href: "/requester/requests?status=responding",
-    rowClassName: "border-sky-200 bg-sky-50/55",
+    rowClassName: "border-border bg-card",
     iconClassName: "bg-sky-600 text-white",
   },
   {
     status: "in_progress",
     statKey: "inProgress",
     href: "/requester/requests?status=in_progress",
-    rowClassName: "border-violet-200 bg-violet-50/55",
+    rowClassName: "border-border bg-card",
     iconClassName: "bg-violet-600 text-white",
   },
   {
     status: "completed",
     statKey: "completed",
     href: "/requester/requests?status=completed",
-    rowClassName: "border-emerald-200 bg-emerald-50/55",
+    rowClassName: "border-border bg-card",
     iconClassName: "bg-emerald-600 text-white",
   },
 ];
@@ -189,14 +190,14 @@ export function LifecyclePanel({ stats }: { stats: DashboardStats }) {
                 <meta.icon className="size-5" />
               </span>
               <span>
-                <span className="block text-xl font-semibold leading-5 text-emerald-950">
+                <span className="block text-xl font-semibold leading-5 text-foreground">
                   {stats[item.statKey]}
                 </span>
-                <span className="mt-1 block text-sm text-slate-600">
+                <span className="mt-1 block text-sm text-muted-foreground">
                   {meta.label}
                 </span>
               </span>
-              <ChevronRight className="size-4 text-slate-600" />
+              <ChevronRight className="size-4 text-muted-foreground" />
             </Link>
           );
         })}

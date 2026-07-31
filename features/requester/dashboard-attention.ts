@@ -4,7 +4,6 @@ export type DashboardAttentionItem = {
   kind: "urgent" | "download";
   title: string;
   detail: string;
-  badge: string;
   action: string;
   href: string;
   tone: "red" | "green";
@@ -77,7 +76,6 @@ function urgentAttentionItem(request: DashboardRequest): DashboardAttentionItem 
     kind: "urgent",
     title: requestMatter(request),
     detail: `${request.request_no} · ${titleCase(request.requester_status)}`,
-    badge: "Urgent",
     action: "View request",
     href: `/requester/requests/${request.id}`,
     tone: "red",
@@ -110,7 +108,6 @@ function downloadAttentionItem(
     kind: "download",
     title: "Delivery ready to download",
     detail: `${requestMatter(request)} · Completed ${formatShortDate(completedAt)}`,
-    badge: "Ready",
     action: "Download",
     href: `/requester/orders/${order.id}/deliverables/${latestDeliverable.id}`,
     tone: "green",

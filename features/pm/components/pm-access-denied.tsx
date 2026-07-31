@@ -6,7 +6,7 @@ export function PmAccessDenied() {
   return (
     <div className="mx-auto flex min-h-[calc(100vh-12rem)] max-w-xl flex-col items-center justify-center text-center">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        Patentia PM
+        Pat PM
       </p>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight">
         PM access required

@@ -25,7 +25,7 @@ export function RequesterDashboardHome({
             Requester Portal
           </p>
           <h1 className="text-3xl font-semibold tracking-tight">
-            Set up your Patentia workspace
+            Set up your Pat workspace
           </h1>
           <p className="mx-auto max-w-xl text-sm text-muted-foreground">
             Create your organization profile before starting patent translation

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { getOptionalAuthenticatedUser } from "@/lib/auth/user-routing";
@@ -20,12 +21,17 @@ export async function AppTopNav({
         <div className="flex h-full min-w-0 items-center gap-16">
           <Link
             href="/"
-            className="flex items-center gap-3 text-xl font-semibold tracking-tight text-emerald-950"
+            className="flex items-center gap-3 text-xl font-semibold tracking-tight text-foreground"
           >
-            <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-950 text-sm font-bold text-white">
-              P
-            </span>
-            Patentia
+            <Image
+              src="/logo.svg"
+              alt=""
+              width={25}
+              height={24}
+              className="size-8"
+              priority
+            />
+            Pat
           </Link>
           {links.length ? (
             <AppTopNavLinks links={links} />
@@ -50,12 +56,17 @@ export function AppTopNavFallback({
         <div className="flex h-full min-w-0 items-center gap-16">
           <Link
             href="/"
-            className="flex items-center gap-3 text-xl font-semibold tracking-tight text-emerald-950"
+            className="flex items-center gap-3 text-xl font-semibold tracking-tight text-foreground"
           >
-            <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-950 text-sm font-bold text-white">
-              P
-            </span>
-            Patentia
+            <Image
+              src="/logo.svg"
+              alt=""
+              width={25}
+              height={24}
+              className="size-8"
+              priority
+            />
+            Pat
           </Link>
           {links.length ? (
             <div className="hidden h-full items-center gap-8 md:flex">

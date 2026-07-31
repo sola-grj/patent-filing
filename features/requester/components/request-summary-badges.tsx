@@ -1,4 +1,5 @@
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
+import { cn } from "@/lib/utils";
 
 const channelToneClassNames: Record<string, string> = {
   ep: "border-fuchsia-400 bg-[linear-gradient(135deg,#d946ef,#ec4899)] text-white",
@@ -43,16 +44,22 @@ export function RequestSummaryBadges({
 export function RequestChannelBadge({
   channelCode,
   label,
+  variant = "default",
 }: {
   channelCode?: string | null;
   label: string;
+  variant?: "default" | "neutral";
 }) {
   return (
     <span
-      className={`inline-flex max-w-full items-center justify-center truncate rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${
-        channelToneClassNames[channelCode ?? ""]
-          ?? "border-slate-300 bg-slate-100 text-slate-700"
-      }`}
+      className={cn(
+        "inline-flex max-w-full items-center justify-center truncate rounded-full border px-3 py-1 text-xs font-semibold",
+        variant === "neutral"
+          ? "border-border bg-muted/65 text-foreground"
+          : channelToneClassNames[channelCode ?? ""]
+            ?? "border-slate-300 bg-slate-100 text-slate-700",
+        variant === "default" && "shadow-sm",
+      )}
     >
       {label}
     </span>
