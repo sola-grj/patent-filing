@@ -8,17 +8,14 @@ import type {
   WizardDictionaries,
   WizardPatentAnalysisFile,
   WizardPatentAnalysisStatus,
-  WizardPatentCandidate,
   WizardPayload,
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import {
   buildEstimateRows,
   hasTranslationPricing,
-  labelFor,
 } from "./new-request-quote-pricing";
 import { StepShell } from "./new-request-wizard-shared";
-import { PatentDetailStep } from "./patent-detail-step";
 import { PatentProcessingNotice } from "./patent-processing-notice";
 import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
 
@@ -41,7 +38,6 @@ export function QuoteStepContent({
   const estimateRows = buildEstimateRows(payload, dictionaries);
   const includeTranslation = hasTranslationPricing(payload);
   const total = estimateRows.reduce((sum, row) => sum + row.total, 0);
-  const entityLabel = labelFor(dictionaries.entityTypes, payload.config.entityType);
 
   return (
     <StepShell
@@ -57,14 +53,12 @@ export function QuoteStepContent({
             onRetry={onAnalysisRetry}
           />
         ) : null}
-        {payload.sourceMode === "patent_search" && payload.selectedPatent ? (
-          <PatentOverviewCard patent={payload.selectedPatent} entityLabel={entityLabel} />
-        ) : (
+        {payload.sourceMode === "upload" ? (
           <UploadOverviewCard
             files={payload.uploadedFiles}
             analysisFiles={payload.analysis?.files ?? []}
           />
-        )}
+        ) : null}
 
         <section className="rounded-2xl border bg-card">
           <div className="flex flex-wrap items-start justify-between gap-4 border-b px-6 py-5">
@@ -157,30 +151,6 @@ export function QuoteStepContent({
         </section>
       </div>
     </StepShell>
-  );
-}
-
-function PatentOverviewCard({
-  patent,
-  entityLabel,
-}: {
-  patent: WizardPatentCandidate;
-  entityLabel: string;
-}) {
-  return (
-    <details className="group rounded-2xl border bg-card">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5">
-        <p className="text-sm font-bold uppercase tracking-[0.2em]">Patent Detail</p>
-        <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="border-t px-6 py-5">
-        <PatentDetailStep
-          patent={patent}
-          additionalMetadata={[{ label: "Entity", value: entityLabel }]}
-          plainBibliographic
-        />
-      </div>
-    </details>
   );
 }
 

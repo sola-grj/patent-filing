@@ -1,5 +1,8 @@
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
 import { DeliverableDownloadButton } from "@/features/requester/components/deliverable-download-button";
@@ -207,18 +210,9 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const showEpvType = serviceTypes.includes("epv");
   const showQuality = serviceTypes.includes("translation") || showEpvType;
   const showDueDate = serviceTypes.includes("translation") && Boolean(dueAt);
-  const requestItems: DetailItem[] = [
+  const leftColumnItems: DetailItem[] = [
     { label: "Organization", value: organization?.name ?? "-" },
-    { label: "Submitted", value: formatDate(request.submitted_at) },
     { label: "Updated", value: formatDate(request.updated_at) },
-    {
-      label: "Channel",
-      value: channelLabel(config.channelCode),
-    },
-    {
-      label: "Service type",
-      value: formatConfigLabels(serviceTypeOptions, serviceTypes),
-    },
     {
       label: "Source Language",
       value: formatConfigLabel(
@@ -227,18 +221,8 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       ),
     },
     {
-      label: "Jurisdictions",
-      value: formatConfigLabels(jurisdictionOptions, jurisdictionCodes),
-    },
-    ...(showQuality
-      ? [{
-          label: "Quality",
-          value: formatConfigLabel(qualityOptions, config.qualityLevel),
-        }]
-      : []),
-    {
-      label: "Delivery option",
-      value: titleCase(config.deliveryOption),
+      label: "Service type",
+      value: formatConfigLabels(serviceTypeOptions, serviceTypes),
     },
     ...(showFilingFields
       ? [
@@ -271,6 +255,27 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           ),
         }]
       : []),
+    ...(showQuality
+      ? [{
+          label: "Quality",
+          value: formatConfigLabel(qualityOptions, config.qualityLevel),
+        }]
+      : []),
+  ];
+  const rightColumnItems: DetailItem[] = [
+    { label: "Submitted", value: formatDate(request.submitted_at) },
+    {
+      label: "Channel",
+      value: channelLabel(config.channelCode),
+    },
+    {
+      label: "Jurisdictions",
+      value: formatConfigLabels(jurisdictionOptions, jurisdictionCodes),
+    },
+    {
+      label: "Delivery option",
+      value: titleCase(config.deliveryOption),
+    },
     ...(showDueDate
       ? [{ label: "Due date", value: formatDate(dueAt) }]
       : []),
@@ -282,7 +287,6 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       label: "Special requirements",
       value:
         config.customScope?.trim() || "-",
-      className: "md:col-span-2",
     },
   ];
   return (
@@ -297,17 +301,28 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           />
         }
         action={
-          request.requester_status === "completed" && order?.id && latestDeliverable?.id ? (
-            <DeliverableDownloadButton
-              href={`/requester/orders/${order.id}/deliverables/${latestDeliverable.id}`}
-            />
-          ) : null
+          <div className="flex flex-wrap items-start justify-end gap-3">
+            <Button asChild variant="outline">
+              <Link href="/requester/requests">
+                <ArrowLeft />
+                Back to Requests
+              </Link>
+            </Button>
+            {request.requester_status === "completed" && order?.id && latestDeliverable?.id ? (
+              <DeliverableDownloadButton
+                href={`/requester/orders/${order.id}/deliverables/${latestDeliverable.id}`}
+              />
+            ) : null}
+          </div>
         }
       />
       <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="flex flex-col gap-6 pr-1">
           <Section title="Request overview">
-            <DetailsGrid items={requestItems} />
+            <div className="grid items-start gap-5 md:grid-cols-2">
+              <DetailsGrid items={leftColumnItems} columns="single" />
+              <DetailsGrid items={rightColumnItems} columns="single" />
+            </div>
           </Section>
           {isPatentSearch ? (
             <Section

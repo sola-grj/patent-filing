@@ -113,6 +113,7 @@ export type WizardDictionaries = {
 };
 
 export type WizardUploadedFile = {
+  requestFileId?: string;
   name: string;
   size: number;
   type: string;

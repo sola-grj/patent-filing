@@ -6,6 +6,7 @@ import { RequestWizardControllerProvider } from "@/features/requester/components
 const requesterNavLinks = [
   { href: "/requester", label: "Home", exact: true },
   { href: "/requester/requests", label: "Requests" },
+  { href: "/requester/drafts", label: "Drafts" },
   { href: "/requester/orders", label: "Orders" },
 ];
 

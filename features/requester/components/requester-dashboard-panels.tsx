@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronRight, FilePenLine } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { formatDate } from "@/features/requester/format";
@@ -13,6 +13,7 @@ import {
 
 type DashboardData = Awaited<ReturnType<typeof getRequesterDashboard>>;
 type DashboardRequest = DashboardData["recentRequests"][number];
+type DashboardDraft = DashboardData["recentDrafts"][number];
 type DashboardStats = NonNullable<DashboardData["stats"]>;
 
 export function RecentRequestsPanel({
@@ -136,6 +137,85 @@ function requestChannel(request: DashboardRequest) {
 
   return channels[request.channel_code ?? ""]
     ?? { code: "", label: "-" };
+}
+
+export function DraftsPanel({
+  drafts,
+  draftCount,
+}: {
+  drafts: DashboardDraft[];
+  draftCount: number;
+}) {
+  const visibleDrafts = drafts.slice(0, 3);
+
+  return (
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl shadow-sm">
+      <div className="flex shrink-0 items-center justify-between border-b px-5 py-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">Drafts</h2>
+          <span className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+            {draftCount}
+          </span>
+        </div>
+        <Link
+          href="/requester/drafts"
+          className="flex items-center gap-1 text-xs font-medium text-brand-soft-foreground"
+        >
+          View all
+          <ChevronRight className="size-4" />
+        </Link>
+      </div>
+
+      {visibleDrafts.length ? (
+        <div className="hide-scrollbar flex min-h-0 flex-1 flex-col divide-y overflow-y-auto px-5">
+          {visibleDrafts.map((draft) => (
+            <Link
+              key={draft.id}
+              href={`/requester/drafts/${draft.id}`}
+              className="flex min-h-[64px] flex-1 items-center gap-3 py-3 text-sm transition-colors hover:bg-brand-soft/45"
+            >
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <FilePenLine className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold">
+                  {draftMatter(draft)}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                  {draft.last_draft_step ?? "Source"} · {formatDate(draft.updated_at)}
+                </span>
+              </span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+          <div>
+            <p className="font-medium">No saved drafts</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Work saved from Step 1–3 will appear here.
+            </p>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function draftMatter(draft: DashboardDraft) {
+  const payload = draft.draft_payload;
+  if (payload?.sourceMode === "patent_search") {
+    return payload.selectedPatent?.patentNumber
+      || payload.patentQuery
+      || draft.request_no;
+  }
+
+  const fileCount = payload?.uploadedFiles?.length ?? 0;
+  if (fileCount) {
+    return `${fileCount} uploaded file${fileCount === 1 ? "" : "s"}`;
+  }
+  return draft.request_no;
 }
 
 const lifecycleItems: Array<{

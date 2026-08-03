@@ -62,6 +62,7 @@ type DraftRow = {
   last_draft_step: string | null;
   draft_payload: Partial<WizardPayload> | null;
   request_files?: Array<{
+    id: string;
     original_filename: string;
     mime_type: string | null;
     metadata?: { size?: number } | null;
@@ -380,7 +381,7 @@ export async function getRequesterDraft(draftId: string) {
   const { supabase } = await getAuthenticatedUser();
   const { data, error } = await supabase
     .from("translation_requests")
-    .select("id, request_no, title, source_mode, workflow_stage, updated_at, last_draft_step, draft_payload, request_files(original_filename, mime_type, metadata)")
+    .select("id, request_no, title, source_mode, workflow_stage, updated_at, last_draft_step, draft_payload, request_files(id, original_filename, mime_type, metadata)")
     .eq("id", draftId)
     .eq("workflow_stage", "draft")
     .maybeSingle();
@@ -481,6 +482,7 @@ function mapDraftRowToWizardState(draft: DraftRow) {
       selectedPatent: payload.selectedPatent,
       selectedPatentFileIds: payload.selectedPatentFileIds ?? [],
       uploadedFiles,
+      analysis: payload.analysis,
       config: payload.config,
       lastStep: payload.lastStep ?? draft.last_draft_step ?? "Source",
     } satisfies Partial<WizardPayload>,
@@ -491,6 +493,7 @@ function mapDraftRequestFiles(
   requestFiles: NonNullable<DraftRow["request_files"]>,
 ): WizardUploadedFile[] {
   return requestFiles.map((file) => ({
+    requestFileId: file.id,
     name: file.original_filename,
     size: file.metadata?.size ?? 0,
     type: file.mime_type ?? "",

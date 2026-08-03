@@ -7,16 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { lookupPatentForWizard } from "@/features/requester/actions";
 import type {
-  WizardPatentAnalysisResult,
-  WizardPatentAnalysisStatus,
   WizardPatentCandidate,
   WizardSourceMode,
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import { fileToUploadedFile } from "./new-request-wizard-utils";
 import { FileList, StepShell } from "./new-request-wizard-shared";
-import { PatentDetailStep } from "./patent-detail-step";
-import { PatentProcessingNotice } from "./patent-processing-notice";
 
 const searchEntryCards = [
   {
@@ -47,10 +43,6 @@ export function SourceStep(props: {
   sourceMode: WizardSourceMode;
   channelCode: string;
   patentQuery: string;
-  patent?: WizardPatentCandidate;
-  analysisStatus: WizardPatentAnalysisStatus;
-  analysisResult?: WizardPatentAnalysisResult;
-  analysisError?: string;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
   isPending: boolean;
@@ -59,7 +51,8 @@ export function SourceStep(props: {
   onPatentQueryChange: (value: string) => void;
   onPatentSearch: (patent: WizardPatentCandidate) => Promise<void> | void;
   onPatentSearchStart: () => void;
-  onAnalysisRetry: () => void;
+  onPatentSearchFailure: () => void;
+  onPatentSearchLoadingChange: (message: string | null) => void;
   onFilesChange: (files: File[]) => void;
   onRemoveFile: (index: number) => void;
 }) {
@@ -98,15 +91,20 @@ export function SourceStep(props: {
         </div>
 
         {patentSearchMode ? (
-          <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden">
-            <div className="shrink-0 space-y-2">
-              <form
-                className="flex flex-col gap-3 md:flex-row"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  setSearchError(null);
-                  props.onPatentSearchStart();
-                  startSearchTransition(async () => {
+          <div className="space-y-2">
+            <form
+              className="flex flex-col gap-3 md:flex-row"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setSearchError(null);
+                if (!props.patentQuery.trim()) {
+                  setSearchError("Enter a patent number to search.");
+                  return;
+                }
+                props.onPatentSearchLoadingChange("Parsing patent details");
+                props.onPatentSearchStart();
+                startSearchTransition(async () => {
+                  try {
                     const formData = new FormData();
                     formData.set("patentQuery", props.patentQuery);
                     const result = await lookupPatentForWizard(formData);
@@ -116,50 +114,42 @@ export function SourceStep(props: {
                       return;
                     }
 
+                    props.onPatentSearchFailure();
                     setSearchError(
                       result.error || "No patent data was found. Check the patent number and try again.",
                     );
-                  });
+                  } catch {
+                    props.onPatentSearchFailure();
+                    setSearchError("Patent search failed. Please try again later.");
+                  } finally {
+                    props.onPatentSearchLoadingChange(null);
+                  }
+                });
+              }}
+            >
+              <Input
+                value={props.patentQuery}
+                disabled={props.isPending || isSearching}
+                onChange={(event) => {
+                  setSearchError(null);
+                  props.onPatentQueryChange(event.target.value);
                 }}
+                placeholder={resolvePatentPlaceholder(activeCard)}
+                className="focus-visible:ring-0"
+              />
+              <Button
+                type="submit"
+                disabled={props.isPending || isSearching}
+                className="md:min-w-32"
               >
-                <Input
-                  value={props.patentQuery}
-                  onChange={(event) => {
-                    setSearchError(null);
-                    props.onPatentQueryChange(event.target.value);
-                  }}
-                  placeholder={resolvePatentPlaceholder(activeCard)}
-                  className="focus-visible:ring-0"
-                />
-                <Button
-                  type="submit"
-                  disabled={props.isPending || isSearching}
-                  className="md:min-w-32"
-                >
-                  {isSearching ? "Searching..." : "Search patent"}
-                </Button>
-              </form>
-              {searchError ? (
-                <p role="alert" className="text-sm text-destructive">
-                  {searchError}
-                </p>
-              ) : null}
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-              {props.patent ? (
-                <div className="space-y-4 overflow-hidden rounded-2xl border bg-background p-5">
-                  <PatentProcessingNotice
-                    status={props.analysisStatus}
-                    result={props.analysisResult}
-                    error={props.analysisError}
-                    onRetry={props.onAnalysisRetry}
-                  />
-                  <PatentDetailStep
-                    patent={props.patent}
-                  />
-                </div>
-              ) : null}
-            </div>
+                {isSearching ? "Searching..." : "Search patent"}
+              </Button>
+            </form>
+            {searchError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {searchError}
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden rounded-2xl border bg-muted/20 p-5">

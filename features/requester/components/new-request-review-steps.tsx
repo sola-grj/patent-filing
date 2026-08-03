@@ -33,6 +33,7 @@ import {
 import type {
   WizardConfig,
   WizardDictionaries,
+  WizardPatentCandidate,
   WizardPayload,
   WizardSourceMode,
 } from "@/features/requester/wizard-types";
@@ -43,6 +44,7 @@ import {
   updateWizardChannel,
 } from "./new-request-wizard-utils";
 import { Field, Metric } from "./new-request-wizard-shared";
+import { PatentBasicInfo } from "./patent-basic-info";
 
 export { QuoteStepContent } from "./new-request-quote-step";
 
@@ -163,14 +165,14 @@ export function ConfigStep({
   config,
   configFieldErrors,
   sourceMode,
-  patentNumber,
+  patent,
   onChange,
   dictionaries,
 }: {
   config: WizardConfig;
   configFieldErrors: WizardConfigFieldErrors;
   sourceMode: WizardSourceMode;
-  patentNumber?: string;
+  patent?: WizardPatentCandidate;
   onChange: (config: WizardConfig) => void;
   dictionaries: WizardDictionaries;
 }) {
@@ -240,30 +242,22 @@ export function ConfigStep({
         </div>
       </div>
       <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="grid gap-4 md:grid-cols-2">
-          {patentNumber ? (
-            <>
-              <div className="space-y-2">
-                <Label>Patent number</Label>
-                <div className="flex min-h-10 items-center rounded-md border bg-muted/20 px-3 text-sm font-medium">
-                  {patentNumber}
-                </div>
+        {patent ? <PatentBasicInfo patent={patent} /> : null}
+        <div className={`grid gap-4 md:grid-cols-2 ${patent ? "mt-5" : ""}`}>
+          {isChannelLocked ? (
+            <div className="space-y-2 md:col-span-2">
+              <Label>
+                <span className="text-destructive" aria-hidden="true">*</span>{" "}
+                Channels
+              </Label>
+              <div className={getFieldClassName(Boolean(configFieldErrors.channelCode), "flex min-h-10 items-center bg-muted/20 px-3 text-sm font-medium")}>
+                {channelLabel}
               </div>
-              <div className="space-y-2">
-                <Label>
-                  <span className="text-destructive" aria-hidden="true">*</span>{" "}
-                  Channels
-                </Label>
-                <div className={getFieldClassName(Boolean(configFieldErrors.channelCode), "flex min-h-10 items-center bg-muted/20 px-3 text-sm font-medium")}>
-                  {channelLabel}
-                </div>
-                {configFieldErrors.channelCode ? (
-                  <p className="text-sm text-destructive">{configFieldErrors.channelCode}</p>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-          {!patentNumber ? (
+              {configFieldErrors.channelCode ? (
+                <p className="text-sm text-destructive">{configFieldErrors.channelCode}</p>
+              ) : null}
+            </div>
+          ) : (
             <div className="md:col-span-2">
               <SelectField
                 label="Channels"
@@ -276,7 +270,7 @@ export function ConfigStep({
                 onChange={handleChannelChange}
               />
             </div>
-          ) : null}
+          )}
           <div className="md:col-span-2">
             <ServiceTypeField
               channelCode={config.channelCode}

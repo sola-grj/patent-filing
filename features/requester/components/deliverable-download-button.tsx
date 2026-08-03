@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -67,12 +67,15 @@ export function DeliverableDownloadButton({ href }: { href: string }) {
     <div className="flex flex-col items-end gap-2">
       <Button
         type="button"
-        variant="secondary"
-        size="sm"
+        className="h-9 px-5 shadow-md"
         disabled={isDownloading}
         onClick={handleDownload}
       >
-        {isDownloading ? <Loader2 className="animate-spin" /> : null}
+        {isDownloading ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <Download />
+        )}
         {isDownloading ? "Downloading..." : "Download ZIP"}
       </Button>
       {error ? (

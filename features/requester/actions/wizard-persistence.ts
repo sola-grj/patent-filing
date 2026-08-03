@@ -84,11 +84,18 @@ export async function persistWizardRequest(
     }
     const reuseExistingUploadFiles = Boolean(payload.requestId)
       && payload.sourceMode === "upload"
-      && uploadedFormFiles.length === 0;
+      && uploadedFormFiles.length === 0
+      && payload.uploadedFiles.some((file) => Boolean(file.requestFileId));
 
     if (payload.requestId) {
       await assertEditableDraft(supabase, requestId, userId);
-      if (!reuseExistingUploadFiles) {
+      if (reuseExistingUploadFiles) {
+        await reconcileDraftUploadFiles(
+          supabase,
+          requestId,
+          payload.uploadedFiles,
+        );
+      } else {
         await clearDraftSourceArtifacts(supabase, requestId);
       }
       if (mode === "submit") {
@@ -113,6 +120,9 @@ export async function persistWizardRequest(
       reuseExistingUploadFiles,
       mode,
     );
+    if (mode === "draft" && payload.sourceMode === "upload") {
+      payload = await refreshDraftUploadPayload(supabase, requestId, payload);
+    }
     persistedResult = { requestId, requestNo };
 
     if (mode === "draft") {
@@ -222,6 +232,8 @@ async function prepareSubmittedPatentFile(input: {
 
 function revalidateRequestPaths(requestId: string) {
   revalidatePath("/requester");
+  revalidatePath("/requester/drafts");
+  revalidatePath(`/requester/drafts/${requestId}`);
   revalidatePath("/requester/requests");
   revalidatePath(`/requester/requests/${requestId}`);
   revalidatePath(`/requester/requests/${requestId}/quote`);
@@ -511,6 +523,77 @@ async function fetchExistingRequestFileIds(
   if (error) throw new Error(error.message);
 
   return (data ?? []).map((file) => file.id);
+}
+
+async function reconcileDraftUploadFiles(
+  supabase: SupabaseClient,
+  requestId: string,
+  uploadedFiles: WizardPayload["uploadedFiles"],
+) {
+  const { data, error } = await supabase
+    .from("request_files")
+    .select("id, storage_bucket, storage_path")
+    .eq("request_id", requestId)
+    .eq("source", "upload");
+
+  if (error) throw new Error(error.message);
+
+  const retainedIds = new Set(
+    uploadedFiles.flatMap((file) => file.requestFileId ? [file.requestFileId] : []),
+  );
+  const removedFiles = (data ?? []).filter((file) => !retainedIds.has(file.id));
+  if (!removedFiles.length) return;
+
+  const pathsByBucket = new Map<string, string[]>();
+  for (const file of removedFiles) {
+    const paths = pathsByBucket.get(file.storage_bucket) ?? [];
+    paths.push(file.storage_path);
+    pathsByBucket.set(file.storage_bucket, paths);
+  }
+
+  for (const [bucket, paths] of pathsByBucket) {
+    const { error: storageError } = await supabase.storage.from(bucket).remove(paths);
+    if (storageError) throw new Error(storageError.message);
+  }
+
+  const { error: deleteError } = await supabase
+    .from("request_files")
+    .delete()
+    .in("id", removedFiles.map((file) => file.id));
+  if (deleteError) throw new Error(deleteError.message);
+}
+
+async function refreshDraftUploadPayload(
+  supabase: SupabaseClient,
+  requestId: string,
+  payload: WizardPayload,
+) {
+  const { data, error } = await supabase
+    .from("request_files")
+    .select("id, original_filename, mime_type, metadata")
+    .eq("request_id", requestId)
+    .eq("source", "upload")
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const refreshedPayload: WizardPayload = {
+    ...payload,
+    requestId,
+    uploadedFiles: (data ?? []).map((file) => ({
+      requestFileId: file.id,
+      name: file.original_filename,
+      size: Number((file.metadata as { size?: number } | null)?.size ?? 0),
+      type: file.mime_type ?? "",
+    })),
+  };
+  const { error: updateError } = await supabase
+    .from("translation_requests")
+    .update({ draft_payload: refreshedPayload })
+    .eq("id", requestId);
+
+  if (updateError) throw new Error(updateError.message);
+  return refreshedPayload;
 }
 
 async function persistPatentSelection(

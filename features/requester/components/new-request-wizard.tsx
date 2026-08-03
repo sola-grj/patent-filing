@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleHelp, Loader2 } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
@@ -26,15 +26,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { sourceLanguageOptions } from "@/features/requester/options";
 import { validateUploadFiles } from "@/lib/validators/requester";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   saveRequestDraft,
   submitNegotiationFromWizard,
@@ -111,8 +112,9 @@ export function NewRequestWizard({
   const [showConfigValidation, setShowConfigValidation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stepLoadingMessage, setStepLoadingMessage] = useState<string | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const isBusy = isPending || stepLoadingMessage !== null;
+  const isBusy = isPending || isSavingDraft || stepLoadingMessage !== null;
   const payload = buildPayload();
   const configFieldErrors =
     step === 1 && showConfigValidation ? validateWizardConfigFields(config) : {};
@@ -157,9 +159,13 @@ export function NewRequestWizard({
   }
 
   function applyPatentSearchResult(candidate: WizardPatentCandidate) {
-    analysis.reset();
+    const sourceLanguage = resolvePatentSourceLanguage(candidate);
     setSelectedPatent(candidate);
     setSelectedPatentFileIds(candidate.downloadableFiles.map((file) => file.id));
+    if (sourceLanguage) {
+      setConfig((current) => ({ ...current, sourceLanguage }));
+    }
+    setStep(1);
   }
 
   function retryPatentAnalysis() {
@@ -170,7 +176,18 @@ export function NewRequestWizard({
     });
   }
 
-  function clearPatentSearchResult() {
+  function startPatentSearch() {
+    analysis.reset();
+    setSelectedPatent(undefined);
+    setSelectedPatentFileIds([]);
+    analysis.start({
+      sourceMode: "patent_search",
+      patentNumber: patentQuery,
+      files: [],
+    });
+  }
+
+  function failPatentSearch() {
     analysis.reset();
     setSelectedPatent(undefined);
     setSelectedPatentFileIds([]);
@@ -284,6 +301,21 @@ export function NewRequestWizard({
     }
 
     setCancelOpen(true);
+  }
+
+  async function handleSaveDraft() {
+    setIsSavingDraft(true);
+    try {
+      await persist(saveRequestDraft, {
+        redirectOnSuccess: false,
+        onSuccess: () => {
+          setCancelOpen(false);
+          router.push("/requester/drafts");
+        },
+      });
+    } finally {
+      setIsSavingDraft(false);
+    }
   }
 
   function resetWizard() {
@@ -425,7 +457,9 @@ export function NewRequestWizard({
                   clearStepError(0);
                   applyPatentSearchResult(value);
                 }}
-                clearPatentSearchResult={clearPatentSearchResult}
+                startPatentSearch={startPatentSearch}
+                failPatentSearch={failPatentSearch}
+                setPatentSearchLoadingMessage={setStepLoadingMessage}
                 clearSourceState={clearSourceState}
                 setUploadedFiles={(value) => {
                   clearStepError(0);
@@ -445,26 +479,29 @@ export function NewRequestWizard({
                 setConfig={handleConfigChange}
                 dictionaries={dictionaries}
                 quoteAction={
-                  <TooltipProvider delayDuration={120}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                          onClick={() => {
-                            setError(null);
-                            setNegotiationOpen(true);
-                          }}
-                        >
-                          <CircleHelp className="h-4 w-4" />
-                          <span className="sr-only">Start negotiation</span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Start negotiation</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span className="sr-only">Download estimate</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-36">
+                      <DropdownMenuItem>
+                        <FileText className="h-4 w-4" />
+                        PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <FileSpreadsheet className="h-4 w-4" />
+                        XLSX
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 }
               />
             </div>
@@ -522,15 +559,11 @@ export function NewRequestWizard({
       <CancelDialog
         open={cancelOpen}
         isPending={isBusy}
+        isSavingDraft={isSavingDraft}
         onOpenChange={setCancelOpen}
         onDiscard={() => router.push("/requester")}
         onSaveDraft={() => {
-          void persist(saveRequestDraft, {
-            redirectOnSuccess: false,
-            onSuccess: (savedRequestId) => {
-              router.push(`/requester/drafts/${savedRequestId}`);
-            },
-          });
+          void handleSaveDraft();
         }}
       />
       <StepLoadingOverlay message={stepLoadingMessage} />
@@ -550,6 +583,24 @@ function resolveInitialStep(lastStep?: string) {
       : lastStep;
   const index = wizardSteps.findIndex((item) => item.title === normalizedStep);
   return index >= 0 ? index : 0;
+}
+
+function resolvePatentSourceLanguage(candidate: WizardPatentCandidate) {
+  const rawPublicationLanguage = candidate.sourceSnapshot?.publication_language;
+  const languageValues = [rawPublicationLanguage, candidate.publicationLanguage]
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
+
+  for (const language of languageValues) {
+    const normalized = language.trim().toLowerCase().replace("_", "-");
+    const option = sourceLanguageOptions.find((item) =>
+      item.value.toLowerCase() === normalized
+      || item.label.toLowerCase() === normalized
+      || item.value.toLowerCase().split("-")[0] === normalized
+    );
+    if (option) return option.value;
+  }
+
+  return undefined;
 }
 
 function StepContent(props: {
@@ -572,7 +623,9 @@ function StepContent(props: {
   setSourceMode: (value: WizardSourceMode) => void;
   setPatentQuery: (value: string) => void;
   setPatentSearchResult: (value: WizardPatentCandidate) => void;
-  clearPatentSearchResult: () => void;
+  startPatentSearch: () => void;
+  failPatentSearch: () => void;
+  setPatentSearchLoadingMessage: (message: string | null) => void;
   clearSourceState: () => void;
   setUploadedFiles: (value: File[]) => void;
   removeUploadedFile: (index: number) => void;
@@ -584,10 +637,6 @@ function StepContent(props: {
         sourceMode={props.sourceMode}
         channelCode={props.config.channelCode}
         patentQuery={props.patentQuery}
-        patent={props.selectedPatent}
-        analysisStatus={props.analysisStatus}
-        analysisResult={props.analysisResult}
-        analysisError={props.analysisError}
         uploadedFiles={props.uploadedFiles}
         uploadedFileSnapshots={props.uploadedFileSnapshots}
         isPending={props.isPending}
@@ -609,8 +658,9 @@ function StepContent(props: {
         }}
         onPatentQueryChange={props.setPatentQuery}
         onPatentSearch={props.setPatentSearchResult}
-        onPatentSearchStart={props.clearPatentSearchResult}
-        onAnalysisRetry={props.onAnalysisRetry}
+        onPatentSearchStart={props.startPatentSearch}
+        onPatentSearchFailure={props.failPatentSearch}
+        onPatentSearchLoadingChange={props.setPatentSearchLoadingMessage}
         onFilesChange={props.setUploadedFiles}
         onRemoveFile={props.removeUploadedFile}
       />
@@ -622,9 +672,9 @@ function StepContent(props: {
         config={props.config}
         configFieldErrors={props.configFieldErrors}
         sourceMode={props.sourceMode}
-        patentNumber={
+        patent={
           props.sourceMode === "patent_search"
-            ? props.selectedPatent?.patentNumber ?? props.patentQuery
+            ? props.selectedPatent
             : undefined
         }
         onChange={props.setConfig}
@@ -784,6 +834,7 @@ function NegotiationDialog(props: {
 function CancelDialog(props: {
   open: boolean;
   isPending: boolean;
+  isSavingDraft: boolean;
   onOpenChange: (open: boolean) => void;
   onDiscard: () => void;
   onSaveDraft: () => void;
@@ -793,10 +844,20 @@ function CancelDialog(props: {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Cancel this request?</AlertDialogTitle>
-          <AlertDialogDescription>You can keep editing or discard the wizard state.</AlertDialogDescription>
+          <AlertDialogDescription>
+            Save your current Step 1–3 progress as a draft, keep editing, or discard it.
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={props.isPending}
+            onClick={props.onSaveDraft}
+          >
+            {props.isSavingDraft ? "Saving..." : "Save Draft"}
+          </Button>
           <AlertDialogAction onClick={props.onDiscard}>Discard</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
