@@ -131,8 +131,7 @@ export async function submitNegotiationFromWizard(
     revalidatePath(`/requester/requests/${requestId}`);
     revalidatePath(`/requester/requests/${requestId}/quote`);
     revalidatePath("/pm");
-    revalidatePath("/pm/requests");
-    revalidatePath(`/pm/requests/${requestId}`);
+    revalidatePath(`/pm/${requestId}`);
 
     return {
       success: true,

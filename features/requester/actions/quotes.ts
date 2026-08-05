@@ -114,8 +114,7 @@ export async function acceptQuote(formData: FormData): Promise<ActionResult> {
     revalidatePath("/requester");
     revalidatePath("/requester/requests");
     revalidatePath("/pm");
-    revalidatePath("/pm/requests");
-    revalidatePath(`/pm/requests/${requestId}`);
+    revalidatePath(`/pm/${requestId}`);
     return { success: true };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
@@ -257,8 +256,7 @@ export async function acceptPmNegotiationQuote(
     revalidatePath("/requester");
     revalidatePath("/requester/requests");
     revalidatePath("/pm");
-    revalidatePath("/pm/requests");
-    revalidatePath(`/pm/requests/${requestId}`);
+    revalidatePath(`/pm/${requestId}`);
     return { success: true };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };

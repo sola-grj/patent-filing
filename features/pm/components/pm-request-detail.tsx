@@ -24,6 +24,8 @@ import {
 } from "@/features/requester/components/request-file-information";
 import { RequestFilesDownloadButton } from "@/features/requester/components/request-files-download-button";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
+import { PmSignaturePanel } from "@/features/filing-signatures/components/pm-signature-panel";
+import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
 import type {
   WizardConfig,
   WizardPatentCandidate,
@@ -179,6 +181,7 @@ type PmRequestDetailProps = {
     quote_negotiations?: Negotiation[] | null;
     orders?: Order | Order[] | null;
     request_events?: RequestEvent[] | null;
+    filing_signature_requests?: FilingSignatureRequest[] | null;
   };
   currentUserId: string | null;
 };
@@ -235,6 +238,10 @@ export function PmRequestDetail({
       ? patent?.patent_number?.trim() || patentCandidate?.patentNumber?.trim()
       : null) ||
     request.request_no;
+  const signatureRequests = request.filing_signature_requests ?? [];
+  const showSignaturePanel =
+    config.serviceTypes.includes("filing")
+    && (request.pm_status === "in_progress" || signatureRequests.length > 0);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-8 overflow-hidden">
@@ -259,6 +266,14 @@ export function PmRequestDetail({
               organizationName={organization?.name ?? "-"}
               request={request}
             />
+            {showSignaturePanel ? (
+              <PmSignaturePanel
+                key={signatureRequests.find((item) => ["draft", "sent"].includes(item.status))?.id ?? "new"}
+                canManage={request.pm_status === "in_progress"}
+                requestId={request.id}
+                signatureRequests={signatureRequests}
+              />
+            ) : null}
             {isPatentSearch ? (
               <PmPatentInfo
                 patent={patent}
@@ -275,7 +290,7 @@ export function PmRequestDetail({
                 files={uploadedFiles}
                 action={
                   <RequestFilesDownloadButton
-                    href={`/requester/requests/${request.id}/download`}
+                    href={`/pm/${request.id}/download`}
                   />
                 }
               />

@@ -1,5 +1,5 @@
 export const requestStatusOptions = [
-  { value: "all", label: "All lifecycle states" },
+  { value: "all", label: "All lifecycles" },
   { value: "responding", label: "Responding" },
   { value: "negotiation", label: "Negotiating" },
   { value: "in_progress", label: "In progress" },

@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 type RequestFileRow = {
   source?: string | null;
   storage_bucket: string;
@@ -16,6 +18,11 @@ export async function GET(
   { params }: { params: Promise<{ requestId: string }> },
 ) {
   const { requestId } = await params;
+
+  if (!uuidPattern.test(requestId)) {
+    return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  }
+
   const supabase = await createClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
   const userId = claimsData?.claims?.sub;

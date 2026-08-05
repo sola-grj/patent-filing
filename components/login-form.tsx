@@ -18,8 +18,9 @@ import { useState } from "react";
 
 export function LoginForm({
   className,
+  nextPath = "/",
   ...props
-}: React.ComponentPropsWithoutRef<"div">) {
+}: React.ComponentPropsWithoutRef<"div"> & { nextPath?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +39,7 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      router.replace("/");
+      router.replace(safeNextPath(nextPath));
       router.refresh();
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
@@ -107,4 +108,8 @@ export function LoginForm({
       </Card>
     </div>
   );
+}
+
+function safeNextPath(value: string | null) {
+  return value?.startsWith("/") && !value.startsWith("//") ? value : "/";
 }

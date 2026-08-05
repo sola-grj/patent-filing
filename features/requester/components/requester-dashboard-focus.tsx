@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleAlert,
   Download,
+  FileSignature,
   ShieldCheck,
 } from "lucide-react";
 
@@ -104,7 +105,7 @@ function AttentionPanel({ items }: { items: DashboardAttentionItem[] }) {
           <div>
             <p className="font-medium">You&apos;re all caught up</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Urgent requests and ready downloads will appear here.
+              Signature requests, urgent matters, and ready downloads will appear here.
             </p>
           </div>
         </div>
@@ -116,6 +117,9 @@ function AttentionPanel({ items }: { items: DashboardAttentionItem[] }) {
 function AttentionIcon({ kind }: { kind: DashboardAttentionItem["kind"] }) {
   if (kind === "download") {
     return <Download className="size-5" />;
+  }
+  if (kind === "signature") {
+    return <FileSignature className="size-5" />;
   }
   return <CalendarDays className="size-5" />;
 }

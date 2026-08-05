@@ -20,6 +20,8 @@ import {
   formatDate,
 } from "@/features/requester/format";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
+import { RequesterSignaturePanel } from "@/features/filing-signatures/components/requester-signature-panel";
+import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
 import {
   channelOptions,
   entityTypeOptions,
@@ -160,6 +162,7 @@ type RequestDetail = {
   quotes?: Quote[] | null;
   quote_negotiations?: QuoteNegotiation[] | null;
   orders?: Order | Order[] | null;
+  filing_signature_requests?: FilingSignatureRequest[] | null;
 };
 
 export function RequestDetailView({ request }: { request: RequestDetail }) {
@@ -210,6 +213,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const showEpvType = serviceTypes.includes("epv");
   const showQuality = serviceTypes.includes("translation") || showEpvType;
   const showDueDate = serviceTypes.includes("translation") && Boolean(dueAt);
+  const signatureRequests = request.filing_signature_requests ?? [];
   const leftColumnItems: DetailItem[] = [
     { label: "Organization", value: organization?.name ?? "-" },
     { label: "Updated", value: formatDate(request.updated_at) },
@@ -324,6 +328,9 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
               <DetailsGrid items={rightColumnItems} columns="single" />
             </div>
           </Section>
+          {showFilingFields && signatureRequests.length ? (
+            <RequesterSignaturePanel signatureRequests={signatureRequests} />
+          ) : null}
           {isPatentSearch ? (
             <Section
               title="Patent Information"

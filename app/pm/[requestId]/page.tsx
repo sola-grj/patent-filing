@@ -5,6 +5,8 @@ import { PmAccessDenied } from "@/features/pm/components/pm-access-denied";
 import { PmRequestDetail } from "@/features/pm/components/pm-request-detail";
 import { getPmRequestDetail } from "@/features/pm/queries";
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export default function PmRequestDetailPage({
   params,
 }: {
@@ -23,6 +25,11 @@ async function PmRequestDetailContent({
   params: Promise<{ requestId: string }>;
 }) {
   const { requestId } = await params;
+
+  if (!uuidPattern.test(requestId)) {
+    notFound();
+  }
+
   const result = await getPmRequestDetail(requestId);
 
   if (result.denied) {

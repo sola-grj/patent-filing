@@ -1,13 +1,5 @@
 import { requirePmContext } from "./server-utils";
 
-export const pmLifecycleBuckets = [
-  { status: "responding" },
-  { status: "negotiation" },
-  { status: "in_progress" },
-  { status: "rejected" },
-  { status: "completed" },
-] as const;
-
 export function normalizePmStatusFilter(status?: string, stage?: string) {
   if (status && status !== "all") {
     return status;
@@ -31,19 +23,31 @@ export function normalizePmStatusFilter(status?: string, stage?: string) {
   }
 }
 
-export async function getPmDashboard() {
+export async function getPmRequests(filters?: {
+  status?: string;
+  stage?: string;
+  channel?: string;
+  customer?: string;
+  q?: string;
+  page?: number;
+}) {
   const context = await requirePmContext();
 
   if (context.denied) {
     return {
       denied: true,
-      organization: null,
-      buckets: [],
-      recentRequests: [],
+      requests: [],
+      totalCount: 0,
+      totalPages: 0,
+      page: 1,
+      pageSize: 10,
       dictionaries: { channels: [], serviceTypes: [] },
+      customers: [],
     };
   }
 
+  const pageSize = 10;
+  const page = Math.max(1, filters?.page ?? 1);
   const [
     { data, error },
     { data: dictionaryItems, error: dictionaryError },
@@ -51,7 +55,7 @@ export async function getPmDashboard() {
     context.supabase
       .from("translation_requests")
       .select(
-        "id, request_no, title, channel_code, workflow_stage, pm_status, updated_at, translation_requirements(is_urgent, service_types), request_patents(patent_number)",
+        "id, request_no, title, channel_code, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations(id, name), request_files(id), request_patents(patent_number), translation_requirements(source_language, target_language, target_languages, service_types, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
       )
       .neq("workflow_stage", "draft")
       .order("updated_at", { ascending: false }),
@@ -70,7 +74,39 @@ export async function getPmDashboard() {
     throw new Error(dictionaryError.message);
   }
 
-  const requests = data ?? [];
+  const allRequests = data ?? [];
+  const normalizedStatus = normalizePmStatusFilter(filters?.status, filters?.stage);
+  const keyword = filters?.q?.toLowerCase().trim();
+  const requests = allRequests.filter((request) => {
+    const organization = firstRelation(request.organizations);
+    const patent = firstRelation(request.request_patents);
+
+    if (normalizedStatus && request.pm_status !== normalizedStatus) {
+      return false;
+    }
+    if (filters?.channel && request.channel_code !== filters.channel) {
+      return false;
+    }
+    if (filters?.customer && organization?.id !== filters.customer) {
+      return false;
+    }
+    if (keyword) {
+      return [
+        request.request_no,
+        request.title,
+        patent?.patent_number,
+        organization?.name,
+      ]
+          .join(" ")
+          .toLowerCase()
+          .includes(keyword);
+    }
+    return true;
+  });
+
+  const totalCount = requests.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const safePage = Math.min(page, totalPages);
   const dictionaries = {
     channels: (dictionaryItems ?? [])
       .filter((item) => item.category === "request_channel")
@@ -79,72 +115,17 @@ export async function getPmDashboard() {
       .filter((item) => item.category === "service_type")
       .map((item) => ({ value: item.code, label: item.label })),
   };
-
-  return {
-    denied: false,
-    organization: context.organization,
-    buckets: pmLifecycleBuckets.map((bucket) => ({
-      ...bucket,
-      count: requests.filter((request) => request.pm_status === bucket.status).length,
-    })),
-    recentRequests: requests.slice(0, 8),
-    dictionaries,
-  };
-}
-
-export async function getPmRequests(filters?: {
-  status?: string;
-  stage?: string;
-  q?: string;
-  page?: number;
-}) {
-  const context = await requirePmContext();
-
-  if (context.denied) {
-    return {
-      denied: true,
-      requests: [],
-      totalCount: 0,
-      totalPages: 0,
-      page: 1,
-      pageSize: 10,
-    };
-  }
-
-  const pageSize = 10;
-  const page = Math.max(1, filters?.page ?? 1);
-  let query = context.supabase
-    .from("translation_requests")
-    .select(
-      "id, request_no, title, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations(id, name), request_files(id), translation_requirements(source_language, target_language, target_languages, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
-    )
-    .neq("workflow_stage", "draft")
-    .order("updated_at", { ascending: false });
-
-  const normalizedStatus = normalizePmStatusFilter(filters?.status, filters?.stage);
-  if (normalizedStatus) {
-    query = query.eq("pm_status", normalizedStatus);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const keyword = filters?.q?.toLowerCase().trim();
-  const requests = keyword
-    ? (data ?? []).filter((request) => {
+  const customers = Array.from(
+    new Map(
+      allRequests.flatMap((request) => {
         const organization = firstRelation(request.organizations);
-        return [request.request_no, request.title, organization?.name]
-          .join(" ")
-          .toLowerCase()
-          .includes(keyword);
-      })
-    : data ?? [];
-
-  const totalCount = requests.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const safePage = Math.min(page, totalPages);
+        return organization?.id && organization.name
+          ? [[organization.id, organization.name] as const]
+          : [];
+      }),
+    ),
+    ([value, label]) => ({ value, label }),
+  ).sort((left, right) => left.label.localeCompare(right.label));
 
   return {
     denied: false,
@@ -153,6 +134,8 @@ export async function getPmRequests(filters?: {
     totalPages,
     page: safePage,
     pageSize,
+    dictionaries,
+    customers,
   };
 }
 
@@ -166,7 +149,7 @@ export async function getPmRequestDetail(requestId: string) {
   const { data, error } = await context.supabase
     .from("translation_requests")
     .select(
-      "*, organizations(id, name, type), request_files(*, file_parse_results(*), file_parse_jobs(*)), request_patents(*), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(*, task_deliverables(*))), request_events(*)",
+      "*, organizations(id, name, type), request_files(*, file_parse_results(*), file_parse_jobs(*)), request_patents(*), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(*, task_deliverables(*))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
     )
     .eq("id", requestId)
     .maybeSingle();

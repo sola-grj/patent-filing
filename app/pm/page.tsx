@@ -1,125 +1,183 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { Suspense } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PaginationNav } from "@/components/ui/pagination";
 import { PmAccessDenied } from "@/features/pm/components/pm-access-denied";
 import { PmHeader } from "@/features/pm/components/pm-header";
-import { getPmDashboard } from "@/features/pm/queries";
-import { MetricCard } from "@/features/requester/components/requester-dashboard-hero";
-import { RequestSummaryBadges } from "@/features/requester/components/request-summary-badges";
+import { PmRequestFilterForm } from "@/features/pm/components/pm-request-filter-form";
+import { getPmRequests, normalizePmStatusFilter } from "@/features/pm/queries";
+import { RequestListEmptyState } from "@/features/requests/components/request-list-empty-state";
+import {
+  RequestListRow,
+  RequestListTable,
+} from "@/features/requests/components/request-list-table";
+import {
+  RequestChannelBadge,
+  RequestServiceBadge,
+} from "@/features/requester/components/request-summary-badges";
 import { UrgentBadge } from "@/features/requester/components/urgent-badge";
-import { formatDate } from "@/features/requester/format";
+import { formatCurrency, formatDate } from "@/features/requester/format";
+import { buildFreshRequestHref } from "@/features/requester/requester-routes";
+import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
-export default function PmDashboardPage() {
+const requestGridClassName =
+  "grid grid-cols-[minmax(15rem,1.6fr)_minmax(12rem,1.15fr)_minmax(7rem,0.7fr)_minmax(11rem,1.1fr)_minmax(10rem,0.9fr)_minmax(7rem,0.65fr)_minmax(9rem,0.75fr)]";
+
+type PmHomeSearchParams = {
+  status?: string;
+  channel?: string;
+  customer?: string;
+  q?: string;
+  page?: string;
+};
+
+export default function PmDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<PmHomeSearchParams>;
+}) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading PM workspace...</p>}>
-      <PmDashboardContent />
+    <Suspense
+      fallback={
+        <p className="text-sm text-muted-foreground">Loading PM workspace...</p>
+      }
+    >
+      <PmDashboardContent searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function PmDashboardContent() {
-  const dashboard = await getPmDashboard();
+async function PmDashboardContent({
+  searchParams,
+}: {
+  searchParams: Promise<PmHomeSearchParams>;
+}) {
+  const params = await searchParams;
+  const requestedPage = Number(params.page ?? "1");
+  const status = normalizePmStatusFilter(params.status);
+  const result = await getPmRequests({
+    status,
+    channel: params.channel,
+    customer: params.customer,
+    q: params.q,
+    page: Number.isFinite(requestedPage) ? requestedPage : 1,
+  });
 
-  if (dashboard.denied) {
+  if (result.denied) {
     return <PmAccessDenied />;
   }
 
   return (
-    <div className="hide-scrollbar min-h-0 flex-1 space-y-8 overflow-y-auto pb-2">
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-hidden">
       <PmHeader
         title="Operations workspace"
         description="Manage patent translation requests from quote preparation through production start."
-        action={
-          <Button asChild>
-            <Link href="/pm/requests">Open request queue</Link>
-          </Button>
-        }
       />
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {dashboard.buckets.map((bucket) => (
-          <MetricCard
-            key={bucket.status}
-            status={bucket.status}
-            value={bucket.count}
-            href={`/pm/requests?status=${bucket.status}`}
-          />
-        ))}
-      </section>
-      <Card className="flex h-[27rem] min-h-[27rem] flex-col overflow-hidden rounded-[28px] border shadow-sm">
-        <CardHeader className="flex shrink-0 flex-row items-start justify-between gap-4 space-y-0 border-b bg-slate-50/70 px-6 py-5">
-          <div>
-            <CardTitle className="text-xl">Recent Requests</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Recent requests that may need follow-up, feedback, or delivery
-              review.
-            </p>
-          </div>
-          <Button asChild variant="link" size="sm" className="px-0">
-            <Link href="/pm/requests">View all</Link>
-          </Button>
-        </CardHeader>
-        <CardContent className="hide-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-2">
-          {dashboard.recentRequests.length ? (
-            <div className="divide-y">
-              {dashboard.recentRequests.map((request) => {
-                const requirement = Array.isArray(request.translation_requirements)
-                  ? request.translation_requirements[0]
-                  : request.translation_requirements;
-                const patent = Array.isArray(request.request_patents)
-                  ? request.request_patents[0]
-                  : request.request_patents;
-                const channelLabel = dictionaryLabel(
-                  dashboard.dictionaries.channels,
-                  request.channel_code,
-                );
-                return (
-                  <Link
-                    key={request.id}
-                    href={`/pm/requests/${request.id}`}
-                    className="group grid items-center gap-4 py-4 text-sm md:grid-cols-[minmax(0,1fr)_minmax(22rem,auto)_auto]"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-base font-semibold text-foreground">
-                          {patent?.patent_number || request.title?.trim() || "Request"}
-                        </span>
-                        {requirement?.is_urgent ? <UrgentBadge /> : null}
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-                        <span>{request.request_no}</span>
-                        <span className="h-1 w-1 rounded-full bg-slate-300" />
-                        <span>Updated {formatDate(request.updated_at)}</span>
-                      </div>
-                    </div>
-                    <RequestSummaryBadges
-                      channelCode={request.channel_code}
-                      channelLabel={channelLabel}
-                      serviceTypes={requirement?.service_types ?? []}
-                      serviceOptions={dashboard.dictionaries.serviceTypes}
-                      status={request.pm_status}
-                    />
-                    <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
-                  </Link>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="flex min-h-[12rem] items-center justify-center rounded-2xl border border-dashed bg-background px-6 py-10 text-center">
-              <div className="max-w-sm space-y-2">
-                <p className="font-semibold text-foreground">No active requests yet</p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Requests ready for PM follow-up will appear here.
-                </p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <PmRequestFilterForm
+        channels={result.dictionaries.channels}
+        customers={result.customers}
+        customer={params.customer}
+        channel={params.channel}
+        status={status}
+        query={params.q}
+      />
+      <div className="flex shrink-0 items-center justify-between text-sm text-muted-foreground">
+        <span>{result.totalCount} requests</span>
+        <span>
+          Page {result.page} of {result.totalPages}
+        </span>
+      </div>
+      <RequestListTable
+        columns={[
+          "Matter / Request No.",
+          "Customer",
+          "Channel",
+          "Service",
+          "PM Status",
+          "Quote",
+          "Updated",
+        ]}
+        gridClassName={requestGridClassName}
+        minWidthClassName="min-w-[1180px]"
+        hasRows={result.requests.length > 0}
+        emptyState={<RequestListEmptyState actionHref={buildFreshRequestHref()} />}
+      >
+        {result.requests.map((request) => {
+          const quote = latestBy(request.quotes ?? [], "created_at");
+          const organization = firstRelation(request.organizations);
+          const requirement = firstRelation(request.translation_requirements);
+          const patent = firstRelation(request.request_patents);
+          const channelLabel = dictionaryLabel(
+            result.dictionaries.channels,
+            request.channel_code,
+          );
+
+          return (
+            <RequestListRow
+              key={request.id}
+              href={`/pm/${request.id}`}
+              gridClassName={requestGridClassName}
+            >
+              <span className="min-w-0">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-base font-semibold text-foreground">
+                    {patent?.patent_number || request.title?.trim() || "Request"}
+                  </span>
+                  {requirement?.is_urgent ? (
+                    <UrgentBadge className="shrink-0" />
+                  ) : null}
+                </span>
+                <span className="mt-1 block truncate text-xs text-muted-foreground">
+                  {request.request_no}
+                </span>
+              </span>
+              <span className="truncate">{organization?.name ?? "-"}</span>
+              <span className="min-w-0">
+                <RequestChannelBadge
+                  channelCode={request.channel_code}
+                  label={channelLabel}
+                  variant="neutral"
+                />
+              </span>
+              <span className="min-w-0">
+                <RequestServiceBadge
+                  serviceTypes={requirement?.service_types ?? []}
+                  serviceOptions={result.dictionaries.serviceTypes}
+                />
+              </span>
+              <RequesterStatusBadge status={request.pm_status} size="compact" />
+              <span className="whitespace-nowrap">
+                {quote
+                  ? formatCurrency(quote.total_amount, quote.currency ?? "USD")
+                  : "-"}
+              </span>
+              <span className="whitespace-nowrap text-muted-foreground">
+                {formatDate(request.updated_at)}
+              </span>
+            </RequestListRow>
+          );
+        })}
+      </RequestListTable>
+      <div className="shrink-0 pt-1">
+        <PaginationNav
+          currentPage={result.page}
+          totalPages={result.totalPages}
+          buildHref={(page) => buildPageHref(page, params)}
+        />
+      </div>
     </div>
   );
+}
+
+function buildPageHref(page: number, filters: PmHomeSearchParams) {
+  const searchParams = new URLSearchParams();
+  for (const key of ["status", "channel", "customer", "q"] as const) {
+    const value = filters[key]?.trim();
+    if (value && value !== "all") {
+      searchParams.set(key, value);
+    }
+  }
+  searchParams.set("page", String(page));
+  return `/pm?${searchParams.toString()}`;
 }
 
 function dictionaryLabel(
@@ -128,4 +186,15 @@ function dictionaryLabel(
 ) {
   if (!value) return "-";
   return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function latestBy<T extends Record<string, unknown>>(items: T[], key: keyof T) {
+  return [...items].sort((left, right) =>
+    String(right[key] ?? "").localeCompare(String(left[key] ?? "")),
+  )[0] ?? null;
+}
+
+function firstRelation<T>(value?: T | T[] | null) {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }

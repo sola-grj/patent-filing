@@ -1,41 +1,47 @@
-import { Button } from "@/components/ui/button";
-
-const pmStatusOptions = [
-  { value: "all", label: "All lifecycles" },
-  { value: "responding", label: "Responding" },
-  { value: "negotiation", label: "Negotiating" },
-  { value: "in_progress", label: "In progress" },
-  { value: "rejected", label: "Rejected" },
-  { value: "completed", label: "Completed" },
-];
+import { RequestListFilterForm } from "@/features/requests/components/request-list-filter-form";
+import { requestStatusOptions } from "@/features/requester/options";
 
 export function PmRequestFilterForm({
+  channels,
+  customers,
+  customer,
+  channel,
   status,
   query,
 }: {
+  channels: Array<{ value: string; label: string }>;
+  customers: Array<{ value: string; label: string }>;
+  customer?: string;
+  channel?: string;
   status?: string;
   query?: string;
 }) {
   return (
-    <form className="flex flex-col gap-3 rounded-md border p-4 md:flex-row">
-      <select
-        name="status"
-        defaultValue={status ?? "all"}
-        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-      >
-        {pmStatusOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <input
-        name="q"
-        defaultValue={query ?? ""}
-        placeholder="Search request number, patent number, or organization"
-        className="h-10 rounded-md border border-input bg-background px-3 text-sm md:flex-1"
-      />
-      <Button type="submit">Filter</Button>
-    </form>
+    <RequestListFilterForm
+      basePath="/pm"
+      query={query}
+      searchPlaceholder="Search request, patent or matter"
+      className="lg:grid-cols-[minmax(20rem,2fr)_minmax(11rem,0.85fr)_minmax(11rem,0.85fr)_minmax(12rem,0.95fr)_auto]"
+      filters={[
+        {
+          name: "status",
+          value: status,
+          placeholder: "All lifecycles",
+          options: requestStatusOptions,
+        },
+        {
+          name: "channel",
+          value: channel,
+          placeholder: "All channels",
+          options: [{ value: "all", label: "All channels" }, ...channels],
+        },
+        {
+          name: "customer",
+          value: customer,
+          placeholder: "All customers",
+          options: [{ value: "all", label: "All customers" }, ...customers],
+        },
+      ]}
+    />
   );
 }

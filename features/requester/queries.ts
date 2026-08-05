@@ -177,7 +177,7 @@ export async function getRequesterDashboard() {
   ] = await Promise.all([
     supabase
       .from("translation_requests")
-      .select("id, request_no, title, source_mode, channel_code, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types), request_patents(patent_number)")
+      .select("id, request_no, title, source_mode, channel_code, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types), request_patents(patent_number), filing_signature_requests(id, status, due_at, sent_at, filing_signature_files(id, direction))")
       .eq("requester_id", userId)
       .order("updated_at", { ascending: false }),
     supabase
@@ -220,6 +220,7 @@ export async function getRequesterDashboard() {
 
 export async function getRequesterRequests(filters?: {
   status?: string;
+  channel?: string;
   q?: string;
   page?: number;
 }) {
@@ -243,6 +244,9 @@ export async function getRequesterRequests(filters?: {
 
   if (filters?.status && filters.status !== "all") {
     query = query.eq("requester_status", filters.status);
+  }
+  if (filters?.channel && filters.channel !== "all") {
+    query = query.eq("channel_code", filters.channel);
   }
 
   const { data, error } = await query;
@@ -288,7 +292,7 @@ export async function getRequesterRequest(requestId: string) {
   const { data, error } = await supabase
     .from("translation_requests")
     .select(
-      "*, organizations(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language))), request_events(*)",
+      "*, organizations(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
     )
     .eq("id", requestId)
     .maybeSingle();

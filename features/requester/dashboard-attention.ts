@@ -1,13 +1,14 @@
 export type DashboardAttentionItem = {
   id: string;
   requestId: string;
-  kind: "urgent" | "download";
+  kind: "urgent" | "download" | "signature";
   title: string;
   detail: string;
   action: string;
   href: string;
-  tone: "red" | "green";
+  tone: "red" | "amber" | "green";
   timestamp: string;
+  dueTimestamp?: number;
 };
 
 type DashboardRequest = {
@@ -25,6 +26,16 @@ type DashboardRequest = {
     | { patent_number?: string | null }
     | Array<{ patent_number?: string | null }>
     | null;
+  filing_signature_requests?: Array<{
+    id: string;
+    status?: string | null;
+    due_at?: string | null;
+    sent_at?: string | null;
+    filing_signature_files?: Array<{
+      id: string;
+      direction?: string | null;
+    }> | null;
+  }> | null;
 };
 
 type DashboardOrder = {
@@ -47,6 +58,9 @@ export function buildDashboardAttentionItems(
   orders: DashboardOrder[],
 ) {
   const requestById = new Map(requests.map((request) => [request.id, request]));
+  const signatureItems = requests
+    .flatMap(signatureAttentionItems)
+    .sort(sortSignatureItems);
   const urgentItems = requests
     .filter(isActiveUrgentRequest)
     .map(urgentAttentionItem)
@@ -55,7 +69,34 @@ export function buildDashboardAttentionItems(
     .map((order) => downloadAttentionItem(order, requestById.get(order.request_id)))
     .filter((item): item is DashboardAttentionItem => Boolean(item))
     .sort(sortByNewest);
-  return selectBalancedItems(urgentItems, downloadItems);
+  return selectBalancedItems(signatureItems, urgentItems, downloadItems);
+}
+
+function signatureAttentionItems(request: DashboardRequest) {
+  return (request.filing_signature_requests ?? [])
+    .filter((signatureRequest) => signatureRequest.status === "sent")
+    .map((signatureRequest): DashboardAttentionItem => {
+      const fileCount = (signatureRequest.filing_signature_files ?? [])
+        .filter((file) => file.direction === "pm_to_requester").length;
+      const dateDetail = signatureRequest.due_at
+        ? `Due ${formatShortDate(signatureRequest.due_at)}`
+        : `Sent ${formatShortDate(signatureRequest.sent_at ?? request.updated_at)}`;
+
+      return {
+        id: `signature-${signatureRequest.id}`,
+        requestId: request.id,
+        kind: "signature",
+        title: "Documents require your signature",
+        detail: `${request.request_no} · ${fileCount} ${fileCount === 1 ? "file" : "files"} · ${dateDetail}`,
+        action: "Review & sign",
+        href: `/requester/requests/${request.id}#signature-documents`,
+        tone: "amber",
+        timestamp: signatureRequest.sent_at ?? request.updated_at,
+        dueTimestamp: signatureRequest.due_at
+          ? new Date(`${signatureRequest.due_at}T00:00:00Z`).getTime()
+          : Number.MAX_SAFE_INTEGER,
+      };
+    });
 }
 
 function isActiveUrgentRequest(request: DashboardRequest) {
@@ -116,11 +157,16 @@ function downloadAttentionItem(
 }
 
 function selectBalancedItems(
+  signatureItems: DashboardAttentionItem[],
   urgentItems: DashboardAttentionItem[],
   downloadItems: DashboardAttentionItem[],
 ) {
   const selected: DashboardAttentionItem[] = [];
   const usedRequestIds = new Set<string>();
+
+  for (const item of signatureItems) {
+    addIfAvailable(item, selected, usedRequestIds);
+  }
 
   for (const item of [urgentItems[0], downloadItems[0]]) {
     addIfAvailable(item, selected, usedRequestIds);
@@ -137,6 +183,15 @@ function selectBalancedItems(
   }
 
   return selected.slice(0, 3);
+}
+
+function sortSignatureItems(
+  left: DashboardAttentionItem,
+  right: DashboardAttentionItem,
+) {
+  const dueDifference = (left.dueTimestamp ?? Number.MAX_SAFE_INTEGER)
+    - (right.dueTimestamp ?? Number.MAX_SAFE_INTEGER);
+  return dueDifference || sortByNewest(left, right);
 }
 
 function addIfAvailable(

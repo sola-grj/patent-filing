@@ -64,7 +64,7 @@ export async function generatePmQuote(formData: FormData): Promise<ActionResult>
     );
 
     revalidatePmRequest(requestId);
-    redirectTo = `/pm/requests/${requestId}`;
+    redirectTo = `/pm/${requestId}`;
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };
   }
@@ -151,7 +151,7 @@ export async function startNegotiationFromPm(formData: FormData): Promise<Action
     );
 
     revalidatePmRequest(requestId);
-    redirectTo = `/pm/requests/${requestId}`;
+    redirectTo = `/pm/${requestId}`;
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };
   }
@@ -266,7 +266,7 @@ export async function respondToNegotiation(formData: FormData): Promise<ActionRe
     );
 
     revalidatePmRequest(requestId);
-    redirectTo = `/pm/requests/${requestId}`;
+    redirectTo = `/pm/${requestId}`;
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };
   }
@@ -305,7 +305,7 @@ export async function closeRequestFromPm(formData: FormData): Promise<ActionResu
     );
 
     revalidatePmRequest(requestId);
-    redirectTo = "/pm/requests";
+    redirectTo = "/pm";
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };
   }
@@ -351,7 +351,7 @@ export async function confirmOrderFromPm(formData: FormData): Promise<ActionResu
     );
 
     revalidatePmRequest(requestId);
-    redirectTo = `/pm/requests/${requestId}`;
+    redirectTo = `/pm/${requestId}`;
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };
   }
@@ -399,7 +399,7 @@ export async function startProductionFromPm(formData: FormData): Promise<ActionR
     );
 
     revalidatePmRequest(requestId);
-    redirectTo = `/pm/requests/${requestId}`;
+    redirectTo = `/pm/${requestId}`;
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };
   }
@@ -922,8 +922,7 @@ async function getOrCreateStartedOrder(
 
 function revalidatePmRequest(requestId: string) {
   revalidatePath("/pm");
-  revalidatePath("/pm/requests");
-  revalidatePath(`/pm/requests/${requestId}`);
+  revalidatePath(`/pm/${requestId}`);
   revalidatePath("/requester");
   revalidatePath("/requester/requests");
   revalidatePath(`/requester/requests/${requestId}`);

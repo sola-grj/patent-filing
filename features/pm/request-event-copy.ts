@@ -43,6 +43,10 @@ const requestEventTitles: Record<
   "order.confirmed.pm": "PM confirmed the order",
   "order.started.pm": "PM started production",
   "deliverables.submitted.pm": "PM submitted the final deliverables",
+  "filing.signature.sent.pm": "PM sent filing documents for signature",
+  "filing.signature.submitted.requester": "Requester returned signed filing documents",
+  "filing.signature.cancelled.pm": "PM cancelled the signature package",
+  "filing.signature.email_retried.pm": "PM retried the signature reminder email",
 };
 
 export function formatRequestEventTitle(

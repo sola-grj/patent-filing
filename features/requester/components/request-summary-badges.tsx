@@ -30,9 +30,10 @@ export function RequestSummaryBadges({
         />
       </span>
       <span className="flex min-w-0 justify-start">
-        <span className="max-w-full truncate rounded-full border bg-background px-3 py-1 text-xs font-medium text-foreground">
-          {serviceTypeLabel(serviceTypes, serviceOptions)}
-        </span>
+        <RequestServiceBadge
+          serviceTypes={serviceTypes}
+          serviceOptions={serviceOptions}
+        />
       </span>
       <span className="flex min-w-0 justify-start">
         <RequesterStatusBadge status={status} />
@@ -66,7 +67,21 @@ export function RequestChannelBadge({
   );
 }
 
-function serviceTypeLabel(
+export function RequestServiceBadge({
+  serviceTypes,
+  serviceOptions,
+}: {
+  serviceTypes: string[];
+  serviceOptions: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <span className="inline-flex max-w-full truncate rounded-full border bg-background px-3 py-1 text-xs font-medium text-foreground">
+      {serviceTypeLabel(serviceTypes, serviceOptions)}
+    </span>
+  );
+}
+
+export function serviceTypeLabel(
   serviceTypes: string[],
   serviceOptions: Array<{ value: string; label: string }>,
 ) {
