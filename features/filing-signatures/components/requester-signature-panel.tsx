@@ -2,11 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { FileSignature, Upload } from "lucide-react";
+import { FileSignature } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { submitRequesterSignatureFiles } from "@/features/filing-signatures/requester-actions";
 import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
 import { signatureFilesByDirection } from "@/features/filing-signatures/types";
@@ -89,22 +90,23 @@ export function RequesterSignaturePanel({
               </div>
               <SignatureFileLinks files={sourceFiles} />
             </div>
-            <label className="block rounded-xl border border-dashed bg-muted/20 p-4 text-sm">
-              <span className="flex items-center gap-2 font-medium"><Upload /> Upload signed files</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
-              </span>
-              <input
-                key={inputKey}
-                className="mt-3 block w-full text-sm"
-                disabled={isPending}
-                multiple
-                type="file"
+            <div className="space-y-2">
+              <FileUploadDropzone
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
-                onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+                disabled={isPending}
+                inputKey={inputKey}
+                label="Upload signed files"
+                onFilesChange={setFiles}
               />
-              {files.length ? <span className="mt-2 block text-xs">{files.length} signed file(s) selected</span> : null}
-            </label>
+              <p className="text-xs text-muted-foreground">
+                PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {files.length
+                  ? `${files.length} signed file(s) selected`
+                  : "No files selected yet."}
+              </p>
+            </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <div className="flex justify-end">
               <Button type="button" disabled={isPending || !files.length} onClick={submit}>

@@ -1,9 +1,9 @@
 "use client";
 
-import { Upload } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { Input } from "@/components/ui/input";
 import { lookupPatentForWizard } from "@/features/requester/actions";
 import type {
@@ -153,7 +153,12 @@ export function SourceStep(props: {
           </div>
         ) : (
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden rounded-2xl border bg-muted/20 p-5">
-            <UploadSourceField onFilesChange={props.onFilesChange} />
+            <FileUploadDropzone
+              accept=".pdf,.doc,.docx,.xml,.txt"
+              inputId="request-source-upload"
+              label="Upload Source Document"
+              onFilesChange={props.onFilesChange}
+            />
             <div className="min-h-0 overflow-hidden">
               <div className="h-full min-h-0 overflow-y-auto overscroll-contain pr-1">
                 <FileList
@@ -170,40 +175,6 @@ export function SourceStep(props: {
         )}
       </div>
     </StepShell>
-  );
-}
-
-function UploadSourceField({
-  onFilesChange,
-}: {
-  onFilesChange: (files: File[]) => void;
-}) {
-  const inputId = "request-source-upload";
-
-  return (
-    <div className="space-y-3">
-      <input
-        id={inputId}
-        type="file"
-        multiple
-        accept=".pdf,.doc,.docx,.xml,.txt"
-        className="sr-only"
-        onChange={(event) =>
-          onFilesChange(Array.from(event.target.files ?? []))
-        }
-      />
-      <label
-        htmlFor={inputId}
-        className="flex min-h-20 cursor-pointer items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-fuchsia-400 bg-white px-6 py-5 text-center text-fuchsia-600 transition-colors hover:border-fuchsia-500 hover:bg-fuchsia-50/40"
-      >
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-fuchsia-300 bg-fuchsia-50">
-          <Upload className="h-5 w-5" />
-        </span>
-        <span className="text-[1.125rem] font-semibold tracking-[-0.02em]">
-          Upload Source Document
-        </span>
-      </label>
-    </div>
   );
 }
 

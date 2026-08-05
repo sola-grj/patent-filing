@@ -2,11 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MailWarning, Send, Upload } from "lucide-react";
+import { MailWarning, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import {
   cancelPmSignatureRequest,
   removePmSignatureFile,
@@ -170,43 +171,42 @@ function DraftEditor({
   const sourceFiles = active ? signatureFilesByDirection(active, "pm_to_requester") : [];
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
-        <label className="space-y-2 text-sm">
-          <span className="font-medium">Message to requester (optional)</span>
-          <textarea
-            className="min-h-24 w-full rounded-md border bg-background px-3 py-2"
-            disabled={disabled}
-            maxLength={2000}
-            value={pmNote}
-            onChange={(event) => onNoteChange(event.target.value)}
-          />
-        </label>
-        <label className="space-y-2 text-sm">
-          <span className="font-medium">Signature due date (optional)</span>
-          <input
-            className="h-10 w-full rounded-md border bg-background px-3"
-            disabled={disabled}
-            type="date"
-            value={dueAt}
-            onChange={(event) => onDueAtChange(event.target.value)}
-          />
-        </label>
-      </div>
-      <label className="block rounded-xl border border-dashed bg-muted/20 p-4 text-sm">
-        <span className="flex items-center gap-2 font-medium"><Upload /> Add files</span>
-        <span className="mt-1 block text-xs text-muted-foreground">
-          PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
-        </span>
-        <input
-          key={inputKey}
-          className="mt-3 block w-full text-sm"
-          disabled={disabled}
-          multiple
-          type="file"
+      <div className="space-y-2">
+        <FileUploadDropzone
           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
-          onChange={(event) => onFileChange(Array.from(event.target.files ?? []))}
+          disabled={disabled}
+          inputKey={inputKey}
+          label="Upload signature documents"
+          onFilesChange={onFileChange}
         />
-        {files.length ? <span className="mt-2 block text-xs">{files.length} new file(s) selected</span> : null}
+        <p className="text-xs text-muted-foreground">
+          PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {files.length
+            ? `${files.length} new file(s) selected`
+            : "No new files selected yet."}
+        </p>
+      </div>
+      <label className="space-y-2 text-sm">
+        <span className="font-medium">Message to requester (optional)</span>
+        <textarea
+          className="min-h-24 w-full rounded-md border bg-background px-3 py-2"
+          disabled={disabled}
+          maxLength={2000}
+          value={pmNote}
+          onChange={(event) => onNoteChange(event.target.value)}
+        />
+      </label>
+      <label className="block max-w-sm space-y-2 text-sm">
+        <span className="font-medium">Signature due date (optional)</span>
+        <input
+          className="h-10 w-full rounded-md border bg-background px-3"
+          disabled={disabled}
+          type="date"
+          value={dueAt}
+          onChange={(event) => onDueAtChange(event.target.value)}
+        />
       </label>
       <SignatureFileLinks files={sourceFiles} onRemove={onRemove} removeDisabled={disabled} />
       <div className="flex flex-wrap justify-end gap-2">
