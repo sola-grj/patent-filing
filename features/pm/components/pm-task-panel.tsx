@@ -1,3 +1,5 @@
+import { ListTodo } from "lucide-react";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { titleCaseStatus } from "@/features/requester/format";
 
@@ -42,7 +44,10 @@ export function PmTaskPanel({
   return (
     <Card className="flex shrink-0 flex-col overflow-hidden">
       <CardHeader className="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85">
-        <CardTitle>Task control</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <ListTodo className="size-5" />
+          Task control
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">

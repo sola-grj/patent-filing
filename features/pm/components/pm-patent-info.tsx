@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
 import type { WizardPatentCandidate } from "@/features/requester/wizard-types";
+import { FileSearch } from "lucide-react";
 import type { ReactNode } from "react";
 
 export type PmRequestPatent = {
@@ -47,7 +48,10 @@ export function PmPatentInfo({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-        <CardTitle>Patent Information</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <FileSearch className="size-5" />
+          Patent Information
+        </CardTitle>
         {action}
       </CardHeader>
       <CardContent>

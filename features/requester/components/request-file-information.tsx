@@ -1,4 +1,4 @@
-import { FileText } from "lucide-react";
+import { Files, FileText } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +35,10 @@ export function RequestFileInformation({
   return (
     <Card className={cardClassName}>
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-        <CardTitle>File Information</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Files className="size-5" />
+          File Information
+        </CardTitle>
         {action}
       </CardHeader>
       <CardContent className={contentClassName}>

@@ -1,3 +1,5 @@
+import { ClipboardList } from "lucide-react";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/features/requester/format";
 import {
@@ -76,7 +78,10 @@ export function PmRequestOverview({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Request overview</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <ClipboardList className="size-5" />
+          Request overview
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <dl className="grid gap-x-10 gap-y-6 md:grid-cols-2">

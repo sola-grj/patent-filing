@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Info, Send } from "lucide-react";
+import { FileSignature, Info, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -135,6 +135,7 @@ export function PmSignaturePanel({
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2">
+            <FileSignature className="size-5" />
             Signature documents
             <TooltipProvider delayDuration={120}>
               <Tooltip>

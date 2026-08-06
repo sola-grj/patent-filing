@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { Pencil, ReceiptText } from "lucide-react";
 import { Table } from "@radix-ui/themes";
 
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,10 @@ export function RequestQuoteSheet({
     <Card className="overflow-hidden">
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b">
         <div>
-          <CardTitle>Quotation</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <ReceiptText className="size-5" />
+            Quotation
+          </CardTitle>
           <p className="mt-2 text-sm text-muted-foreground">
             Estimate submitted with the request · {formatCurrency(total)}
           </p>

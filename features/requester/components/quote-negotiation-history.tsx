@@ -1,4 +1,4 @@
-import { MessageSquareMore, Scale, Sparkles } from "lucide-react";
+import { MessageSquareMore, Scale } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +38,10 @@ export function QuoteNegotiationHistory({
         )}
       >
         <div className="space-y-1">
-          <CardTitle>Negotiation history</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <MessageSquareMore className="size-5" />
+            Negotiation history
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
             Review each negotiation round and PM feedback on this quote.
           </p>
@@ -164,17 +167,6 @@ function MetricItem({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="mt-1 text-sm font-medium">{value}</p>
-    </div>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="text-sm leading-6 text-foreground">{value}</p>
     </div>
   );
 }

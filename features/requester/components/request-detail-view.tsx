@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ClipboardList, FileSearch } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -325,7 +325,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       />
       <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="flex flex-col gap-6 pr-1">
-          <Section title="Request overview">
+          <Section
+            title="Request overview"
+            icon={<ClipboardList className="size-5" />}
+          >
             <div className="grid items-start gap-5 md:grid-cols-2">
               <DetailsGrid items={leftColumnItems} columns="single" />
               <DetailsGrid items={rightColumnItems} columns="single" />
@@ -337,6 +340,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           {isPatentSearch ? (
             <Section
               title="Patent Information"
+              icon={<FileSearch className="size-5" />}
               action={
                 patentNumber ? (
                   <PatentFileDownloadButton
@@ -553,12 +557,14 @@ function titleCase(value?: string | null) {
 
 function Section({
   title,
+  icon,
   action,
   cardClassName,
   contentClassName,
   children,
 }: {
   title: string;
+  icon?: ReactNode;
   action?: ReactNode;
   cardClassName?: string;
   contentClassName?: string;
@@ -567,7 +573,10 @@ function Section({
   return (
     <Card className={cardClassName ?? "h-full"}>
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          {icon}
+          {title}
+        </CardTitle>
         {action}
       </CardHeader>
       <CardContent className={contentClassName ?? "space-y-6"}>

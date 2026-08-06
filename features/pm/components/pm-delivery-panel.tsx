@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { PackageCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -254,7 +255,10 @@ export function PmDeliveryPanel({
   return (
     <Card className="flex flex-col overflow-visible">
       <CardHeader>
-        <CardTitle>Delivery</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <PackageCheck className="size-5" />
+          Delivery
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">{content}</CardContent>
     </Card>

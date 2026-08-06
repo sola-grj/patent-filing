@@ -1,3 +1,4 @@
+import { History, MessageSquareMore, ReceiptText } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -313,6 +314,7 @@ export function PmRequestDetail({
               ) : (
                 <Section
                   title="Negotiation history"
+                  icon={<MessageSquareMore className="size-5" />}
                   cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
                   headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
                 >
@@ -322,6 +324,7 @@ export function PmRequestDetail({
             ) : null}
             <Section
               title="Event timeline"
+              icon={<History className="size-5" />}
               cardClassName="flex min-h-0 max-h-[24rem] flex-col overflow-hidden"
               headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
               contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
@@ -412,6 +415,7 @@ function QuotePanel({
   return (
     <Section
       title="Quote panel"
+      icon={<ReceiptText className="size-5" />}
       cardClassName="flex flex-col overflow-visible"
       headerClassName="sticky top-0 z-10 flex flex-row items-center justify-between gap-3 space-y-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
       contentClassName="space-y-4"
@@ -571,6 +575,7 @@ function QuotePanel({
 
 function Section({
   title,
+  icon,
   action,
   cardClassName,
   contentClassName,
@@ -578,6 +583,7 @@ function Section({
   children,
 }: {
   title: string;
+  icon?: ReactNode;
   action?: ReactNode;
   cardClassName?: string;
   contentClassName?: string;
@@ -587,7 +593,10 @@ function Section({
   return (
     <Card className={cardClassName}>
       <CardHeader className={headerClassName ?? "flex flex-row items-center justify-between gap-3 space-y-0"}>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          {icon}
+          {title}
+        </CardTitle>
         {action}
       </CardHeader>
       <CardContent className={contentClassName}>{children}</CardContent>
