@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeliverableDownloadButton } from "@/features/requester/components/deliverable-download-button";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import {
   StatusBadge,
@@ -11,6 +11,7 @@ import {
   titleCaseStatus,
 } from "@/features/requester/format";
 import { getRequesterOrder } from "@/features/requester/queries";
+import { jurisdictionOptions } from "@/features/requester/options";
 
 type TaskDeliverable = {
   id: string;
@@ -19,6 +20,7 @@ type TaskDeliverable = {
   storage_path?: string | null;
   created_at?: string | null;
   language?: string | null;
+  jurisdiction_code?: string | null;
 };
 
 type OrderTask = {
@@ -26,6 +28,20 @@ type OrderTask = {
   task_type: string;
   status: string;
   task_deliverables?: TaskDeliverable[] | null;
+};
+
+type DeliveryRequest = {
+  translation_requirements?: {
+    jurisdiction_codes?: string[] | null;
+    config_snapshot?: { jurisdictionCodes?: string[] | null } | null;
+  } | Array<{
+    jurisdiction_codes?: string[] | null;
+    config_snapshot?: { jurisdictionCodes?: string[] | null } | null;
+  }> | null;
+  request_config_versions?: Array<{
+    version_no?: number | null;
+    config_snapshot?: { jurisdictionCodes?: string[] | null } | null;
+  }> | null;
 };
 
 export default function OrderDetailPage({
@@ -54,6 +70,12 @@ async function OrderContent({
 
   if (!order) notFound();
   const tasks = (order.translation_tasks ?? []) as OrderTask[];
+  const jurisdictionCodes = resolveOrderJurisdictionCodes(
+    order.translation_requests as DeliveryRequest | null,
+  );
+  const jurisdictionOrder = new Map(
+    jurisdictionCodes.map((code, index) => [code, index]),
+  );
   const deliverables = tasks
     .flatMap((task) =>
       (task.task_deliverables ?? [])
@@ -67,6 +89,11 @@ async function OrderContent({
         })),
     )
     .sort((left, right) => {
+      const countryDifference = jurisdictionRank(
+        left.jurisdiction_code,
+        jurisdictionOrder,
+      ) - jurisdictionRank(right.jurisdiction_code, jurisdictionOrder);
+      if (countryDifference) return countryDifference;
       const rightTime = new Date(right.created_at ?? 0).getTime();
       const leftTime = new Date(left.created_at ?? 0).getTime();
       return rightTime - leftTime;
@@ -124,8 +151,14 @@ async function OrderContent({
                 className="flex flex-col gap-3 rounded-md border p-4 text-sm md:flex-row md:items-center md:justify-between"
               >
                 <div>
-                  <p className="font-medium">
-                    {storageName(deliverable.storage_path) || "Upload ZIP"}
+                  <p className="font-semibold">
+                    {jurisdictionLabel(deliverable.jurisdiction_code)}
+                    {deliverable.jurisdiction_code
+                      ? ` (${deliverable.jurisdiction_code})`
+                      : ""}
+                  </p>
+                  <p className="mt-1 font-medium">
+                      {storageName(deliverable.storage_path) || "Delivery file"}
                   </p>
                   <p className="mt-1 text-muted-foreground">
                     {titleCaseStatus(deliverable.taskType)} · v
@@ -139,13 +172,9 @@ async function OrderContent({
                     {formatDate(deliverable.created_at)}
                   </p>
                 </div>
-                <Button asChild variant="outline">
-                  <a
-                    href={`/requester/orders/${orderId}/deliverables/${deliverable.id}`}
-                  >
-                    Download ZIP
-                  </a>
-                </Button>
+                <DeliverableDownloadButton
+                  href={`/requester/orders/${orderId}/deliverables/${deliverable.id}`}
+                />
               </div>
             ))
           ) : (
@@ -166,4 +195,41 @@ function storageName(path?: string | null) {
 
   const parts = path.split("/");
   return parts[parts.length - 1] ?? "";
+}
+
+function resolveOrderJurisdictionCodes(request?: DeliveryRequest | null) {
+  if (!request) return [];
+  const requirement = firstRelation(request.translation_requirements);
+  const latestSnapshot = [...(request.request_config_versions ?? [])]
+    .sort((left, right) => Number(right.version_no ?? 0) - Number(left.version_no ?? 0))[0]
+    ?.config_snapshot ?? requirement?.config_snapshot;
+  const snapshotCodes = normalizeJurisdictionCodes(latestSnapshot?.jurisdictionCodes);
+  const storedCodes = normalizeJurisdictionCodes(requirement?.jurisdiction_codes);
+  return snapshotCodes.length ? snapshotCodes : storedCodes;
+}
+
+function normalizeJurisdictionCodes(value?: string[] | null) {
+  return [...new Set(
+    (value ?? [])
+      .map((code) => code.trim().toUpperCase())
+      .filter((code) => /^[A-Z]{2}$/.test(code)),
+  )];
+}
+
+function jurisdictionRank(
+  code: string | null | undefined,
+  order: Map<string, number>,
+) {
+  if (!code) return Number.MAX_SAFE_INTEGER;
+  return order.get(code) ?? Number.MAX_SAFE_INTEGER - 1;
+}
+
+function jurisdictionLabel(code?: string | null) {
+  if (!code) return "General";
+  return jurisdictionOptions.find((option) => option.value === code)?.label ?? code;
+}
+
+function firstRelation<T>(value?: T | T[] | null) {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }

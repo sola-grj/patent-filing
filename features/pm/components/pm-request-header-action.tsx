@@ -15,15 +15,18 @@ type HeaderOrder = {
       storage_path?: string | null;
       created_at?: string | null;
       language?: string | null;
+      jurisdiction_code?: string | null;
     }> | null;
   }> | null;
 };
 
 export function PmRequestHeaderAction({
+  jurisdictionCodes,
   order,
   requestId,
   status,
 }: {
+  jurisdictionCodes: string[];
   order?: HeaderOrder | null;
   requestId: string;
   status?: string | null;
@@ -33,7 +36,13 @@ export function PmRequestHeaderAction({
   }
 
   if (status === "in_progress") {
-    return <PmDeliveryDialog requestId={requestId} order={order} />;
+    return (
+      <PmDeliveryDialog
+        jurisdictionCodes={jurisdictionCodes}
+        requestId={requestId}
+        order={order}
+      />
+    );
   }
 
   return null;

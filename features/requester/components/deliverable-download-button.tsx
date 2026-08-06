@@ -5,7 +5,24 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
-export function DeliverableDownloadButton({ href }: { href: string }) {
+const allowedDeliverableContentTypes = [
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/octet-stream",
+];
+
+export function DeliverableDownloadButton({
+  href,
+  iconOnly = false,
+  label = "Download file",
+}: {
+  href: string;
+  iconOnly?: boolean;
+  label?: string;
+}) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,14 +43,11 @@ export function DeliverableDownloadButton({ href }: { href: string }) {
         const body = await response.json().catch(() => null) as {
           error?: string;
         } | null;
-        throw new Error(body?.error || "Unable to download the ZIP file.");
+        throw new Error(body?.error || "Unable to download the delivery file.");
       }
 
       const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-      if (
-        !contentType.includes("application/zip")
-        && !contentType.includes("application/octet-stream")
-      ) {
+      if (!allowedDeliverableContentTypes.some((type) => contentType.includes(type))) {
         throw new Error("The download service returned an invalid file response.");
       }
 
@@ -67,8 +81,10 @@ export function DeliverableDownloadButton({ href }: { href: string }) {
     <div className="flex flex-col items-end gap-2">
       <Button
         type="button"
-        className="h-9 px-5 shadow-md"
+        className={iconOnly ? "size-9 p-0 shadow-none" : "h-9 px-5 shadow-md"}
         disabled={isDownloading}
+        aria-label={iconOnly ? label : undefined}
+        title={iconOnly ? label : undefined}
         onClick={handleDownload}
       >
         {isDownloading ? (
@@ -76,7 +92,15 @@ export function DeliverableDownloadButton({ href }: { href: string }) {
         ) : (
           <Download />
         )}
-        {isDownloading ? "Downloading..." : "Download ZIP"}
+        {iconOnly ? (
+          <span className="sr-only">
+            {isDownloading ? "Downloading..." : label}
+          </span>
+        ) : isDownloading ? (
+          "Downloading..."
+        ) : (
+          label
+        )}
       </Button>
       {error ? (
         <p role="alert" className="max-w-64 text-right text-xs text-destructive">

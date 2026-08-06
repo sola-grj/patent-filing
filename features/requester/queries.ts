@@ -292,7 +292,7 @@ export async function getRequesterRequest(requestId: string) {
   const { data, error } = await supabase
     .from("translation_requests")
     .select(
-      "*, organizations(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
+      "*, organizations(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language, jurisdiction_code))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -343,12 +343,24 @@ function firstRelation<T>(value?: T | T[] | null) {
 }
 
 export async function getRequesterDrafts(filters?: {
+  channel?: string;
+  service?: string;
+  step?: string;
+  q?: string;
   page?: number;
 }) {
   const { supabase, userId, organization } = await getRequesterOrganization();
 
   if (!organization) {
-    return { organization: null, drafts: [], totalCount: 0, totalPages: 0, page: 1, pageSize: 10 };
+    return {
+      organization: null,
+      drafts: [],
+      totalCount: 0,
+      totalPages: 0,
+      page: 1,
+      pageSize: 10,
+      dictionaries: null,
+    };
   }
 
   const pageSize = 10;
@@ -365,12 +377,13 @@ export async function getRequesterDrafts(filters?: {
     throw new Error(error.message);
   }
 
-  const drafts = data ?? [];
+  const drafts = (data ?? []).filter((draft) => matchesRequesterDraftFilters(draft, filters));
   const totalCount = drafts.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(page, totalPages);
   const paginatedDrafts = drafts.slice((safePage - 1) * pageSize, safePage * pageSize);
 
+  const dictionaries = await getRequesterDictionaries();
   return {
     organization,
     drafts: paginatedDrafts,
@@ -378,7 +391,56 @@ export async function getRequesterDrafts(filters?: {
     totalPages,
     page: safePage,
     pageSize,
+    dictionaries,
   };
+}
+
+function matchesRequesterDraftFilters(
+  draft: Pick<DraftRow, "request_no" | "title" | "source_mode" | "last_draft_step" | "draft_payload">,
+  filters?: { channel?: string; service?: string; step?: string; q?: string },
+) {
+  const payload = draft.draft_payload ?? {};
+  const channel = draft.source_mode === "upload"
+    ? "upload_files"
+    : payload.config?.channelCode ?? "";
+  const services = payload.config?.serviceTypes ?? [];
+  const step = normalizeDraftStep(payload.lastStep ?? draft.last_draft_step);
+
+  if (filters?.channel && filters.channel !== "all" && channel !== filters.channel) {
+    return false;
+  }
+  if (filters?.service && filters.service !== "all" && !services.includes(filters.service)) {
+    return false;
+  }
+  if (filters?.step && filters.step !== "all" && step !== filters.step) {
+    return false;
+  }
+
+  const keyword = filters?.q?.trim().toLowerCase();
+  if (!keyword) {
+    return true;
+  }
+
+  return [
+    draft.request_no,
+    draft.title,
+    payload.patentQuery,
+    payload.selectedPatent?.patentNumber,
+    payload.selectedPatent?.title,
+    ...(payload.uploadedFiles ?? []).map((file) => file.name),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(keyword);
+}
+
+function normalizeDraftStep(step?: string | null) {
+  if (!step || ["Basics", "Parse", "Patent Detail"].includes(step)) {
+    return "Source";
+  }
+
+  return step;
 }
 
 export async function getRequesterDraft(draftId: string) {
@@ -460,7 +522,7 @@ export async function getRequesterOrder(orderId: string) {
   const { supabase } = await getAuthenticatedUser();
   const { data, error } = await supabase
     .from("orders")
-    .select("*, translation_requests(*), quotes:accepted_quote_id(*), translation_tasks(*, task_deliverables(*))")
+    .select("*, translation_requests(*, translation_requirements(jurisdiction_codes, config_snapshot), request_config_versions(version_no, config_snapshot)), quotes:accepted_quote_id(*), translation_tasks(*, task_deliverables(*))")
     .eq("id", orderId)
     .maybeSingle();
 

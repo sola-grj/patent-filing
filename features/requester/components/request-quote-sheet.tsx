@@ -67,7 +67,7 @@ export function RequestQuoteSheet({
           </Button>
         ) : null}
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="px-6 pb-6 pt-0">
         {rows.length ? (
           <div className="overflow-x-auto">
             <Table.Root
@@ -145,7 +145,7 @@ export function RequestQuoteSheet({
             </Table.Root>
           </div>
         ) : (
-          <div className="px-6 py-10 text-sm text-muted-foreground">
+          <div className="py-10 text-sm text-muted-foreground">
             No estimate rows were saved for this request.
           </div>
         )}

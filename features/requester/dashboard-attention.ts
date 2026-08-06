@@ -144,13 +144,13 @@ function downloadAttentionItem(
   const completedAt = order.completed_at ?? latestDeliverable.created_at ?? order.updated_at;
 
   return {
-    id: `download-${latestDeliverable.id}`,
+    id: `download-${order.id}`,
     requestId: request.id,
     kind: "download",
     title: "Delivery ready to download",
     detail: `${requestMatter(request)} · Completed ${formatShortDate(completedAt)}`,
-    action: "Download",
-    href: `/requester/orders/${order.id}/deliverables/${latestDeliverable.id}`,
+    action: "View deliverables",
+    href: `/requester/requests/${request.id}`,
     tone: "green",
     timestamp: completedAt,
   };

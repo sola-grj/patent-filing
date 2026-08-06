@@ -140,6 +140,7 @@ type Order = {
       storage_path?: string | null;
       created_at?: string | null;
       language?: string | null;
+      jurisdiction_code?: string | null;
     }> | null;
   }> | null;
 };
@@ -252,6 +253,7 @@ export function PmRequestDetail({
           status={<RequesterStatusBadge status={request.pm_status} size="compact" />}
           action={
             <PmRequestHeaderAction
+              jurisdictionCodes={config.jurisdictionCodes}
               requestId={request.id}
               status={request.pm_status}
               order={order}

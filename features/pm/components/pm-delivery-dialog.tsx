@@ -26,14 +26,17 @@ type DeliveryOrder = {
       storage_path?: string | null;
       created_at?: string | null;
       language?: string | null;
+      jurisdiction_code?: string | null;
     }> | null;
   }> | null;
 };
 
 export function PmDeliveryDialog({
+  jurisdictionCodes,
   order,
   requestId,
 }: {
+  jurisdictionCodes: string[];
   order?: DeliveryOrder | null;
   requestId: string;
 }) {
@@ -46,10 +49,16 @@ export function PmDeliveryDialog({
         <DialogHeader>
           <DialogTitle>Delivery</DialogTitle>
           <DialogDescription>
-            Upload and deliver the translated ZIP package to the requester.
+            Upload one ZIP, PDF, DOC, or DOCX file for each jurisdiction, then
+            deliver all files together.
           </DialogDescription>
         </DialogHeader>
-        <PmDeliveryPanel embedded requestId={requestId} order={order} />
+        <PmDeliveryPanel
+          embedded
+          jurisdictionCodes={jurisdictionCodes}
+          requestId={requestId}
+          order={order}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
-import { DeliverableDownloadButton } from "@/features/requester/components/deliverable-download-button";
 import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
 import { PatentCacheStatus } from "@/features/requester/components/patent-cache-status";
@@ -15,6 +14,7 @@ import {
 } from "@/features/requester/components/request-file-information";
 import { RequestFilesDownloadButton } from "@/features/requester/components/request-files-download-button";
 import { RequestQuoteSheet } from "@/features/requester/components/request-quote-sheet";
+import { RequesterDeliverablesDialog } from "@/features/requester/components/requester-deliverables-dialog";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import {
   formatDate,
@@ -133,6 +133,7 @@ type Order = {
       storage_path?: string | null;
       created_at?: string | null;
       language?: string | null;
+      jurisdiction_code?: string | null;
     }> | null;
   }> | null;
 };
@@ -182,13 +183,12 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     (left, right) => right.version_no - left.version_no,
   )[0];
   const order = firstRelation(request.orders);
-  const latestDeliverable =
-    ((((order?.translation_tasks ?? []) as NonNullable<Order["translation_tasks"]>) ?? [])
-      .flatMap((task) => task.task_deliverables ?? [])
-      .filter((deliverable) => deliverable.status && deliverable.status !== "draft")
-      .sort((left, right) =>
-        new Date(right.created_at ?? 0).getTime() - new Date(left.created_at ?? 0).getTime(),
-      )[0] ?? null);
+  const deliverables = (((order?.translation_tasks ?? []) as NonNullable<Order["translation_tasks"]>) ?? [])
+    .flatMap((task) => task.task_deliverables ?? [])
+    .filter((deliverable) => deliverable.status && deliverable.status !== "draft")
+    .sort((left, right) =>
+      new Date(right.created_at ?? 0).getTime()
+      - new Date(left.created_at ?? 0).getTime());
   const isPatentSearch = request.source_mode === "patent_search";
   const patentNumber = isPatentSearch ? patent?.patent_number ?? null : null;
   const patentCandidate = isPatentSearch && patent ? toPatentCandidate(patent) : null;
@@ -313,9 +313,11 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
                 Back to Requests
               </Link>
             </Button>
-            {request.requester_status === "completed" && order?.id && latestDeliverable?.id ? (
-              <DeliverableDownloadButton
-                href={`/requester/orders/${order.id}/deliverables/${latestDeliverable.id}`}
+            {request.requester_status === "completed" && order?.id && deliverables.length ? (
+              <RequesterDeliverablesDialog
+                deliverables={deliverables}
+                orderId={order.id}
+                requestId={request.id}
               />
             ) : null}
           </div>

@@ -560,103 +560,43 @@ export async function startTranslationTaskFromPm(
   }
 }
 
-export async function uploadPmDeliverableZip(
+export async function uploadPmDeliverableFile(
   formData: FormData,
 ): Promise<ActionResult<{ deliverableId: string }>> {
   try {
     const context = await assertPm();
     const requestId = requiredString(formData.get("requestId"), "Request");
     const orderId = requiredString(formData.get("orderId"), "Order");
-    const upload = formData.get("deliverableZip");
+    const jurisdictionCode = requiredString(
+      formData.get("jurisdictionCode"),
+      "Jurisdiction",
+    ).trim().toUpperCase();
+    const upload = formData.get("deliverableFile");
 
     if (!(upload instanceof File)) {
-      throw new Error("Please choose a ZIP file to upload.");
+      throw new Error("Please choose a delivery file to upload.");
     }
 
-    validateDeliverableZip(upload);
-
-    const { data: order, error: orderError } = await context.supabase
-      .from("orders")
-      .select("id, request_id, status, translation_tasks(id, task_type)")
-      .eq("id", orderId)
-      .single();
-    if (orderError) throw new Error(orderError.message);
-    if (order.request_id !== requestId) {
-      throw new Error("Order does not belong to this request.");
-    }
-    if (order.status === "completed") {
-      throw new Error("This order has already been delivered.");
-    }
-
-    const { data: requirement, error: requirementError } = await context.supabase
-      .from("translation_requirements")
-      .select("target_language")
-      .eq("request_id", requestId)
-      .maybeSingle();
-    if (requirementError) throw new Error(requirementError.message);
-
-    const tasks = ((order.translation_tasks ?? []) as Array<{ id: string; task_type?: string | null }>)
-      .filter((task) => task.task_type === "translation");
-    const targetTask = tasks[0];
-    if (!targetTask) {
-      throw new Error("Start the translation task before uploading a deliverable.");
-    }
-
-    const { data: existingDeliverables, error: deliverableError } = await context.supabase
-      .from("task_deliverables")
-      .select("id, storage_path, version_no, status")
-      .eq("task_id", targetTask.id)
-      .order("version_no", { ascending: false });
-    if (deliverableError) throw new Error(deliverableError.message);
-
-    const draftDeliverable = (existingDeliverables ?? []).find((item) => item.status === "draft") ?? null;
-    const nextVersion = Number(existingDeliverables?.[0]?.version_no ?? 0) + 1;
-    const storagePath = `deliverables/${orderId}/${Date.now()}-${safeFileName(upload.name)}`;
-    const bytes = new Uint8Array(await upload.arrayBuffer());
-
-    const contentType = resolveDeliverableZipContentType(upload);
-
-    const { error: uploadError } = await context.supabase.storage
-      .from("request-files")
-      .upload(storagePath, bytes, { contentType, upsert: false });
-    if (uploadError) throw new Error(uploadError.message);
-
-    let deliverableId: string;
-    if (draftDeliverable) {
-      if (draftDeliverable.storage_path !== storagePath) {
-        await context.supabase.storage.from("request-files").remove([draftDeliverable.storage_path]);
-      }
-
-      const { data: updatedDeliverable, error: updateError } = await context.supabase
-        .from("task_deliverables")
-        .update({
-          storage_bucket: "request-files",
-          storage_path: storagePath,
-          language: requirement?.target_language ?? null,
-          submitted_by: context.userId,
-        })
-        .eq("id", draftDeliverable.id)
-        .select("id")
-        .single();
-      if (updateError) throw new Error(updateError.message);
-      deliverableId = updatedDeliverable.id;
-    } else {
-      const { data: createdDeliverable, error: createError } = await context.supabase
-        .from("task_deliverables")
-        .insert({
-          task_id: targetTask.id,
-          storage_bucket: "request-files",
-          storage_path: storagePath,
-          version_no: nextVersion,
-          language: requirement?.target_language ?? null,
-          submitted_by: context.userId,
-          status: "draft",
-        })
-        .select("id")
-        .single();
-      if (createError) throw new Error(createError.message);
-      deliverableId = createdDeliverable.id;
-    }
+    validateDeliverableFile(upload);
+    const order = await getUploadDeliveryOrder(
+      context.supabase,
+      orderId,
+      requestId,
+    );
+    const deliveryConfig = await getDeliveryConfiguration(
+      context.supabase,
+      requestId,
+    );
+    assertDeliveryJurisdiction(jurisdictionCode, deliveryConfig.jurisdictionCodes);
+    const targetTask = selectDeliveryTask(order.translation_tasks ?? []);
+    const deliverableId = await saveCountryDeliverable(context.supabase, {
+      jurisdictionCode,
+      language: deliveryConfig.targetLanguage,
+      orderId,
+      submittedBy: context.userId,
+      taskId: targetTask.id,
+      upload,
+    });
 
     revalidatePmRequest(requestId);
     revalidatePath(`/requester/orders/${orderId}`);
@@ -677,7 +617,7 @@ export async function deliverPmOrder(
 
     const { data: order, error: orderError } = await context.supabase
       .from("orders")
-      .select("id, request_id, status, translation_tasks(id, status, task_deliverables(id, status))")
+      .select("id, request_id, status, translation_tasks(id, status, task_deliverables(id, status, jurisdiction_code))")
       .eq("id", orderId)
       .single();
     if (orderError) throw new Error(orderError.message);
@@ -688,26 +628,54 @@ export async function deliverPmOrder(
       throw new Error("This order has already been delivered.");
     }
 
+    const deliveryConfig = await getDeliveryConfiguration(
+      context.supabase,
+      requestId,
+    );
+
     const tasks = (order.translation_tasks ?? []) as Array<{
       id: string;
       status?: string | null;
-      task_deliverables?: Array<{ id: string; status?: string | null }> | null;
+      task_deliverables?: Array<{
+        id: string;
+        status?: string | null;
+        jurisdiction_code?: string | null;
+      }> | null;
     }>;
+    const deliverables = tasks.flatMap((task) => task.task_deliverables ?? []);
+    const deliveryReadyDeliverables = deliverables.filter((deliverable) =>
+      ["draft", "submitted"].includes(deliverable.status ?? ""));
+    const readyJurisdictions = new Set(
+      deliveryReadyDeliverables
+        .map((deliverable) => deliverable.jurisdiction_code)
+        .filter((code): code is string => Boolean(code)),
+    );
+    const missingJurisdictions = deliveryConfig.jurisdictionCodes.filter(
+      (code) => !readyJurisdictions.has(code),
+    );
+
+    if (!deliveryConfig.jurisdictionCodes.length) {
+      throw new Error("No delivery jurisdictions are configured for this request.");
+    }
+    if (missingJurisdictions.length) {
+      throw new Error(
+        `Upload a delivery file for: ${missingJurisdictions.join(", ")}.`,
+      );
+    }
+
     const draftDeliverableIds = tasks.flatMap((task) =>
       (task.task_deliverables ?? [])
         .filter((deliverable) => deliverable.status === "draft")
         .map((deliverable) => deliverable.id),
     );
 
-    if (!draftDeliverableIds.length) {
-      throw new Error("Upload a translated ZIP before delivering it to the requester.");
+    if (draftDeliverableIds.length) {
+      const { error: deliverableUpdateError } = await context.supabase
+        .from("task_deliverables")
+        .update({ status: "submitted" })
+        .in("id", draftDeliverableIds);
+      if (deliverableUpdateError) throw new Error(deliverableUpdateError.message);
     }
-
-    const { error: deliverableUpdateError } = await context.supabase
-      .from("task_deliverables")
-      .update({ status: "submitted" })
-      .in("id", draftDeliverableIds);
-    if (deliverableUpdateError) throw new Error(deliverableUpdateError.message);
 
     const taskIds = tasks.map((task) => task.id);
     if (taskIds.length) {
@@ -741,7 +709,11 @@ export async function deliverPmOrder(
       "deliverables.submitted.pm",
       "production",
       "completed",
-      { orderId, deliverableCount: draftDeliverableIds.length },
+      {
+        orderId,
+        deliverableCount: deliveryReadyDeliverables.length,
+        jurisdictionCodes: deliveryConfig.jurisdictionCodes,
+      },
     );
 
     revalidatePmRequest(requestId);
@@ -930,32 +902,245 @@ function revalidatePmRequest(requestId: string) {
   revalidatePath(`/requester/orders`);
 }
 
-function validateDeliverableZip(file: File) {
-  const lowerName = file.name.toLowerCase();
-  const isZip =
-    lowerName.endsWith(".zip") ||
-    file.type === "application/zip" ||
-    file.type === "application/x-zip-compressed";
+type DeliveryTask = {
+  id: string;
+  task_type?: string | null;
+  created_at?: string | null;
+};
 
-  if (!file.size) {
-    throw new Error("Please choose a ZIP file to upload.");
+type DeliveryConfiguration = {
+  jurisdictionCodes: string[];
+  targetLanguage: string | null;
+};
+
+async function getUploadDeliveryOrder(
+  supabase: SupabaseClient,
+  orderId: string,
+  requestId: string,
+) {
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select("id, request_id, status, translation_tasks(id, task_type, created_at)")
+    .eq("id", orderId)
+    .single();
+
+  if (error) throw new Error(error.message);
+  if (order.request_id !== requestId) {
+    throw new Error("Order does not belong to this request.");
+  }
+  if (order.status === "completed") {
+    throw new Error("This order has already been delivered.");
   }
 
-  if (!isZip) {
-    throw new Error("Only ZIP deliverables are supported.");
+  return order as typeof order & { translation_tasks?: DeliveryTask[] | null };
+}
+
+async function getDeliveryConfiguration(
+  supabase: SupabaseClient,
+  requestId: string,
+): Promise<DeliveryConfiguration> {
+  const [requirementResult, configVersionResult] = await Promise.all([
+    supabase
+      .from("translation_requirements")
+      .select("target_language, jurisdiction_codes, config_snapshot")
+      .eq("request_id", requestId)
+      .maybeSingle(),
+    supabase
+      .from("request_config_versions")
+      .select("version_no, config_snapshot")
+      .eq("request_id", requestId)
+      .order("version_no", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (requirementResult.error) throw new Error(requirementResult.error.message);
+  if (configVersionResult.error) throw new Error(configVersionResult.error.message);
+
+  const requirement = requirementResult.data;
+  const latestSnapshot = configVersionResult.data?.config_snapshot
+    ?? requirement?.config_snapshot;
+  const snapshotCodes = normalizeJurisdictionCodes(
+    (latestSnapshot as { jurisdictionCodes?: unknown } | null)?.jurisdictionCodes,
+  );
+  const storedCodes = normalizeJurisdictionCodes(requirement?.jurisdiction_codes);
+
+  return {
+    jurisdictionCodes: snapshotCodes.length ? snapshotCodes : storedCodes,
+    targetLanguage: requirement?.target_language ?? null,
+  };
+}
+
+function normalizeJurisdictionCodes(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(
+    value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim().toUpperCase())
+      .filter((item) => /^[A-Z]{2}$/.test(item)),
+  )];
+}
+
+function assertDeliveryJurisdiction(
+  jurisdictionCode: string,
+  allowedJurisdictions: string[],
+) {
+  if (!allowedJurisdictions.includes(jurisdictionCode)) {
+    throw new Error("Jurisdiction is not configured for this request.");
   }
 }
 
-function resolveDeliverableZipContentType(file: File) {
-  const lowerName = file.name.toLowerCase();
+function selectDeliveryTask(tasks: DeliveryTask[]) {
+  const targetTask = [...tasks]
+    .filter((task) => task.task_type === "translation")
+    .sort((left, right) => {
+      const dateDifference = new Date(left.created_at ?? 0).getTime()
+        - new Date(right.created_at ?? 0).getTime();
+      return dateDifference || left.id.localeCompare(right.id);
+    })[0];
 
-  if (
-    lowerName.endsWith(".zip") ||
-    file.type === "application/zip" ||
-    file.type === "application/x-zip-compressed"
-  ) {
-    return "application/zip";
+  if (!targetTask) {
+    throw new Error("Start the translation task before uploading a deliverable.");
   }
 
-  return file.type || "application/octet-stream";
+  return targetTask;
+}
+
+async function saveCountryDeliverable(
+  supabase: SupabaseClient,
+  input: {
+    jurisdictionCode: string;
+    language: string | null;
+    orderId: string;
+    submittedBy: string;
+    taskId: string;
+    upload: File;
+  },
+) {
+  const { data: existingDeliverables, error } = await supabase
+    .from("task_deliverables")
+    .select("id, storage_path, version_no, status")
+    .eq("task_id", input.taskId)
+    .eq("jurisdiction_code", input.jurisdictionCode)
+    .order("version_no", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const draft = existingDeliverables?.find((item) => item.status === "draft") ?? null;
+  const versionNo = Number(existingDeliverables?.[0]?.version_no ?? 0) + 1;
+  const storagePath = [
+    "deliverables",
+    input.orderId,
+    input.jurisdictionCode,
+    `${Date.now()}-${safeFileName(input.upload.name)}`,
+  ].join("/");
+  const bytes = new Uint8Array(await input.upload.arrayBuffer());
+  const { error: uploadError } = await supabase.storage
+    .from("request-files")
+    .upload(storagePath, bytes, {
+      contentType: resolveDeliverableContentType(input.upload),
+      upsert: false,
+    });
+  if (uploadError) throw new Error(uploadError.message);
+
+  try {
+    const deliverableId = draft
+      ? await updateCountryDeliverable(supabase, draft.id, storagePath, input)
+      : await createCountryDeliverable(supabase, storagePath, versionNo, input);
+
+    if (draft?.storage_path && draft.storage_path !== storagePath) {
+      await supabase.storage.from("request-files").remove([draft.storage_path]);
+    }
+    return deliverableId;
+  } catch (saveError) {
+    await supabase.storage.from("request-files").remove([storagePath]);
+    throw saveError;
+  }
+}
+
+async function updateCountryDeliverable(
+  supabase: SupabaseClient,
+  deliverableId: string,
+  storagePath: string,
+  input: {
+    jurisdictionCode: string;
+    language: string | null;
+    submittedBy: string;
+  },
+) {
+  const { data, error } = await supabase
+    .from("task_deliverables")
+    .update({
+      jurisdiction_code: input.jurisdictionCode,
+      language: input.language,
+      storage_bucket: "request-files",
+      storage_path: storagePath,
+      submitted_by: input.submittedBy,
+    })
+    .eq("id", deliverableId)
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return data.id;
+}
+
+async function createCountryDeliverable(
+  supabase: SupabaseClient,
+  storagePath: string,
+  versionNo: number,
+  input: {
+    jurisdictionCode: string;
+    language: string | null;
+    submittedBy: string;
+    taskId: string;
+  },
+) {
+  const { data, error } = await supabase
+    .from("task_deliverables")
+    .insert({
+      jurisdiction_code: input.jurisdictionCode,
+      language: input.language,
+      status: "draft",
+      storage_bucket: "request-files",
+      storage_path: storagePath,
+      submitted_by: input.submittedBy,
+      task_id: input.taskId,
+      version_no: versionNo,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return data.id;
+}
+
+const deliverableContentTypes: Record<string, string> = {
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".pdf": "application/pdf",
+  ".zip": "application/zip",
+};
+
+function validateDeliverableFile(file: File) {
+  const extension = fileExtension(file.name);
+
+  if (!file.size) {
+    throw new Error("Please choose a delivery file to upload.");
+  }
+
+  if (!deliverableContentTypes[extension]) {
+    throw new Error("Only ZIP, PDF, DOC, and DOCX deliverables are supported.");
+  }
+}
+
+function resolveDeliverableContentType(file: File) {
+  return deliverableContentTypes[fileExtension(file.name)]
+    ?? file.type
+    ?? "application/octet-stream";
+}
+
+function fileExtension(fileName: string) {
+  const index = fileName.lastIndexOf(".");
+  return index >= 0 ? fileName.slice(index).toLowerCase() : "";
 }

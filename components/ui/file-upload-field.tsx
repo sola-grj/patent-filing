@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 
 export function FileUploadField({
   accept,
+  acceptedTypeLabel = "ZIP only",
   description,
   disabled,
   inputKey,
@@ -12,6 +13,7 @@ export function FileUploadField({
   selectedFile,
 }: {
   accept?: string;
+  acceptedTypeLabel?: string;
   description?: string;
   disabled?: boolean;
   inputKey?: number | string;
@@ -54,7 +56,7 @@ export function FileUploadField({
                 {selectedFile ? selectedFile.name : "No file selected"}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {selectedFile ? formatFileSize(selectedFile.size) : "ZIP only"}
+                {selectedFile ? formatFileSize(selectedFile.size) : acceptedTypeLabel}
               </p>
             </div>
           </div>

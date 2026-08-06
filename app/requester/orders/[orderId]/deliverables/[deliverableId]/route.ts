@@ -7,6 +7,7 @@ type DeliverableRow = {
   storage_bucket: string;
   storage_path: string;
   status?: string | null;
+  jurisdiction_code?: string | null;
 };
 
 type OrderRow = {
@@ -34,7 +35,7 @@ export async function GET(
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status))")
+    .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status, jurisdiction_code))")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -62,11 +63,15 @@ export async function GET(
     return NextResponse.json({ error: downloadError.message }, { status: 500 });
   }
 
-  const fileName = `${safeBaseName(order.order_no ?? orderId)}-${storageName(deliverable.storage_path) || "deliverable.zip"}`;
+  const fileName = [
+    safeBaseName(order.order_no ?? orderId),
+    deliverable.jurisdiction_code ?? "GENERAL",
+    storageName(deliverable.storage_path) || "delivery-file",
+  ].join("-");
 
   return new NextResponse(await data.arrayBuffer(), {
     headers: {
-      "Content-Type": "application/zip",
+      "Content-Type": deliverableContentType(deliverable.storage_path, data.type),
       "Content-Disposition": `attachment; filename="${fileName}"`,
       "Cache-Control": "no-store",
     },
@@ -84,4 +89,16 @@ function storageName(path?: string | null) {
 
   const parts = path.split("/");
   return parts[parts.length - 1] ?? "";
+}
+
+function deliverableContentType(path: string, blobType: string) {
+  const extension = path.toLowerCase().match(/\.[^.\/]+$/)?.[0];
+  const contentTypes: Record<string, string> = {
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pdf": "application/pdf",
+    ".zip": "application/zip",
+  };
+
+  return (extension && contentTypes[extension]) || blobType || "application/octet-stream";
 }
