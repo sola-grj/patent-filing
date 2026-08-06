@@ -158,6 +158,15 @@ export type WizardPatentAnalysisResult = {
     sha256: string;
     expires_at: string;
   } | null;
+  source_document?: {
+    strategy: "external_url" | "generated_cache";
+    source: "epo" | "wipo";
+    normalized_number: string;
+    kind_code?: string | null;
+    filename: string;
+    mime_type: string;
+    upstream_url?: string | null;
+  } | null;
   counting_standard: string;
   excluded_content: string[];
   files: WizardPatentAnalysisFile[];

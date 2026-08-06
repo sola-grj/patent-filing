@@ -48,7 +48,7 @@ export function PatentFileDownloadButton({
         } | null;
         throw new Error(
           body?.error
-          || `Unable to download the original patent file (${response.status}).`,
+          || `Unable to download the patent document (${response.status}).`,
         );
       }
 
@@ -88,14 +88,14 @@ export function PatentFileDownloadButton({
   const isReady = status === "parsed";
   const tooltip = error
     ?? (status === "validated" || status === "parsing"
-      ? "Original patent file is being prepared..."
+      ? "Patent document is being made available..."
       : status === "failed"
-        ? "Original patent file preparation failed. Retry it first."
+        ? "The patent document could not be made available. Retry it first."
         : isDownloading
-          ? "Downloading original file..."
+          ? "Downloading patent document..."
           : isReady
-            ? "Download original file"
-            : "Original patent file is unavailable.");
+            ? "Download patent document"
+            : "Patent document is unavailable.");
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -107,7 +107,7 @@ export function PatentFileDownloadButton({
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              aria-label="Download original file"
+              aria-label="Download patent document"
               disabled={isDownloading || !isReady}
               onClick={handleDownload}
             >

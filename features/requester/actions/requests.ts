@@ -118,8 +118,8 @@ export async function createFilesFromPatentVersions(formData: FormData): Promise
       (versions ?? []).map((version) => ({
         request_id: requestId,
         source: "patent_search",
-        storage_bucket: "request-files",
-        storage_path: `external/${requestId}/${version.id}`,
+        storage_bucket: null,
+        storage_path: null,
         original_filename: `${version.version_label}.${version.file_type ?? "pdf"}`,
         mime_type: version.file_type === "txt" ? "text/plain" : "application/pdf",
         file_role: version.version_label,

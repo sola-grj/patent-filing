@@ -7,6 +7,7 @@ export type RequestInformationFile = {
   id: string;
   source?: string | null;
   status?: string | null;
+  updated_at?: string | null;
   original_filename: string;
   mime_type?: string | null;
   language?: string | null;

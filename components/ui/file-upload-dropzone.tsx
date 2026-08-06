@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useRef } from "react";
 import { Upload } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -26,10 +26,19 @@ export function FileUploadDropzone({
 }) {
   const generatedId = useId();
   const resolvedInputId = inputId ?? `file-upload-${generatedId}`;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openFileChooser() {
+    const input = inputRef.current;
+    if (!input || disabled) return;
+    input.value = "";
+    input.click();
+  }
 
   return (
     <div className={cn("space-y-3", className)}>
       <input
+        ref={inputRef}
         key={inputKey}
         id={resolvedInputId}
         type="file"
@@ -37,14 +46,19 @@ export function FileUploadDropzone({
         accept={accept}
         className="sr-only"
         disabled={disabled}
-        onChange={(event) =>
-          onFilesChange(Array.from(event.target.files ?? []))
-        }
+        onChange={(event) => {
+          const selectedFiles = Array.from(event.currentTarget.files ?? []);
+          onFilesChange(selectedFiles);
+          event.currentTarget.value = "";
+        }}
       />
-      <label
-        htmlFor={resolvedInputId}
+      <button
+        type="button"
+        aria-controls={resolvedInputId}
+        disabled={disabled}
+        onClick={openFileChooser}
         className={cn(
-          "flex min-h-20 items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-fuchsia-400 bg-white px-6 py-5 text-center text-fuchsia-600 transition-colors",
+          "flex min-h-20 w-full items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-fuchsia-400 bg-white px-6 py-5 text-center text-fuchsia-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           disabled
             ? "cursor-not-allowed opacity-60"
             : "cursor-pointer hover:border-fuchsia-500 hover:bg-fuchsia-50/40",
@@ -56,7 +70,7 @@ export function FileUploadDropzone({
         <span className="text-[1.125rem] font-semibold tracking-[-0.02em]">
           {label}
         </span>
-      </label>
+      </button>
     </div>
   );
 }

@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server";
 
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { fetchSubmittedPatentFile } from "@/features/requester/actions/patent-service";
+import { createClient } from "@/lib/supabase/server";
 
 type PatentFileRow = {
-  original_filename: string | null;
   status: string | null;
-  storage_bucket: string | null;
-  storage_path: string | null;
+  patent_document_id: string | null;
 };
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ requestId: string }> },
 ) {
   const { requestId } = await params;
@@ -24,7 +23,7 @@ export async function GET(
   // only returns files belonging to a Request that this requester/PM can access.
   const { data, error } = await supabase
     .from("request_files")
-    .select("original_filename, status, storage_bucket, storage_path")
+    .select("status, patent_document_id")
     .eq("request_id", requestId)
     .eq("source", "patent_search")
     .order("created_at", { ascending: true })
@@ -33,7 +32,7 @@ export async function GET(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) {
     return NextResponse.json(
-      { error: "Original patent file not found." },
+      { error: "Patent document not found." },
       { status: 404 },
     );
   }
@@ -41,51 +40,54 @@ export async function GET(
   const patentFile = data as PatentFileRow;
   if (
     patentFile.status !== "parsed"
-    || !patentFile.storage_bucket
-    || !patentFile.storage_path
+    || !patentFile.patent_document_id
   ) {
     return NextResponse.json(
-      { error: "Original patent file is not ready yet." },
+      { error: "Patent document is not ready yet." },
       { status: 409 },
     );
   }
 
-  let storage;
+  let upstream: Response;
   try {
-    storage = createServiceClient().storage.from(patentFile.storage_bucket);
+    upstream = await fetchSubmittedPatentFile(requestId);
   } catch (serviceError) {
     return NextResponse.json(
       {
         error: serviceError instanceof Error
           ? serviceError.message
-          : "Supabase service access is not configured.",
+          : "Patent file service is not configured.",
       },
       { status: 503 },
     );
   }
 
-  const { data: file, error: downloadError } = await storage.download(
-    patentFile.storage_path,
-  );
-  if (downloadError || !file) {
+  if (!upstream.ok || !upstream.body) {
+    const payload = await upstream.json().catch(() => null) as {
+      error?: { message?: string };
+      detail?: string;
+    } | null;
     return NextResponse.json(
       {
-        error: downloadError?.message || "Unable to read the stored patent file.",
+        error: payload?.error?.message
+          || payload?.detail
+          || "Unable to download the patent document.",
       },
-      { status: 502 },
+      { status: upstream.status },
     );
   }
 
-  const fileName = patentFile.original_filename || "patent-document.pdf";
-
-  return new Response(file, {
+  const headers = new Headers({
+    "Content-Type": upstream.headers.get("content-type") || "application/octet-stream",
+    "Content-Disposition": upstream.headers.get("content-disposition")
+      || contentDisposition("patent-document.pdf"),
+    "Cache-Control": "private, no-store",
+  });
+  const contentLength = upstream.headers.get("content-length");
+  if (contentLength) headers.set("Content-Length", contentLength);
+  return new Response(upstream.body, {
     status: 200,
-    headers: {
-      "Content-Type": file.type || "application/octet-stream",
-      "Content-Disposition": contentDisposition(fileName),
-      "Content-Length": String(file.size),
-      "Cache-Control": "private, no-store",
-    },
+    headers,
   });
 }
 

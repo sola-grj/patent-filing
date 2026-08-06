@@ -57,14 +57,19 @@ export async function sendFilingSignatureEmail(input: SignatureEmailInput) {
 function buildHtml(input: SignatureEmailInput, appBaseUrl: string) {
   const greeting = escapeHtml(input.signatureRequest.recipient_name?.trim() || "there");
   const dueSentence = dueText(input.signatureRequest.due_at);
+  const dueDate = formatDueDate(input.signatureRequest.due_at);
   const fileList = input.files
     .map(
       (file) =>
         `<li style="margin:8px 0"><a href="${fileUrl(appBaseUrl, file.id)}">${escapeHtml(file.original_filename)}</a></li>`,
     )
     .join("");
-  const note = input.signatureRequest.pm_note?.trim()
-    ? `<h3 style="margin:24px 0 8px">PM note</h3><p style="white-space:pre-wrap">${escapeHtml(input.signatureRequest.pm_note)}</p>`
+  const note = input.signatureRequest.pm_note?.trim() || "";
+  const details = dueDate || note
+    ? `<div style="margin:20px 0;padding:16px;border:1px solid #e3e8e5;border-radius:8px;background:#f8faf9">
+        ${dueDate ? `<p style="margin:0${note ? " 0 12px" : ""}"><strong>Due date:</strong> ${escapeHtml(dueDate)}</p>` : ""}
+        ${note ? `<p style="margin:0 0 6px"><strong>PM note:</strong></p><p style="margin:0;white-space:pre-wrap">${escapeHtml(note)}</p>` : ""}
+      </div>`
     : "";
   const portalUrl = `${appBaseUrl}/requester/requests/${input.signatureRequest.request_id}#signature-documents`;
 
@@ -72,6 +77,7 @@ function buildHtml(input: SignatureEmailInput, appBaseUrl: string) {
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#17211b;max-width:640px;margin:auto">
       <p>Hi ${greeting},</p>
       <p>Your project manager has uploaded ${input.files.length} document(s) that require your signature for filing request <strong>${escapeHtml(input.requestNo)}</strong> — ${escapeHtml(input.matterName)}.</p>
+      ${details}
       <p>Please:</p>
       <ol>
         <li>Download and review the document(s).</li>
@@ -80,7 +86,6 @@ function buildHtml(input: SignatureEmailInput, appBaseUrl: string) {
       </ol>
       <h3 style="margin:24px 0 8px">Documents</h3>
       <ul>${fileList}</ul>
-      ${note}
       <p style="margin:28px 0"><a href="${portalUrl}" style="background:#315d46;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none">Review and upload signed files</a></p>
       <p style="font-size:13px;color:#66756d">For security, you will need to sign in to Pat before downloading or uploading files.</p>
       <p style="font-size:13px;color:#66756d">This is an automated message from Pat.</p>
@@ -91,14 +96,17 @@ function buildText(input: SignatureEmailInput, appBaseUrl: string) {
   const files = input.files
     .map((file) => `- ${file.original_filename}: ${fileUrl(appBaseUrl, file.id)}`)
     .join("\n");
-  const note = input.signatureRequest.pm_note?.trim()
-    ? `\n\nPM note:\n${input.signatureRequest.pm_note}`
-    : "";
+  const dueDate = formatDueDate(input.signatureRequest.due_at);
+  const note = input.signatureRequest.pm_note?.trim() || "";
+  const details = [
+    dueDate ? `Due date: ${dueDate}` : "",
+    note ? `PM note:\n${note}` : "",
+  ].filter(Boolean).join("\n\n");
   const portalUrl = `${appBaseUrl}/requester/requests/${input.signatureRequest.request_id}#signature-documents`;
 
   return `Hi ${input.signatureRequest.recipient_name?.trim() || "there"},
 
-Your project manager has uploaded ${input.files.length} document(s) that require your signature for filing request ${input.requestNo} — ${input.matterName}.
+Your project manager has uploaded ${input.files.length} document(s) that require your signature for filing request ${input.requestNo} — ${input.matterName}.${details ? `\n\n${details}` : ""}
 
 Please:
 1. Download and review the document(s).
@@ -106,7 +114,7 @@ Please:
 3. Upload the signed file(s) to Pat${dueText(input.signatureRequest.due_at)}.
 
 Documents:
-${files}${note}
+${files}
 
 Review and upload signed files: ${portalUrl}
 
@@ -120,17 +128,18 @@ function fileUrl(appBaseUrl: string, fileId: string) {
 }
 
 function dueText(value?: string | null) {
-  if (!value) {
-    return "";
-  }
+  const date = formatDueDate(value);
+  return date ? ` by ${date}` : "";
+}
 
-  const date = new Intl.DateTimeFormat("en-US", {
+function formatDueDate(value?: string | null) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${value}T00:00:00Z`));
-  return ` by ${date}`;
 }
 
 function escapeHtml(value: string) {

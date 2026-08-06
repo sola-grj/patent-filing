@@ -49,6 +49,17 @@ export async function savePmSignatureDraft(
       throw new Error("Complete or cancel the active signature request before creating another one.");
     }
 
+    const existingFiles = ((active?.filing_signature_files ?? []) as FilingSignatureFile[])
+      .filter((file) => file.direction === "pm_to_requester");
+    validateSignatureFiles(
+      files,
+      existingFiles.length,
+      existingFiles.reduce((total, file) => total + Number(file.file_size), 0),
+    );
+    if (!existingFiles.length && !files.length) {
+      throw new Error("Upload at least one signature document before saving the draft.");
+    }
+
     const signatureRequest = active
       ? await updateDraft(context, active.id, {
           dueAt,
@@ -64,14 +75,6 @@ export async function savePmSignatureDraft(
           recipientName: profile?.display_name ?? null,
           requestId,
         });
-
-    const existingFiles = ((active?.filing_signature_files ?? []) as FilingSignatureFile[])
-      .filter((file) => file.direction === "pm_to_requester");
-    validateSignatureFiles(
-      files,
-      existingFiles.length,
-      existingFiles.reduce((total, file) => total + Number(file.file_size), 0),
-    );
 
     if (files.length) {
       await uploadSignatureFiles(context.supabase, {
@@ -129,6 +132,15 @@ export async function sendPmSignatureRequest(
       "Signature request",
     );
     const signatureRequest = await getSignatureEmailData(context, signatureRequestId);
+    const pmNote = formData.has("pmNote")
+      ? optionalString(formData.get("pmNote"))
+      : signatureRequest.pm_note ?? null;
+    if ((pmNote?.length ?? 0) > 2000) {
+      throw new Error("The requester message must not exceed 2,000 characters.");
+    }
+    const dueAt = formData.has("dueAt")
+      ? validateSignatureDueDate(optionalString(formData.get("dueAt")))
+      : signatureRequest.due_at ?? null;
     const profile = await getRequesterProfile(context, signatureRequest.recipient_id);
     if (!profile?.email?.trim()) {
       throw new Error("The requester email address is missing.");
@@ -139,6 +151,8 @@ export async function sendPmSignatureRequest(
       .update({
         recipient_name: profile.display_name ?? null,
         recipient_email: profile.email,
+        pm_note: pmNote,
+        due_at: dueAt,
       })
       .eq("id", signatureRequestId)
       .eq("status", "draft");

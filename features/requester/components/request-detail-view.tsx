@@ -192,7 +192,8 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const isPatentSearch = request.source_mode === "patent_search";
   const patentNumber = isPatentSearch ? patent?.patent_number ?? null : null;
   const patentCandidate = isPatentSearch && patent ? toPatentCandidate(patent) : null;
-  const patentFileStatus = files.find((file) => file.source === "patent_search")?.status;
+  const patentFile = files.find((file) => file.source === "patent_search");
+  const patentFileStatus = patentFile?.status;
   const translationWordCount = resolveTranslationWordCount(
     config,
     latestQuote,
@@ -346,6 +347,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
               <PatentCacheStatus
                 requestId={request.id}
                 status={patentFileStatus}
+                updatedAt={patentFile?.updated_at}
               />
               {patentCandidate ? (
                 <PatentDetailStep

@@ -1,16 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { type ActionResult } from "@/lib/validators/requester";
 import type {
   WizardPatentCandidate,
   WizardPersistResult,
+  WizardPayload,
 } from "@/features/requester/wizard-types";
 import { getAuthenticatedUser, toErrorMessage } from "../server-utils";
 import { lookupPatent } from "./patent-lookup";
 import { persistWizardRequest } from "./wizard-persistence";
-import { retrySubmittedPatentCache } from "./patent-cache";
+import { enqueueSubmittedPatentFilePreparation } from "./patent-file-readiness";
 import { writeRequestEvent } from "./helpers";
 import {
   parseQuoteNegotiationInput,
@@ -47,11 +49,10 @@ export async function submitNegotiationFromWizard(
   formData: FormData,
 ): Promise<ActionResult<WizardPersistResult>> {
   try {
-    const sourceMode = (
-      JSON.parse(String(formData.get("payload") ?? "{}")) as {
-        sourceMode?: string;
-      }
-    ).sourceMode;
+    const wizardPayload = JSON.parse(
+      String(formData.get("payload") ?? "{}"),
+    ) as WizardPayload;
+    const sourceMode = wizardPayload.sourceMode;
     const submitResult = await persistWizardRequest(
       formData,
       "submit",
@@ -117,13 +118,36 @@ export async function submitNegotiationFromWizard(
       { sourceMode, negotiation: true },
     );
     if (sourceMode === "patent_search") {
-      const cacheResult = await retrySubmittedPatentCache(requestId);
-      if (!cacheResult.success) {
-        throw new Error(
-          cacheResult.error
-          || "The original patent file could not be prepared.",
-        );
-      }
+      const lookupReceipt = wizardPayload.selectedPatent?.lookupReceipt;
+      const analysisReceipt = wizardPayload.analysis?.analysis_receipt;
+      after(async () => {
+        try {
+          if (!lookupReceipt || !analysisReceipt) {
+            throw new Error("Verified patent data is unavailable.");
+          }
+          await enqueueSubmittedPatentFilePreparation({
+            supabase,
+            requestId,
+            lookupReceipt,
+            analysisReceipt,
+          });
+        } catch (cacheError) {
+          await writeRequestEvent(
+            supabase,
+            requestId,
+            userId,
+            "patent.cache.prepare_failed",
+            "quoted",
+            "quoted",
+            {
+              message: cacheError instanceof Error
+                ? cacheError.message
+                : "Patent cache preparation failed.",
+              retryable: true,
+            },
+          ).catch(() => undefined);
+        }
+      });
     }
 
     revalidatePath("/requester");

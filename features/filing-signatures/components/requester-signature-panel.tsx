@@ -11,6 +11,7 @@ import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { submitRequesterSignatureFiles } from "@/features/filing-signatures/requester-actions";
 import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
 import { signatureFilesByDirection } from "@/features/filing-signatures/types";
+import { FileList } from "@/features/requester/components/new-request-wizard-shared";
 
 import { SignatureFileLinks, SignatureZipLink } from "./signature-file-links";
 import { SignatureHistory } from "./signature-history";
@@ -77,11 +78,33 @@ export function RequesterSignaturePanel({
           <div className="space-y-5">
             <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/30">
               <p className="font-medium">These documents require your signature.</p>
-              <p className="mt-1 text-muted-foreground">
-                Sent {formatDate(active.sent_at)}
-                {active.due_at ? ` · Please return by ${formatDate(active.due_at)}` : ""}
-              </p>
-              {active.pm_note ? <p className="mt-3 whitespace-pre-wrap">{active.pm_note}</p> : null}
+              <p className="mt-1 text-muted-foreground">Sent {formatDate(active.sent_at)}</p>
+              {active.due_at || active.pm_note?.trim() ? (
+                <div
+                  className={`mt-4 grid gap-3 ${
+                    active.due_at && active.pm_note?.trim()
+                      ? "sm:grid-cols-[minmax(0,0.35fr)_minmax(0,1fr)]"
+                      : ""
+                  }`}
+                >
+                  {active.due_at ? (
+                    <div className="rounded-md border border-amber-200/80 bg-background/70 p-3 dark:border-amber-900">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Due date
+                      </p>
+                      <p className="mt-1 font-medium">{formatDueDate(active.due_at)}</p>
+                    </div>
+                  ) : null}
+                  {active.pm_note?.trim() ? (
+                    <div className="rounded-md border border-amber-200/80 bg-background/70 p-3 dark:border-amber-900">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        PM note
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap">{active.pm_note}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -101,11 +124,14 @@ export function RequesterSignaturePanel({
               <p className="text-xs text-muted-foreground">
                 PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
               </p>
-              <p className="text-xs text-muted-foreground">
-                {files.length
-                  ? `${files.length} signed file(s) selected`
-                  : "No files selected yet."}
-              </p>
+              <div className="h-32 overflow-y-auto overscroll-contain pr-1">
+                <FileList
+                  files={files}
+                  onRemove={(index) =>
+                    setFiles(files.filter((_, fileIndex) => fileIndex !== index))
+                  }
+                />
+              </div>
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <div className="flex justify-end">
@@ -132,4 +158,13 @@ function formatDate(value?: string | null) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function formatDueDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00Z`));
 }

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import {
   type ActionResult,
@@ -25,7 +26,7 @@ import {
 import {
   verifyPatentReceipts,
 } from "./patent-service";
-import { ensureSubmittedPatentFileReady } from "./patent-file-readiness";
+import { enqueueSubmittedPatentFilePreparation } from "./patent-file-readiness";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 const DEFAULT_DELIVERY_OPTION = "standard";
@@ -72,7 +73,7 @@ export async function persistWizardRequest(
       : null;
     if (submittedRequestNo) {
       persistedResult = { requestId, requestNo: submittedRequestNo };
-      await prepareSubmittedPatentFile({
+      scheduleSubmittedPatentFile({
         supabase,
         requestId,
         userId,
@@ -159,7 +160,7 @@ export async function persistWizardRequest(
         payload.sourceMode === "patent_search"
         && !options?.deferPatentCache
       ) {
-        await prepareSubmittedPatentFile({
+        scheduleSubmittedPatentFile({
           supabase,
           requestId,
           userId,
@@ -210,7 +211,7 @@ async function prepareSubmittedPatentFile(input: {
   analysisReceipt: string;
 }) {
   try {
-    await ensureSubmittedPatentFileReady(input);
+    await enqueueSubmittedPatentFilePreparation(input);
   } catch (cacheError) {
     await writeRequestEvent(
       input.supabase,
@@ -226,8 +227,13 @@ async function prepareSubmittedPatentFile(input: {
         retryable: true,
       },
     ).catch(() => undefined);
-    throw cacheError;
   }
+}
+
+function scheduleSubmittedPatentFile(input: Parameters<
+  typeof prepareSubmittedPatentFile
+>[0]) {
+  after(() => prepareSubmittedPatentFile(input));
 }
 
 function revalidateRequestPaths(requestId: string) {
@@ -691,8 +697,8 @@ async function persistPatentSelection(
         id: entry.requestFileId,
         request_id: requestId,
         source: "patent_search",
-        storage_bucket: "request-files",
-        storage_path: `external/${requestId}/${entry.versionId}`,
+        storage_bucket: null,
+        storage_path: null,
         original_filename: `${entry.file.label}.${entry.file.fileType}`,
         mime_type: entry.file.fileType === "txt"
           ? "text/plain"
@@ -745,7 +751,7 @@ async function clearDraftSourceArtifacts(
   if (requestFilesError) throw new Error(requestFilesError.message);
 
   const uploadedPaths = (requestFiles ?? [])
-    .filter((file) => file.source === "upload")
+    .filter((file) => file.source === "upload" && file.storage_path)
     .map((file) => file.storage_path);
 
   if (uploadedPaths.length) {

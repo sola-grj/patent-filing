@@ -2,12 +2,18 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MailWarning, Send } from "lucide-react";
+import { Info, Send } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   cancelPmSignatureRequest,
   removePmSignatureFile,
@@ -15,11 +21,14 @@ import {
   savePmSignatureDraft,
   sendPmSignatureRequest,
 } from "@/features/filing-signatures/pm-actions";
+import { appendPmSignatureFiles } from "@/features/filing-signatures/pm-append-actions";
 import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
 import { signatureFilesByDirection } from "@/features/filing-signatures/types";
+import { FileList } from "@/features/requester/components/new-request-wizard-shared";
 
-import { SignatureFileLinks, SignatureZipLink } from "./signature-file-links";
+import { SignatureFileLinks } from "./signature-file-links";
 import { SignatureHistory } from "./signature-history";
+import { PmPendingSignaturePackage } from "./pm-pending-signature-package";
 
 type PanelActionResult = {
   success: boolean;
@@ -40,6 +49,7 @@ export function PmSignaturePanel({
   const [isPending, startTransition] = useTransition();
   const [files, setFiles] = useState<File[]>([]);
   const [inputKey, setInputKey] = useState(0);
+  const [isAppendOpen, setIsAppendOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const sorted = useMemo(
     () => [...signatureRequests].sort(newestFirst),
@@ -49,8 +59,17 @@ export function PmSignaturePanel({
   const history = sorted.filter((request) => request.id !== active?.id);
   const [pmNote, setPmNote] = useState(active?.status === "draft" ? active.pm_note ?? "" : "");
   const [dueAt, setDueAt] = useState(active?.status === "draft" ? active.due_at ?? "" : "");
+  const activeDraft = active?.status === "draft" ? active : null;
+  const hasUnsavedDraftChanges = Boolean(
+    files.length
+      || (activeDraft && pmNote !== (activeDraft.pm_note ?? ""))
+      || (activeDraft && dueAt !== (activeDraft.due_at ?? "")),
+  );
 
-  function run(action: () => Promise<PanelActionResult>) {
+  function run(
+    action: () => Promise<PanelActionResult>,
+    onSuccess?: () => void,
+  ) {
     setMessage(null);
     startTransition(async () => {
       const result = await action();
@@ -61,6 +80,7 @@ export function PmSignaturePanel({
       setMessage(actionWarning(result.data));
       setFiles([]);
       setInputKey((value) => value + 1);
+      onSuccess?.();
       router.refresh();
     });
   }
@@ -72,6 +92,33 @@ export function PmSignaturePanel({
     formData.set("dueAt", dueAt);
     files.forEach((file) => formData.append("files", file));
     run(() => savePmSignatureDraft(formData));
+  }
+
+  function appendFiles(signatureRequestId: string) {
+    const formData = new FormData();
+    formData.set("signatureRequestId", signatureRequestId);
+    files.forEach((file) => formData.append("files", file));
+    run(
+      () => appendPmSignatureFiles(formData),
+      () => setIsAppendOpen(false),
+    );
+  }
+
+  function sendDraft(signatureRequestId: string) {
+    const formData = new FormData();
+    formData.set("signatureRequestId", signatureRequestId);
+    formData.set("pmNote", pmNote);
+    formData.set("dueAt", dueAt);
+    run(() => sendPmSignatureRequest(formData));
+  }
+
+  function changeAppendOpen(open: boolean) {
+    setIsAppendOpen(open);
+    if (!open) {
+      setFiles([]);
+      setInputKey((value) => value + 1);
+      setMessage(null);
+    }
   }
 
   function runForRequest(
@@ -87,7 +134,25 @@ export function PmSignaturePanel({
     <Card id="signature-documents">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <div>
-          <CardTitle>Signature documents</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            Signature documents
+            <TooltipProvider delayDuration={120}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Signature document workflow guidance"
+                    className="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Info className="size-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-64">
+                  Always save the draft before sending it to the requester.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             Send POA or filing forms to the requester and receive signed files.
           </p>
@@ -95,45 +160,69 @@ export function PmSignaturePanel({
         {active ? <Badge variant="outline">{statusLabel(active.status)}</Badge> : null}
       </CardHeader>
       <CardContent className="space-y-6">
-        {active?.status === "sent" ? (
-          <PendingPackage
-            disabled={isPending}
-            request={active}
-            onCancel={() => runForRequest(cancelPmSignatureRequest, active.id)}
-            onRetry={() => runForRequest(retryPmSignatureEmail, active.id)}
-          />
-        ) : canManage ? (
-          <DraftEditor
-            active={active?.status === "draft" ? active : null}
-            disabled={isPending}
-            dueAt={dueAt}
-            files={files}
-            inputKey={inputKey}
-            pmNote={pmNote}
-            onCancel={active ? () => runForRequest(cancelPmSignatureRequest, active.id) : undefined}
-            onDueAtChange={setDueAt}
-            onFileChange={setFiles}
-            onNoteChange={setPmNote}
-            onRemove={(fileId) => {
-              const formData = new FormData();
-              formData.set("fileId", fileId);
-              run(() => removePmSignatureFile(formData));
-            }}
-            onSave={saveDraft}
-            onSend={active ? () => runForRequest(sendPmSignatureRequest, active.id) : undefined}
-          />
-        ) : (
-          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            New signature packages can only be created while this Filing request is In progress.
+        <section
+          aria-label="Current signature package"
+          className="rounded-xl border bg-background p-5 shadow-sm"
+        >
+          <p className="mb-4 text-sm font-semibold">
+            {active ? "Current package" : "New signature package"}
           </p>
-        )}
+          {active?.status === "sent" ? (
+            <PmPendingSignaturePackage
+              canAppend={canManage}
+              disabled={isPending}
+              files={files}
+              inputKey={inputKey}
+              message={message}
+              open={isAppendOpen}
+              request={active}
+              onAppend={() => appendFiles(active.id)}
+              onCancel={() => runForRequest(cancelPmSignatureRequest, active.id)}
+              onFileChange={setFiles}
+              onOpenChange={changeAppendOpen}
+              onRetry={() => runForRequest(retryPmSignatureEmail, active.id)}
+            />
+          ) : canManage ? (
+            <DraftEditor
+              active={activeDraft}
+              disabled={isPending}
+              dueAt={dueAt}
+              files={files}
+              hasUnsavedChanges={hasUnsavedDraftChanges}
+              inputKey={inputKey}
+              pmNote={pmNote}
+              onCancel={active ? () => runForRequest(cancelPmSignatureRequest, active.id) : undefined}
+              onDueAtChange={setDueAt}
+              onFileChange={setFiles}
+              onNoteChange={setPmNote}
+              onRemove={(fileId) => {
+                const formData = new FormData();
+                formData.set("fileId", fileId);
+                run(() => removePmSignatureFile(formData));
+              }}
+              onSave={saveDraft}
+              onSend={active ? () => sendDraft(active.id) : undefined}
+            />
+          ) : (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+              New signature packages can only be created while this Filing request is In progress.
+            </p>
+          )}
 
-        {message ? (
-          <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            {message}
-          </p>
+          {message ? (
+            <p className="mt-5 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              {message}
+            </p>
+          ) : null}
+        </section>
+        {history.length ? (
+          <section
+            aria-label="Signature package history"
+            className="rounded-xl border bg-muted/20 p-5"
+          >
+            <SignatureHistory requests={history} viewer="pm" />
+          </section>
         ) : null}
-        <SignatureHistory requests={history} viewer="pm" />
       </CardContent>
     </Card>
   );
@@ -144,6 +233,7 @@ function DraftEditor({
   disabled,
   dueAt,
   files,
+  hasUnsavedChanges,
   inputKey,
   pmNote,
   onCancel,
@@ -158,6 +248,7 @@ function DraftEditor({
   disabled: boolean;
   dueAt: string;
   files: File[];
+  hasUnsavedChanges: boolean;
   inputKey: number;
   pmNote: string;
   onCancel?: () => void;
@@ -172,6 +263,10 @@ function DraftEditor({
   return (
     <div className="space-y-5">
       <div className="space-y-2">
+        <p className="text-sm font-medium">
+          <span className="text-destructive" aria-hidden="true">*</span>{" "}
+          Signature documents
+        </p>
         <FileUploadDropzone
           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
           disabled={disabled}
@@ -182,11 +277,14 @@ function DraftEditor({
         <p className="text-xs text-muted-foreground">
           PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
         </p>
-        <p className="text-xs text-muted-foreground">
-          {files.length
-            ? `${files.length} new file(s) selected`
-            : "No new files selected yet."}
-        </p>
+        <div className="h-32 overflow-y-auto overscroll-contain pr-1">
+          <FileList
+            files={files}
+            onRemove={(index) =>
+              onFileChange(files.filter((_, fileIndex) => fileIndex !== index))
+            }
+          />
+        </div>
       </div>
       <label className="space-y-2 text-sm">
         <span className="font-medium">Message to requester (optional)</span>
@@ -208,14 +306,32 @@ function DraftEditor({
           onChange={(event) => onDueAtChange(event.target.value)}
         />
       </label>
-      <SignatureFileLinks files={sourceFiles} onRemove={onRemove} removeDisabled={disabled} />
+      {sourceFiles.length ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Files in draft</p>
+          <SignatureFileLinks
+            files={sourceFiles}
+            onRemove={onRemove}
+            removeDisabled={disabled}
+          />
+        </div>
+      ) : null}
       <div className="flex flex-wrap justify-end gap-2">
         {onCancel ? <Button type="button" variant="ghost" disabled={disabled} onClick={onCancel}>Cancel package</Button> : null}
-        <Button type="button" variant="outline" disabled={disabled} onClick={onSave}>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled || (!sourceFiles.length && !files.length)}
+          onClick={onSave}
+        >
           {disabled ? "Saving..." : active ? "Save draft" : "Create draft"}
         </Button>
         {onSend ? (
-          <Button type="button" disabled={disabled || !sourceFiles.length} onClick={onSend}>
+          <Button
+            type="button"
+            disabled={disabled || !sourceFiles.length || hasUnsavedChanges}
+            onClick={onSend}
+          >
             <Send /> Send to requester
           </Button>
         ) : null}
@@ -224,57 +340,8 @@ function DraftEditor({
   );
 }
 
-function PendingPackage({
-  disabled,
-  onCancel,
-  onRetry,
-  request,
-}: {
-  disabled: boolean;
-  onCancel: () => void;
-  onRetry: () => void;
-  request: FilingSignatureRequest;
-}) {
-  const files = signatureFilesByDirection(request, "pm_to_requester");
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-muted/20 p-4 text-sm">
-        <p className="font-medium">Waiting for the requester to return signed files.</p>
-        <p className="mt-1 text-muted-foreground">Sent {formatDate(request.sent_at)}{request.due_at ? ` · Due ${formatDate(request.due_at)}` : ""}</p>
-        {request.pm_note ? <p className="mt-3 whitespace-pre-wrap">{request.pm_note}</p> : null}
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium">Documents sent</p>
-        {files.length > 1 ? <SignatureZipLink direction="pm_to_requester" signatureRequestId={request.id} /> : null}
-      </div>
-      <SignatureFileLinks files={files} />
-      {request.email_status === "failed" ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          <span className="flex items-center gap-2"><MailWarning /> Email failed: {request.email_last_error}</span>
-          <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={onRetry}>Retry email</Button>
-        </div>
-      ) : request.email_status === "sent" ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">Email status: Sent</p>
-          <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={onRetry}>Resend email</Button>
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">Email status: {statusLabel(request.email_status)}</p>
-      )}
-      <div className="flex justify-end">
-        <Button type="button" variant="ghost" disabled={disabled} onClick={onCancel}>Cancel package</Button>
-      </div>
-    </div>
-  );
-}
-
 function newestFirst(left: FilingSignatureRequest, right: FilingSignatureRequest) {
   return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
 function statusLabel(value: string) {

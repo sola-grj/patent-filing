@@ -538,11 +538,7 @@ export function NewRequestWizard({
                 onSubmit={() => {
                   void persist(submitRequestFromWizard);
                 }}
-                pendingLabel={
-                  sourceMode === "patent_search"
-                    ? "Preparing original file..."
-                    : "Submitting..."
-                }
+                pendingLabel="Submitting request..."
               />
             </div>
           </CardContent>

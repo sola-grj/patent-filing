@@ -52,7 +52,24 @@ export async function enqueueSubmittedPatentCache(input: {
     request_id: input.requestId,
     lookup_receipt: input.lookupReceipt,
     analysis_receipt: input.analysisReceipt,
-  }, 120_000);
+  });
+}
+
+export async function fetchSubmittedPatentFile(requestId: string) {
+  const { apiKey, baseUrl } = patentServiceConfig();
+  try {
+    return await fetch(
+      `${baseUrl}/api/patents/cache/requests/${encodeURIComponent(requestId)}/file`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        cache: "no-store",
+        signal: AbortSignal.timeout(120_000),
+      },
+    );
+  } catch {
+    throw new Error("The patent file service is unavailable. Please retry.");
+  }
 }
 
 async function callPatentService<T>(
@@ -60,13 +77,7 @@ async function callPatentService<T>(
   body: Record<string, unknown>,
   timeoutMs = 15_000,
 ): Promise<T> {
-  const apiKey = process.env.PATENT_SERVICE_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("Patent service authentication is not configured.");
-  }
-  const baseUrl = (
-    process.env.PATENT_SERVICE_BASE_URL ?? "http://127.0.0.1:9999"
-  ).replace(/\/$/, "");
+  const { apiKey, baseUrl } = patentServiceConfig();
   let response: Response;
   try {
     response = await fetch(`${baseUrl}${path}`, {
@@ -95,4 +106,15 @@ async function callPatentService<T>(
     );
   }
   return payload as T;
+}
+
+function patentServiceConfig() {
+  const apiKey = process.env.PATENT_SERVICE_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Patent service authentication is not configured.");
+  }
+  const baseUrl = (
+    process.env.PATENT_SERVICE_BASE_URL ?? "http://127.0.0.1:9999"
+  ).replace(/\/$/, "");
+  return { apiKey, baseUrl };
 }
