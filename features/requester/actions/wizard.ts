@@ -11,6 +11,7 @@ import type {
 } from "@/features/requester/wizard-types";
 import { getAuthenticatedUser, toErrorMessage } from "../server-utils";
 import { lookupPatent } from "./patent-lookup";
+import { patentSourceForChannel } from "@/features/requester/patent-source";
 import { persistWizardRequest } from "./wizard-persistence";
 import { enqueueSubmittedPatentFilePreparation } from "./patent-file-readiness";
 import { writeRequestEvent } from "./helpers";
@@ -25,9 +26,15 @@ export async function lookupPatentForWizard(
   try {
     await getAuthenticatedUser();
     const query = String(formData.get("patentQuery") ?? "").trim();
+    const channelCode = String(formData.get("channelCode") ?? "").trim();
     if (!query) throw new Error("Enter a patent number to search.");
 
-    return { success: true, data: { patent: await lookupPatent(query) } };
+    return {
+      success: true,
+      data: {
+        patent: await lookupPatent(query, patentSourceForChannel(channelCode)),
+      },
+    };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
   }

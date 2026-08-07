@@ -98,6 +98,7 @@ export function NewRequestWizard({
   const [sourceMode, setSourceMode] = useState<WizardSourceMode>(initialPayload?.sourceMode ?? "patent_search");
   const [patentQuery, setPatentQuery] = useState(initialPayload?.patentQuery ?? "");
   const [selectedPatent, setSelectedPatent] = useState<WizardPatentCandidate | undefined>(initialPayload?.selectedPatent);
+  const [uploadReference, setUploadReference] = useState<WizardPatentCandidate>();
   const [selectedPatentFileIds, setSelectedPatentFileIds] = useState<string[]>(initialPayload?.selectedPatentFileIds ?? []);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploadedFileSnapshots, setUploadedFileSnapshots] = useState<WizardUploadedFile[]>(initialPayload?.uploadedFiles ?? []);
@@ -116,6 +117,7 @@ export function NewRequestWizard({
   const [isPending, startTransition] = useTransition();
   const isBusy = isPending || isSavingDraft || stepLoadingMessage !== null;
   const payload = buildPayload();
+  const hasUsableAnalysis = hasUsablePatentAnalysis(payload);
   const configFieldErrors =
     step === 1 && showConfigValidation ? validateWizardConfigFields(config) : {};
   const isDirty = step > 0
@@ -138,6 +140,14 @@ export function NewRequestWizard({
       return;
     }
 
+    if (
+      uploadedFiles.length > 0
+      && haveSameUploadedFiles(uploadedFiles, nextFiles)
+    ) {
+      setError(null);
+      return;
+    }
+
     analysis.reset();
     setError(null);
     setUploadedFiles(nextFiles);
@@ -152,6 +162,7 @@ export function NewRequestWizard({
     analysis.reset();
     setPatentQuery("");
     setSelectedPatent(undefined);
+    setUploadReference(undefined);
     setSelectedPatentFileIds([]);
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
@@ -160,6 +171,7 @@ export function NewRequestWizard({
 
   function applyPatentSearchResult(candidate: WizardPatentCandidate) {
     const sourceLanguage = resolvePatentSourceLanguage(candidate);
+    setUploadReference(undefined);
     setSelectedPatent(candidate);
     setSelectedPatentFileIds(candidate.downloadableFiles.map((file) => file.id));
     if (sourceLanguage) {
@@ -172,8 +184,22 @@ export function NewRequestWizard({
     analysis.start({
       sourceMode: "patent_search",
       patentNumber: selectedPatent?.patentNumber ?? patentQuery,
+      channelCode: config.channelCode,
       files: [],
     });
+  }
+
+  function retryCurrentAnalysis() {
+    if (sourceMode === "upload") {
+      analysis.start({
+        sourceMode: "upload",
+        patentNumber: selectedPatent?.patentNumber ?? patentQuery,
+        files: uploadedFiles,
+      });
+      return;
+    }
+
+    retryPatentAnalysis();
   }
 
   function startPatentSearch() {
@@ -183,6 +209,7 @@ export function NewRequestWizard({
     analysis.start({
       sourceMode: "patent_search",
       patentNumber: patentQuery,
+      channelCode: config.channelCode,
       files: [],
     });
   }
@@ -191,6 +218,18 @@ export function NewRequestWizard({
     analysis.reset();
     setSelectedPatent(undefined);
     setSelectedPatentFileIds([]);
+  }
+
+  function switchMissingPatentToUpload() {
+    if (!selectedPatent) return;
+    analysis.reset();
+    setUploadReference(selectedPatent);
+    setSelectedPatent(undefined);
+    setSelectedPatentFileIds([]);
+    setPatentQuery("");
+    setSourceMode("upload");
+    setStep(0);
+    setError(null);
   }
 
   function buildPayload(): WizardPayload {
@@ -255,6 +294,14 @@ export function NewRequestWizard({
     }
 
     if (step === 1) {
+      if (sourceMode === "upload" && !hasUsableAnalysis) {
+        setError(
+          analysis.error
+            ?? "Uploaded files must finish processing before the estimate can be generated.",
+        );
+        return;
+      }
+
       void runStepTransition("Parsing quote details", () => {
         setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
       });
@@ -320,11 +367,13 @@ export function NewRequestWizard({
 
   function resetWizard() {
     analysis.reset();
+    setStepLoadingMessage(null);
     setRequestId(undefined);
     setStep(0);
     setSourceMode("patent_search");
     setPatentQuery("");
     setSelectedPatent(undefined);
+    setUploadReference(undefined);
     setSelectedPatentFileIds([]);
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
@@ -400,10 +449,11 @@ export function NewRequestWizard({
       startAnalysis({
         sourceMode,
         patentNumber: selectedPatent.patentNumber,
+        channelCode: config.channelCode,
         files: [],
       });
     }
-  }, [analysisStatus, selectedPatent, sourceMode, startAnalysis]);
+  }, [analysisStatus, config.channelCode, selectedPatent, sourceMode, startAnalysis]);
 
   useEffect(() => {
     registerController({
@@ -437,6 +487,7 @@ export function NewRequestWizard({
                 selectedPatent={selectedPatent}
                 uploadedFiles={uploadedFiles}
                 uploadedFileSnapshots={uploadedFileSnapshots}
+                uploadReference={uploadReference}
                 config={config}
                 configFieldErrors={configFieldErrors}
                 payload={payload}
@@ -506,17 +557,33 @@ export function NewRequestWizard({
               />
             </div>
             <div className="shrink-0 px-6 py-4">
-              {step === 1 && sourceMode === "patent_search" ? (
+              {step === 1 ? (
                 <div className="mb-3 space-y-3">
-                  {selectedPatent?.dataOrigin === "cache_fallback" ? (
+                  {sourceMode === "patent_search" && selectedPatent?.dataOrigin === "cache_fallback" ? (
                     <PatentCacheWarning />
                   ) : null}
                   <PatentProcessingNotice
                     status={analysis.status}
                     result={analysis.result}
                     error={analysis.error}
-                    onRetry={retryPatentAnalysis}
+                    onRetry={retryCurrentAnalysis}
                   />
+                  {sourceMode === "patent_search" && analysis.errorCode === "original_file_not_available" ? (
+                    <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+                      <p>
+                        EPO returned the patent details, but the complete original
+                        document is unavailable. Upload the source files to continue.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="shrink-0 border-amber-400 bg-white"
+                        onClick={switchMissingPatentToUpload}
+                      >
+                        Switch to Upload Files
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
@@ -528,9 +595,13 @@ export function NewRequestWizard({
                     : "Next"
                 }
                 isPending={isBusy}
+                nextDisabled={
+                  step === 1
+                  && sourceMode === "upload"
+                  && !hasUsableAnalysis
+                }
                 submitDisabled={
-                  sourceMode === "patent_search"
-                  && !hasUsablePatentAnalysis(payload)
+                  !hasUsableAnalysis
                 }
                 onCancel={handleCancel}
                 onPrevious={() => setStep((current) => current - 1)}
@@ -565,6 +636,25 @@ export function NewRequestWizard({
       <StepLoadingOverlay message={stepLoadingMessage} />
     </div>
   );
+}
+
+function haveSameUploadedFiles(currentFiles: File[], nextFiles: File[]) {
+  if (currentFiles.length !== nextFiles.length) {
+    return false;
+  }
+
+  const currentKeys = currentFiles.map(uploadedFileIdentity).sort();
+  const nextKeys = nextFiles.map(uploadedFileIdentity).sort();
+  return currentKeys.every((key, index) => key === nextKeys[index]);
+}
+
+function uploadedFileIdentity(file: File) {
+  return JSON.stringify([
+    file.name,
+    file.size,
+    file.type,
+    file.lastModified,
+  ]);
 }
 
 function resolveInitialStep(lastStep?: string) {
@@ -606,6 +696,7 @@ function StepContent(props: {
   selectedPatent?: WizardPatentCandidate;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
+  uploadReference?: WizardPatentCandidate;
   config: WizardConfig;
   dictionaries: WizardDictionaries;
   configFieldErrors: WizardConfigFieldErrors;
@@ -635,6 +726,7 @@ function StepContent(props: {
         patentQuery={props.patentQuery}
         uploadedFiles={props.uploadedFiles}
         uploadedFileSnapshots={props.uploadedFileSnapshots}
+        uploadReference={props.uploadReference}
         isPending={props.isPending}
         onChannelChange={(value) => {
           if (props.sourceMode !== "patent_search" || props.config.channelCode !== value) {
@@ -693,6 +785,7 @@ function StepContent(props: {
 function WizardFooter(props: {
   step: number;
   nextLabel?: string;
+  nextDisabled?: boolean;
   isPending: boolean;
   pendingLabel?: string;
   submitDisabled?: boolean;
@@ -707,7 +800,7 @@ function WizardFooter(props: {
       <div className="flex gap-2">
         {props.step > 0 ? <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onPrevious}>Previous</Button> : null}
         {props.step < wizardSteps.length - 1 ? (
-          <Button type="button" disabled={props.isPending} onClick={props.onNext}>{props.nextLabel ?? "Next"}</Button>
+          <Button type="button" disabled={props.isPending || props.nextDisabled} onClick={props.onNext}>{props.nextLabel ?? "Next"}</Button>
         ) : (
           <Button
             type="button"

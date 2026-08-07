@@ -28,7 +28,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "6.18.1",
-    "tailwind-merge": "^3.3.0"
+    "tailwind-merge": "^3.3.0",
+    "undici": "7.29.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

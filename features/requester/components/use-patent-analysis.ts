@@ -7,10 +7,12 @@ import type {
   WizardPatentAnalysisStatus,
   WizardSourceMode,
 } from "@/features/requester/wizard-types";
+import { patentSourceForChannel } from "@/features/requester/patent-source";
 
 type AnalysisInput = {
   sourceMode: WizardSourceMode;
   patentNumber?: string;
+  channelCode?: string;
   files: File[];
 };
 
@@ -18,7 +20,14 @@ type AnalysisState = {
   status: WizardPatentAnalysisStatus;
   result?: WizardPatentAnalysisResult;
   error?: string;
+  errorCode?: string;
 };
+
+class AnalysisRequestError extends Error {
+  constructor(message: string, readonly code?: string) {
+    super(message);
+  }
+}
 
 export function usePatentAnalysis(initialResult?: WizardPatentAnalysisResult) {
   const [state, setState] = useState<AnalysisState>({
@@ -68,7 +77,8 @@ export function usePatentAnalysis(initialResult?: WizardPatentAnalysisResult) {
     })
       .then(async (response) => {
         if (!response.ok) {
-          throw new Error(await readAnalysisError(response));
+          const failure = await readAnalysisError(response);
+          throw new AnalysisRequestError(failure.message, failure.code);
         }
         return response.json() as Promise<WizardPatentAnalysisResult>;
       })
@@ -88,6 +98,7 @@ export function usePatentAnalysis(initialResult?: WizardPatentAnalysisResult) {
         setState({
           status: "error",
           error: error instanceof Error ? error.message : "Patent analysis failed.",
+          errorCode: error instanceof AnalysisRequestError ? error.code : undefined,
         });
       });
   }, [cancel]);
@@ -110,6 +121,8 @@ function buildAnalysisFormData(input: AnalysisInput) {
     const patentNumber = input.patentNumber?.trim();
     if (!patentNumber) return null;
     formData.set("patent_number", patentNumber);
+    const source = patentSourceForChannel(input.channelCode ?? "");
+    if (source) formData.set("source", source);
     return formData;
   }
 
@@ -120,7 +133,8 @@ function buildAnalysisFormData(input: AnalysisInput) {
 
 function buildInputKey(input: AnalysisInput) {
   if (input.sourceMode === "patent_search") {
-    return `patent:${input.patentNumber?.trim().toUpperCase() ?? ""}`;
+    const source = patentSourceForChannel(input.channelCode ?? "") ?? "auto";
+    return `patent:${source}:${input.patentNumber?.trim().toUpperCase() ?? ""}`;
   }
   return `upload:${input.files
     .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
@@ -130,9 +144,16 @@ function buildInputKey(input: AnalysisInput) {
 async function readAnalysisError(response: Response) {
   const payload = await response.json().catch(() => null) as {
     detail?: unknown;
-    error?: { message?: unknown };
+    error?: { code?: unknown; message?: unknown };
   } | null;
-  if (typeof payload?.detail === "string") return payload.detail;
-  if (typeof payload?.error?.message === "string") return payload.error.message;
-  return `Patent analysis failed (${response.status}).`;
+  const code = typeof payload?.error?.code === "string"
+    ? payload.error.code
+    : undefined;
+  if (typeof payload?.detail === "string") {
+    return { message: payload.detail, code };
+  }
+  if (typeof payload?.error?.message === "string") {
+    return { message: payload.error.message, code };
+  }
+  return { message: `Patent analysis failed (${response.status}).`, code };
 }

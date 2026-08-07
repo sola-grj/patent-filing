@@ -100,6 +100,7 @@ type PatentLookupError = {
 
 export async function lookupPatent(
   patentNumber: string,
+  source?: "epo" | "wipo",
 ): Promise<WizardPatentCandidate> {
   let response: Response;
 
@@ -110,6 +111,7 @@ export async function lookupPatent(
       body: JSON.stringify({
         patent_number: patentNumber,
         include_original_file: false,
+        ...(source ? { source } : {}),
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(30_000),
@@ -187,7 +189,7 @@ export function mapPatentLookupResponse(
     id: response.normalized_number || patentNumber,
     patentNumber,
     title: response.title || basicInfo?.title || patentNumber,
-    jurisdiction: resolveJurisdiction(response.source, patentNumber),
+    jurisdiction: resolveJurisdiction(response, patentNumber),
     applicationNo:
       response.application_no || basicInfo?.application_number || "",
     publicationNo: response.publication_no || "",
@@ -346,10 +348,16 @@ function formatLanguage(value?: string | null) {
   }
 }
 
-function resolveJurisdiction(source: string | undefined, patentNumber: string) {
-  if (source === "epo") return "EP";
-  if (source === "wipo") return "WO";
-  return patentNumber.slice(0, 2).toUpperCase();
+function resolveJurisdiction(
+  response: PatentLookupResponse,
+  patentNumber: string,
+) {
+  const publicationNumber = response.publication_no
+    || response.normalized_number
+    || patentNumber;
+  const match = publicationNumber.trim().toUpperCase().match(/^[A-Z]{2}/);
+  if (match) return match[0];
+  return response.source === "wipo" ? "WO" : "";
 }
 
 function resolveFileType(originalFile: PatentLookupResponse["original_file"]) {

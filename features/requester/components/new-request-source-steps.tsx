@@ -45,6 +45,7 @@ export function SourceStep(props: {
   patentQuery: string;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
+  uploadReference?: WizardPatentCandidate;
   isPending: boolean;
   onChannelChange: (value: string) => void;
   onSourceModeChange: (value: WizardSourceMode) => void;
@@ -107,6 +108,7 @@ export function SourceStep(props: {
                   try {
                     const formData = new FormData();
                     formData.set("patentQuery", props.patentQuery);
+                    formData.set("channelCode", props.channelCode);
                     const result = await lookupPatentForWizard(formData);
 
                     if (result.data?.patent) {
@@ -153,12 +155,17 @@ export function SourceStep(props: {
           </div>
         ) : (
           <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden rounded-2xl border bg-muted/20 p-5">
-            <FileUploadDropzone
-              accept=".pdf,.doc,.docx,.xml,.txt"
-              inputId="request-source-upload"
-              label="Upload Source Document"
-              onFilesChange={props.onFilesChange}
-            />
+            <div className="space-y-4">
+              {props.uploadReference ? (
+                <UploadReferenceCard patent={props.uploadReference} />
+              ) : null}
+              <FileUploadDropzone
+                accept=".pdf,.doc,.docx,.xml,.txt"
+                inputId="request-source-upload"
+                label="Upload Source Document"
+                onFilesChange={props.onFilesChange}
+              />
+            </div>
             <div className="min-h-0 overflow-hidden">
               <div className="h-full min-h-0 overflow-y-auto overscroll-contain pr-1">
                 <FileList
@@ -175,6 +182,18 @@ export function SourceStep(props: {
         )}
       </div>
     </StepShell>
+  );
+}
+
+function UploadReferenceCard({ patent }: { patent: WizardPatentCandidate }) {
+  return (
+    <div className="rounded-xl border bg-background px-4 py-3 text-sm">
+      <p className="font-medium">Patent reference (not saved)</p>
+      <p className="mt-1 text-muted-foreground">
+        {patent.publicationNo || patent.patentNumber}
+        {patent.title ? ` · ${patent.title}` : ""}
+      </p>
+    </div>
   );
 }
 
@@ -212,7 +231,7 @@ function EntryModeCard({
 
 function resolvePatentPlaceholder(card: SearchEntryCard) {
   if (card.id === "paris_convention") {
-    return "EP1234567";
+    return "US20210184727A1";
   }
   if (card.id === "ep") {
     return "EP3987654";
