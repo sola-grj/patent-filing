@@ -8,6 +8,7 @@ import {
   validateFutureDateString,
   type ActionResult,
 } from "@/lib/validators/requester";
+import { HUMAN_TRANSLATION_QUALITY_LEVEL } from "@/features/requester/options";
 import { getAuthenticatedUser, toErrorMessage } from "../server-utils";
 import { nextVersion, sumParseMetric, writeRequestEvent } from "./helpers";
 import {
@@ -354,7 +355,7 @@ function buildRequirementInput(requestId: string, formData: FormData) {
     purpose: requiredString(formData.get("purpose"), "Translation purpose"),
     service_types: serviceTypes,
     entity_type: optionalString(formData.get("entityType")),
-    quality_level: requiredString(formData.get("qualityLevel"), "Quality level"),
+    quality_level: HUMAN_TRANSLATION_QUALITY_LEVEL,
     delivery_option: DEFAULT_DELIVERY_OPTION,
     due_at: dueAt,
     is_urgent: formData.get("isUrgent") === "on",

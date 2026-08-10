@@ -29,7 +29,6 @@ import {
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
-  qualityOptions,
   serviceTypeOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
@@ -212,7 +211,6 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const dueAt = config.dueAt;
   const showFilingFields = serviceTypes.includes("filing");
   const showEpvType = serviceTypes.includes("epv");
-  const showQuality = serviceTypes.includes("translation") || showEpvType;
   const showDueDate = serviceTypes.includes("translation") && Boolean(dueAt);
   const signatureRequests = request.filing_signature_requests ?? [];
   const leftColumnItems: DetailItem[] = [
@@ -258,12 +256,6 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             epvTypeOptions,
             config.epvType,
           ),
-        }]
-      : []),
-    ...(showQuality
-      ? [{
-          label: "Quality",
-          value: formatConfigLabel(qualityOptions, config.qualityLevel),
         }]
       : []),
   ];

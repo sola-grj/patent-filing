@@ -7,11 +7,12 @@ import type {
   WizardSourceMode,
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
+import { HUMAN_TRANSLATION_QUALITY_LEVEL } from "@/features/requester/options";
 import { validateFutureDateString } from "@/lib/validators/requester";
 
 export const wizardSteps = [
   { title: "Source", description: "Search by patent number or upload source files." },
-  { title: "Configure", description: "Set languages, quality, and timing." },
+  { title: "Configure", description: "Set languages, scope, and timing." },
   { title: "Quote", description: "Review the mock quote before submission." },
 ];
 
@@ -26,7 +27,7 @@ export const defaultWizardConfig: WizardConfig = {
   filingApplicationType: "",
   entityType: "",
   epvType: "",
-  qualityLevel: "patent_translator",
+  qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
   deliveryOption: "standard",
   dueAt: "",
   isUrgent: false,
@@ -71,6 +72,7 @@ export function buildWizardPayload(input: {
     config: {
       ...input.config,
       scopeType: "full_text",
+      qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
     },
     lastStep: input.lastStep,
   };
@@ -231,11 +233,7 @@ export function normalizeWizardConfig(
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
     scopeType: "full_text",
-    qualityLevel: ["machine_pretranslation", "patent_translator"].includes(
-      config?.qualityLevel ?? "",
-    )
-      ? config?.qualityLevel ?? "patent_translator"
-      : "patent_translator",
+    qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
   };
 }
 

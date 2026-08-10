@@ -9,7 +9,6 @@ import {
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
-  qualityOptions,
   serviceTypeOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
@@ -31,7 +30,6 @@ export function PmRequestOverview({
   const serviceTypes = config.serviceTypes ?? [];
   const showFilingFields = serviceTypes.includes("filing");
   const showEpvType = serviceTypes.includes("epv");
-  const showQuality = serviceTypes.includes("translation") || showEpvType;
   const showDueDate = serviceTypes.includes("translation") && Boolean(config.dueAt);
   const items = [
     { label: "Organization", value: organizationName },
@@ -47,9 +45,6 @@ export function PmRequestOverview({
       label: "Jurisdictions",
       value: labelForMany(jurisdictionOptions, config.jurisdictionCodes),
     },
-    ...(showQuality
-      ? [{ label: "Quality", value: labelFor(qualityOptions, config.qualityLevel) }]
-      : []),
     { label: "Delivery option", value: titleCase(config.deliveryOption) },
     ...(showFilingFields
       ? [

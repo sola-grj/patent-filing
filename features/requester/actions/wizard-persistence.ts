@@ -8,7 +8,10 @@ import {
   validateUploadFiles,
 } from "@/lib/validators/requester";
 import type { WizardPayload, WizardPersistResult } from "@/features/requester/wizard-types";
-import { jurisdictionOptions } from "@/features/requester/options";
+import {
+  HUMAN_TRANSLATION_QUALITY_LEVEL,
+  jurisdictionOptions,
+} from "@/features/requester/options";
 import {
   getAuthenticatedUser,
   getRequesterOrganization,
@@ -280,14 +283,6 @@ async function verifySubmittedPatentPayload(
 
 function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
-  const usesTranslationQuality = config.serviceTypes.includes("translation")
-    || config.serviceTypes.includes("epv");
-  if (
-    usesTranslationQuality
-    && !["machine_pretranslation", "patent_translator"].includes(config.qualityLevel)
-  ) {
-    throw new Error("Select machine translation or human translation.");
-  }
   if (!config.jurisdictionCodes.length) {
     throw new Error("Select at least one jurisdiction.");
   }
@@ -329,6 +324,7 @@ function parseWizardPayload(formData: FormData): WizardPayload {
     ? payload.config.jurisdictionCodes
     : [];
   payload.config.scopeType = "full_text";
+  payload.config.qualityLevel = HUMAN_TRANSLATION_QUALITY_LEVEL;
   return payload;
 }
 

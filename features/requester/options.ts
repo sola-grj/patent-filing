@@ -126,9 +126,11 @@ export const epvTypeOptions = [
   { value: "unitary_effect", label: "Unitary Effect" },
 ];
 
+export const HUMAN_TRANSLATION_QUALITY_LEVEL = "patent_translator";
+
 export const qualityOptions = [
   { value: "machine_pretranslation", label: "Machine Translation" },
-  { value: "patent_translator", label: "Human Translation" },
+  { value: HUMAN_TRANSLATION_QUALITY_LEVEL, label: "Human Translation" },
 ];
 
 export const rejectReasonOptions = [

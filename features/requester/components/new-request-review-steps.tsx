@@ -27,7 +27,6 @@ import {
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
-  qualityOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
 import type {
@@ -186,7 +185,6 @@ export function ConfigStep({
     && hasTranslationService;
   const hasFilingService = config.serviceTypes.includes("filing");
   const hasEpvService = config.serviceTypes.includes("epv");
-  const showQualityField = hasTranslationService || hasEpvService;
 
   function openDueDatePicker() {
     const input = dueDateRef.current;
@@ -356,15 +354,6 @@ export function ConfigStep({
               })
             }
           />
-          {showQualityField ? (
-            <SelectField
-              label="Quality"
-              value={config.qualityLevel}
-              options={qualityOptions}
-              required
-              onChange={onConfigValueChange(config, onChange, "qualityLevel")}
-            />
-          ) : null}
           {isTranslationOnlyService ? (
             <Field label="Due date">
               <Input
