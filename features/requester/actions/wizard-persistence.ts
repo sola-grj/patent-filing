@@ -304,6 +304,13 @@ function validateCommercialFields(payload: WizardPayload) {
   if (config.serviceTypes.includes("epv") && !config.epvType) {
     throw new Error("EPV type is required for EPV.");
   }
+  if (
+    config.channelCode === "pct"
+    && config.serviceTypes.includes("filing")
+    && !["chapter_i", "chapter_ii"].includes(config.pctChapter ?? "")
+  ) {
+    throw new Error("PCT Chapter I or Chapter II is required for PCT filing.");
+  }
 }
 
 function parseWizardPayload(formData: FormData): WizardPayload {
@@ -316,6 +323,21 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   payload.config.serviceTypes = Array.isArray(payload.config.serviceTypes)
     ? payload.config.serviceTypes
     : [];
+  const hasPctFilingService = payload.config.channelCode === "pct"
+    && payload.config.serviceTypes.includes("filing");
+  if (
+    hasPctFilingService
+    && payload.config.pctChapter
+    && !["chapter_i", "chapter_ii"].includes(payload.config.pctChapter)
+  ) {
+    throw new Error("Choose a valid PCT Chapter I or Chapter II value.");
+  }
+  payload.config.pctChapter = hasPctFilingService
+    && payload.config.pctChapter === "chapter_ii"
+    ? "chapter_ii"
+    : hasPctFilingService
+      ? "chapter_i"
+      : "";
   const isTranslationOnlyService = payload.config.serviceTypes.length === 1
     && payload.config.serviceTypes[0] === "translation";
   payload.config.dueAt = isTranslationOnlyService
@@ -657,6 +679,8 @@ async function persistPatentSelection(
       language: patent.language || null,
       first_priority_date: patent.firstPriorityDate || null,
       international_filing_date: patent.internationalFilingDate || null,
+      grant_publication_date: patent.grantPublicationDate || null,
+      rule_71_3_communication_date: patent.rule713CommunicationDate || null,
       filing_deadline_30_months: patent.filingDeadline30Months || null,
       filing_deadline_31_months: patent.filingDeadline31Months || null,
       total_pages: patent.totalPages ?? 0,
@@ -923,6 +947,10 @@ async function createRequirement(
     application_type_code: config.filingApplicationType || null,
     entity_type_code: config.entityType || null,
     epv_type_code: config.epvType || null,
+    pct_chapter_code: config.channelCode === "pct"
+      && config.serviceTypes.includes("filing")
+      ? config.pctChapter || "chapter_i"
+      : null,
     jurisdiction_codes: config.jurisdictionCodes,
     quality_level: config.qualityLevel,
     delivery_option: DEFAULT_DELIVERY_OPTION,
@@ -998,6 +1026,7 @@ async function createInitialQuote(
     applicationType: payload.config.filingApplicationType || null,
     entityType: payload.config.entityType || null,
     epvType: payload.config.epvType || null,
+    pctChapter: payload.config.pctChapter || null,
   };
 
   const { data: quote, error: quoteError } = await supabase

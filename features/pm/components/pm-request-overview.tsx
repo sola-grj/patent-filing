@@ -1,6 +1,8 @@
 import { ClipboardList } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RequestDeadlinePanel } from "@/features/requester/components/request-deadline-panel";
+import type { DashboardDeadlineItem } from "@/features/requester/deadlines";
 import { formatDate } from "@/features/requester/format";
 import {
   channelOptions,
@@ -13,13 +15,18 @@ import {
   sourceLanguageOptions,
 } from "@/features/requester/options";
 import type { WizardConfig } from "@/features/requester/wizard-types";
+import type { ReactNode } from "react";
 
 export function PmRequestOverview({
   config,
+  deadlineItems,
+  deadlinePendingMessage,
   organizationName,
   request,
 }: {
   config: WizardConfig;
+  deadlineItems: DashboardDeadlineItem[];
+  deadlinePendingMessage?: string | null;
   organizationName: string;
   request: {
     channel_code?: string | null;
@@ -31,7 +38,7 @@ export function PmRequestOverview({
   const showFilingFields = serviceTypes.includes("filing");
   const showEpvType = serviceTypes.includes("epv");
   const showDueDate = serviceTypes.includes("translation") && Boolean(config.dueAt);
-  const items = [
+  const items: Array<{ label: string; value: ReactNode; wide?: boolean }> = [
     { label: "Organization", value: organizationName },
     { label: "Submitted", value: formatDate(request.submitted_at) },
     { label: "Updated", value: formatDate(request.updated_at) },
@@ -79,16 +86,28 @@ export function PmRequestOverview({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <dl className="grid gap-x-10 gap-y-6 md:grid-cols-2">
-          {items.map((item) => (
-            <div key={item.label} className={item.wide ? "md:col-span-2" : undefined}>
-              <dt className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                {item.label}
-              </dt>
-              <dd className="mt-2 break-words text-sm leading-6">{item.value}</dd>
-            </div>
-          ))}
-        </dl>
+        {deadlineItems.length || deadlinePendingMessage ? (
+          <RequestDeadlinePanel
+            items={deadlineItems}
+            pendingMessage={deadlinePendingMessage}
+          />
+        ) : null}
+        <section
+          aria-label="Basic info"
+          className={`rounded-lg border border-border/70 bg-background p-4 ${deadlineItems.length || deadlinePendingMessage ? "mt-6" : ""}`}
+        >
+          <h3 className="text-sm font-semibold">Basic info</h3>
+          <dl className="mt-4 grid gap-x-10 gap-y-6 md:grid-cols-2">
+            {items.map((item) => (
+              <div key={item.label} className={item.wide ? "md:col-span-2" : undefined}>
+                <dt className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                  {item.label}
+                </dt>
+                <dd className="mt-2 break-words text-sm leading-6">{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       </CardContent>
     </Card>
   );

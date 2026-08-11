@@ -113,7 +113,7 @@ export function normalizeServiceTypeConfig(
   channelCode: string,
   serviceTypes: string[],
   epvType?: string,
-) {
+): { serviceTypes: string[]; epvType: string } {
   const resolved = resolveServiceTypeSelection(channelCode, serviceTypes, epvType)
     ?? resolveLegacyEpvSelection(channelCode, serviceTypes, epvType);
 

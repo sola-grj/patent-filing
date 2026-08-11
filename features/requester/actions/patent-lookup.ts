@@ -39,6 +39,8 @@ export type PatentLookupResponse = {
   application_no?: string | null;
   publication_date?: string | null;
   publication_no?: string | null;
+  grant_publication_date?: string | null;
+  rule_71_3_communication_date?: string | null;
   language?: string | null;
   first_priority_date?: string | null;
   international_filing_date?: string | null;
@@ -215,6 +217,10 @@ export function mapPatentLookupResponse(
     internationalFilingDate: formatPatentDate(
       response.international_filing_date
         || (response.source === "wipo" ? response.application_date : null),
+    ),
+    grantPublicationDate: formatPatentDate(response.grant_publication_date),
+    rule713CommunicationDate: formatPatentDate(
+      response.rule_71_3_communication_date,
     ),
     filingDeadline30Months: formatPatentDate(response.filing_deadline_30_months),
     filingDeadline31Months: formatPatentDate(response.filing_deadline_31_months),

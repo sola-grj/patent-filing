@@ -189,6 +189,7 @@ export function ConfigStep({
   const isTranslationOnlyService = config.serviceTypes.length === 1
     && config.serviceTypes[0] === "translation";
   const hasFilingService = config.serviceTypes.includes("filing");
+  const hasEpvService = config.serviceTypes.includes("epv");
 
   function openDueDatePicker() {
     const input = dueDateRef.current;
@@ -216,6 +217,9 @@ export function ConfigStep({
         : "",
       entityType: config.entityType,
       epvType: selection.epvType,
+      pctChapter: config.channelCode === "pct" && nextServiceTypes.includes("filing")
+        ? config.pctChapter || "chapter_i"
+        : "",
     });
   }
 
@@ -319,6 +323,43 @@ export function ConfigStep({
                 onChange={onConfigValueChange(config, onChange, "entityType")}
               />
             </div>
+          ) : null}
+          {hasEpvService ? (
+            <SelectField
+              label="EPV Type"
+              value={config.epvType ?? ""}
+              options={dictionaries.epvTypes}
+              placeholder="Choose an EPV type"
+              error={configFieldErrors.epvType}
+              required
+              onChange={onConfigValueChange(config, onChange, "epvType")}
+            />
+          ) : null}
+          {hasFilingService && config.channelCode === "pct" ? (
+            <label className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3 text-sm md:col-span-2">
+              <Checkbox
+                checked={config.pctChapter === "chapter_ii"}
+                onCheckedChange={(checked) =>
+                  onChange({
+                    ...config,
+                    pctChapter: checked === true ? "chapter_ii" : "chapter_i",
+                  })
+                }
+              />
+              <span>
+                <span className="block font-medium">
+                  Has a PCT Chapter II Demand been filed?
+                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Leave unchecked to calculate the national-phase deadline under Chapter I.
+                </span>
+                {configFieldErrors.pctChapter ? (
+                  <span className="mt-1 block text-sm text-destructive">
+                    {configFieldErrors.pctChapter}
+                  </span>
+                ) : null}
+              </span>
+            </label>
           ) : null}
           <SearchableSingleSelectField
             label="Source Language"

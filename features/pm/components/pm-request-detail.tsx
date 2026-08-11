@@ -25,6 +25,10 @@ import {
 } from "@/features/requester/components/request-file-information";
 import { RequestFilesDownloadButton } from "@/features/requester/components/request-files-download-button";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
+import {
+  buildRequestDeadlineItems,
+  getRequestDeadlinePendingMessage,
+} from "@/features/requester/deadlines";
 import { PmSignaturePanel } from "@/features/filing-signatures/components/pm-signature-panel";
 import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
 import type {
@@ -105,6 +109,7 @@ type Requirement = {
   application_type_code?: string | null;
   entity_type_code?: string | null;
   epv_type_code?: string | null;
+  pct_chapter_code?: string | null;
   jurisdiction_codes?: string[] | null;
   config_snapshot?: Partial<WizardConfig> | null;
 };
@@ -244,6 +249,26 @@ export function PmRequestDetail({
   const showSignaturePanel =
     config.serviceTypes.includes("filing")
     && (request.pm_status === "in_progress" || signatureRequests.length > 0);
+  const deadlineItems = buildRequestDeadlineItems({
+    id: request.id,
+    request_no: request.request_no,
+    channel_code: request.channel_code,
+    submitted_at: request.submitted_at,
+    workflow_stage: request.workflow_stage,
+    requester_status: request.requester_status,
+    translation_requirements: requirement,
+    request_patents: patent,
+  });
+  const deadlinePendingMessage = getRequestDeadlinePendingMessage({
+    id: request.id,
+    request_no: request.request_no,
+    channel_code: request.channel_code,
+    submitted_at: request.submitted_at,
+    workflow_stage: request.workflow_stage,
+    requester_status: request.requester_status,
+    translation_requirements: requirement,
+    request_patents: patent,
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-8 overflow-hidden">
@@ -266,6 +291,8 @@ export function PmRequestDetail({
         <div className="flex flex-col gap-6 pr-1">
             <PmRequestOverview
               config={config}
+              deadlineItems={deadlineItems}
+              deadlinePendingMessage={deadlinePendingMessage}
               organizationName={organization?.name ?? "-"}
               request={request}
             />

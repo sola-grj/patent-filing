@@ -13,12 +13,17 @@ import {
   type RequestInformationFile,
 } from "@/features/requester/components/request-file-information";
 import { RequestFilesDownloadButton } from "@/features/requester/components/request-files-download-button";
+import { RequestDeadlinePanel } from "@/features/requester/components/request-deadline-panel";
 import { RequestQuoteSheet } from "@/features/requester/components/request-quote-sheet";
 import { RequesterDeliverablesDialog } from "@/features/requester/components/requester-deliverables-dialog";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import {
   formatDate,
 } from "@/features/requester/format";
+import {
+  buildRequestDeadlineItems,
+  getRequestDeadlinePendingMessage,
+} from "@/features/requester/deadlines";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 import { RequesterSignaturePanel } from "@/features/filing-signatures/components/requester-signature-panel";
 import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
@@ -51,6 +56,7 @@ type TranslationRequirement = {
   filing_type_code?: string | null;
   application_type_code?: string | null;
   epv_type_code?: string | null;
+  pct_chapter_code?: string | null;
   jurisdiction_codes?: string[] | null;
   quality_level?: string | null;
   delivery_option?: string | null;
@@ -74,6 +80,8 @@ type RequestPatent = {
   language?: string | null;
   first_priority_date?: string | null;
   international_filing_date?: string | null;
+  grant_publication_date?: string | null;
+  rule_71_3_communication_date?: string | null;
   filing_deadline_30_months?: string | null;
   filing_deadline_31_months?: string | null;
   total_pages?: number | null;
@@ -212,6 +220,26 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const showFilingFields = serviceTypes.includes("filing");
   const showEpvType = serviceTypes.includes("epv");
   const showDueDate = serviceTypes.includes("translation") && Boolean(dueAt);
+  const deadlineItems = buildRequestDeadlineItems({
+    id: request.id,
+    request_no: request.request_no,
+    channel_code: request.channel_code,
+    submitted_at: request.submitted_at,
+    workflow_stage: request.workflow_stage,
+    requester_status: request.requester_status,
+    translation_requirements: requirement,
+    request_patents: patent,
+  });
+  const deadlinePendingMessage = getRequestDeadlinePendingMessage({
+    id: request.id,
+    request_no: request.request_no,
+    channel_code: request.channel_code,
+    submitted_at: request.submitted_at,
+    workflow_stage: request.workflow_stage,
+    requester_status: request.requester_status,
+    translation_requirements: requirement,
+    request_patents: patent,
+  });
   const signatureRequests = request.filing_signature_requests ?? [];
   const leftColumnItems: DetailItem[] = [
     { label: "Organization", value: organization?.name ?? "-" },
@@ -321,10 +349,22 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             title="Request overview"
             icon={<ClipboardList className="size-5" />}
           >
-            <div className="grid items-start gap-5 md:grid-cols-2">
-              <DetailsGrid items={leftColumnItems} columns="single" />
-              <DetailsGrid items={rightColumnItems} columns="single" />
-            </div>
+            {deadlineItems.length || deadlinePendingMessage ? (
+              <RequestDeadlinePanel
+                items={deadlineItems}
+                pendingMessage={deadlinePendingMessage}
+              />
+            ) : null}
+            <section
+              aria-label="Basic info"
+              className="rounded-lg border border-border/70 bg-background p-4"
+            >
+              <h3 className="text-sm font-semibold">Basic info</h3>
+              <div className="mt-4 grid items-start gap-5 md:grid-cols-2">
+                <DetailsGrid items={leftColumnItems} columns="single" />
+                <DetailsGrid items={rightColumnItems} columns="single" />
+              </div>
+            </section>
           </Section>
           {showFilingFields && signatureRequests.length ? (
             <RequesterSignaturePanel signatureRequests={signatureRequests} />

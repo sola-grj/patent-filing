@@ -11,37 +11,19 @@ import {
 
 import { Card } from "@/components/ui/card";
 import type { DashboardAttentionItem } from "@/features/requester/dashboard-attention";
-
-const deadlineItems = [
-  {
-    date: "Jul 30",
-    title: "PCT 30-month deadline",
-    detail: "WO/2024/044310",
-    service: "National Phase Entry",
-  },
-  {
-    date: "Aug 12",
-    title: "EP validation deadline",
-    detail: "EP4686390A2",
-    service: "EP Validation",
-  },
-  {
-    date: "Sep 05",
-    title: "12-month priority deadline",
-    detail: "REQ-20260725-000054",
-    service: "Paris Convention",
-  },
-] as const;
+import type { DashboardDeadlineItem } from "@/features/requester/deadlines";
 
 export function DashboardFocusGrid({
   attentionItems,
+  deadlineItems,
 }: {
   attentionItems: DashboardAttentionItem[];
+  deadlineItems: DashboardDeadlineItem[];
 }) {
   return (
     <section className="grid min-h-0 grid-rows-2 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(20rem,2fr)] xl:grid-rows-1">
       <AttentionPanel items={attentionItems} />
-      <DeadlinesPanel />
+      <DeadlinesPanel items={deadlineItems} />
     </section>
   );
 }
@@ -149,7 +131,7 @@ function AttentionAction({ item }: { item: DashboardAttentionItem }) {
   );
 }
 
-function DeadlinesPanel() {
+function DeadlinesPanel({ items }: { items: DashboardDeadlineItem[] }) {
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl shadow-sm">
       <div className="flex shrink-0 items-start justify-between border-b px-5 py-4">
@@ -161,29 +143,43 @@ function DeadlinesPanel() {
         </div>
         <CalendarDays className="size-5 text-muted-foreground" />
       </div>
-      <div className="hide-scrollbar flex min-h-0 flex-1 flex-col divide-y overflow-y-auto px-5">
-        {deadlineItems.map((item) => (
-          <Link
-            key={`${item.date}-${item.title}`}
-            href="/requester/requests"
-            className="grid min-h-[64px] flex-1 items-center gap-3 py-3 text-sm sm:grid-cols-[4.5rem_minmax(0,1fr)_auto_auto]"
-          >
-            <span className="font-semibold text-foreground">{item.date}</span>
-            <span className="min-w-0">
-              <span className="block truncate font-medium">{item.title}</span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {item.detail}
-              </span>
-            </span>
-            <span
-              className="hidden rounded-md border bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground sm:inline-flex"
+      {items.length ? (
+        <div className="hide-scrollbar flex min-h-0 flex-1 flex-col divide-y overflow-y-auto px-5">
+          {items.map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              title={`Deadline ${item.dueOn}`}
+              className="grid min-h-[64px] flex-1 items-center gap-3 py-3 text-sm sm:grid-cols-[4.5rem_minmax(0,1fr)_auto_auto]"
             >
-              {item.service}
-            </span>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </Link>
-        ))}
-      </div>
+              <span className="font-semibold text-foreground">
+                {item.date}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{item.title}</span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {item.detail}
+                </span>
+              </span>
+              <span
+                className="hidden rounded-md border bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground sm:inline-flex"
+              >
+                {item.service}
+              </span>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+          <div>
+            <p className="font-medium">No upcoming deadlines</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Future deadlines appear when official basis dates are available.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex shrink-0 items-center justify-between border-t px-5 py-2.5 text-xs text-brand-soft-foreground">
         <Link
           href="/requester/requests"

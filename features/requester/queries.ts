@@ -1,5 +1,6 @@
 import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
 import { buildDashboardAttentionItems } from "./dashboard-attention";
+import { buildDashboardDeadlineItems } from "./deadlines";
 import type {
   DictionaryOption,
   WizardDictionaries,
@@ -165,6 +166,7 @@ export async function getRequesterDashboard() {
       recentDrafts: [],
       draftCount: 0,
       attentionItems: [],
+      deadlineItems: [],
       orders: [],
       dictionaries: null,
     };
@@ -177,7 +179,7 @@ export async function getRequesterDashboard() {
   ] = await Promise.all([
     supabase
       .from("translation_requests")
-      .select("id, request_no, title, source_mode, channel_code, requester_status, workflow_stage, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types), request_patents(patent_number), filing_signature_requests(id, status, due_at, sent_at, filing_signature_files(id, direction))")
+      .select("id, request_no, title, source_mode, channel_code, requester_status, workflow_stage, submitted_at, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types, epv_type_code, jurisdiction_codes, pct_chapter_code), request_patents(patent_number, application_no, publication_no, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date), filing_signature_requests(id, status, due_at, sent_at, filing_signature_files(id, direction))")
       .eq("requester_id", userId)
       .order("updated_at", { ascending: false }),
     supabase
@@ -213,6 +215,7 @@ export async function getRequesterDashboard() {
     recentDrafts: drafts.slice(0, 8),
     draftCount: drafts.length,
     attentionItems: buildDashboardAttentionItems(requestRows, orders ?? []),
+    deadlineItems: buildDashboardDeadlineItems(requestRows),
     orders: orders ?? [],
     dictionaries,
   };

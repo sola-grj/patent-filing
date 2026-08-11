@@ -31,6 +31,7 @@ export const defaultWizardConfig: WizardConfig = {
   filingApplicationType: "",
   entityType: "",
   epvType: "",
+  pctChapter: "",
   qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
   deliveryOption: "standard",
   dueAt: "",
@@ -45,6 +46,7 @@ export type WizardConfigFieldErrors = Partial<Record<
   | "filingApplicationType"
   | "entityType"
   | "epvType"
+  | "pctChapter"
   | "sourceLanguage"
   | "jurisdictionCodes"
   | "dueAt",
@@ -185,6 +187,7 @@ export function updateWizardChannel(
     filingType: "",
     filingApplicationType: "",
     epvType: "",
+    pctChapter: channelCode === "pct" ? "chapter_i" : "",
     dueAt: "",
   };
 }
@@ -219,6 +222,8 @@ export function normalizeWizardConfig(
   const serviceTypes = serviceConfig.serviceTypes;
   const isTranslationOnlyService = serviceTypes.length === 1
     && serviceTypes[0] === "translation";
+  const hasPctFilingService = channelCode === "pct"
+    && serviceTypes.includes("filing");
 
   return {
     ...merged,
@@ -226,6 +231,11 @@ export function normalizeWizardConfig(
     serviceTypes,
     dueAt: isTranslationOnlyService ? merged.dueAt : "",
     epvType: serviceConfig.epvType,
+    pctChapter: hasPctFilingService && merged.pctChapter === "chapter_ii"
+      ? "chapter_ii"
+      : hasPctFilingService
+        ? "chapter_i"
+        : "",
     jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
@@ -243,6 +253,7 @@ export function validateWizardConfigFields(
     && hasTranslationService;
   const hasFilingService = config.serviceTypes.includes("filing");
   const hasEpvService = config.serviceTypes.includes("epv");
+  const hasPctFilingService = config.channelCode === "pct" && hasFilingService;
 
   if (!config.channelCode) {
     errors.channelCode = "Select a channel before continuing.";
@@ -279,6 +290,13 @@ export function validateWizardConfigFields(
 
   if (hasEpvService && !config.epvType) {
     errors.epvType = "Select an EPV type before continuing.";
+  }
+
+  if (
+    hasPctFilingService
+    && !["chapter_i", "chapter_ii"].includes(config.pctChapter ?? "")
+  ) {
+    errors.pctChapter = "Choose whether a PCT Chapter II Demand was filed.";
   }
 
   if (!config.sourceLanguage) {

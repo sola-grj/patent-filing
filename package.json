@@ -4,7 +4,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:deadlines": "node --experimental-strip-types --test features/requester/deadlines.test.ts",
+    "backfill:deadlines": "node --env-file=.env.local scripts/backfill-deadline-basis.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.17",

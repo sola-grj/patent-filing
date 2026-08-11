@@ -20,6 +20,8 @@ export type PmRequestPatent = {
   language?: string | null;
   first_priority_date?: string | null;
   international_filing_date?: string | null;
+  grant_publication_date?: string | null;
+  rule_71_3_communication_date?: string | null;
   filing_deadline_30_months?: string | null;
   filing_deadline_31_months?: string | null;
   total_pages?: number | null;

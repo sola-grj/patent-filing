@@ -49,6 +49,8 @@ export type WizardPatentCandidate = {
   language?: string;
   firstPriorityDate?: string;
   internationalFilingDate?: string;
+  grantPublicationDate?: string;
+  rule713CommunicationDate?: string;
   filingDeadline30Months?: string;
   filingDeadline31Months?: string;
   totalPages?: number;
@@ -88,6 +90,7 @@ export type WizardConfig = {
   filingApplicationType?: string;
   entityType?: string;
   epvType?: string;
+  pctChapter?: "chapter_i" | "chapter_ii" | "";
   qualityLevel: string;
   deliveryOption: string;
   dueAt?: string;

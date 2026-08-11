@@ -98,6 +98,21 @@ If you wish to just develop locally and not deploy to Vercel, [follow the steps 
 
 > Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
 
+### Deadline basis backfill
+
+After deploying the matching `patent-service` and applying the deadline-basis
+migration, backfill active submitted Requests in rate-limited batches:
+
+```bash
+npm run backfill:deadlines
+```
+
+The command reads `.env.local`, requires the server-only Supabase service-role key
+and `PATENT_SERVICE_BASE_URL`, and never overwrites an existing official basis
+date. Optional controls are `DEADLINE_BACKFILL_BATCH_SIZE`,
+`DEADLINE_BACKFILL_OFFSET`, and `DEADLINE_BACKFILL_DELAY_MS`. Re-run failed
+batches after correcting the official-source error.
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
