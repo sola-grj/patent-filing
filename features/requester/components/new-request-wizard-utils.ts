@@ -8,6 +8,10 @@ import type {
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import { HUMAN_TRANSLATION_QUALITY_LEVEL } from "@/features/requester/options";
+import {
+  isAllowedServiceTypeConfig,
+  normalizeServiceTypeConfig,
+} from "@/features/requester/request-paths";
 import { validateFutureDateString } from "@/lib/validators/requester";
 
 export const wizardSteps = [
@@ -170,26 +174,18 @@ export function onConfigValueChange<K extends keyof WizardConfig>(
   return (value: string) => onChange({ ...config, [key]: value });
 }
 
-const epoOnlyServiceTypes = new Set([
-  "epv",
-  "european_patent_grant_registration",
-]);
-
 export function updateWizardChannel(
   config: WizardConfig,
   channelCode: string,
 ): WizardConfig {
-  const serviceTypes = channelCode === "ep"
-    ? config.serviceTypes
-    : config.serviceTypes.filter(
-        (serviceType) => !epoOnlyServiceTypes.has(serviceType),
-      );
-
   return {
     ...config,
     channelCode,
-    serviceTypes,
-    epvType: serviceTypes.includes("epv") ? config.epvType : "",
+    serviceTypes: [],
+    filingType: "",
+    filingApplicationType: "",
+    epvType: "",
+    dueAt: "",
   };
 }
 
@@ -215,11 +211,12 @@ export function normalizeWizardConfig(
   const configuredServiceTypes = Array.isArray(config?.serviceTypes)
     ? config.serviceTypes.filter(Boolean)
     : [];
-  const serviceTypes = channelCode === "ep"
-    ? configuredServiceTypes
-    : configuredServiceTypes.filter(
-        (serviceType) => !epoOnlyServiceTypes.has(serviceType),
-      );
+  const serviceConfig = normalizeServiceTypeConfig(
+    channelCode,
+    configuredServiceTypes,
+    merged.epvType,
+  );
+  const serviceTypes = serviceConfig.serviceTypes;
   const isTranslationOnlyService = serviceTypes.length === 1
     && serviceTypes[0] === "translation";
 
@@ -228,7 +225,7 @@ export function normalizeWizardConfig(
     channelCode,
     serviceTypes,
     dueAt: isTranslationOnlyService ? merged.dueAt : "",
-    epvType: serviceTypes.includes("epv") ? merged.epvType : "",
+    epvType: serviceConfig.epvType,
     jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
@@ -255,11 +252,15 @@ export function validateWizardConfigFields(
     errors.serviceTypes = "Select at least one service type before continuing.";
   }
 
-  const hasGrantService = config.serviceTypes.includes(
-    "european_patent_grant_registration",
-  );
-  if (config.channelCode !== "ep" && (hasEpvService || hasGrantService)) {
-    errors.serviceTypes = "Grant and EPV are only available for EPO.";
+  if (
+    config.serviceTypes.length
+    && !isAllowedServiceTypeConfig(
+      config.channelCode,
+      config.serviceTypes,
+      config.epvType,
+    )
+  ) {
+    errors.serviceTypes = "Select a service type available for the chosen path.";
   }
 
   if (hasFilingService) {

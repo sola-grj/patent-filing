@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { Input } from "@/components/ui/input";
 import { lookupPatentForWizard } from "@/features/requester/actions";
+import { patentNumberErrorForPath } from "@/features/requester/patent-number-validation";
+import { requestPathLabels } from "@/features/requester/request-paths";
 import type {
   WizardPatentCandidate,
   WizardSourceMode,
@@ -17,17 +19,17 @@ import { FileList, StepShell } from "./new-request-wizard-shared";
 const searchEntryCards = [
   {
     id: "ep",
-    title: "EP",
+    title: requestPathLabels.ep,
     className: "bg-[linear-gradient(135deg,#d946ef,#ec4899)] text-white",
   },
   {
     id: "pct",
-    title: "PCT",
+    title: requestPathLabels.pct,
     className: "bg-[linear-gradient(135deg,#1d4ed8,#1e3a8a)] text-white",
   },
   {
     id: "paris_convention",
-    title: "Paris Convention",
+    title: requestPathLabels.paris_convention,
     className: "bg-[linear-gradient(135deg,#0f766e,#14b8a6)] text-white",
   },
   {
@@ -68,7 +70,7 @@ export function SourceStep(props: {
   return (
     <StepShell
       title="Create a request"
-      description="Choose the intake route first. Paris Convention, PCT, and EP all use patent number search. Upload switches the intake area to file staging."
+      description="Choose the intake path first. FIling-Pairs Convention, Filing-PCT, and EPV use patent number search. Upload switches the intake area to file staging."
     >
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-6 overflow-hidden">
         <div className="grid shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -100,6 +102,14 @@ export function SourceStep(props: {
                 setSearchError(null);
                 if (!props.patentQuery.trim()) {
                   setSearchError("Enter a patent number to search.");
+                  return;
+                }
+                const validationError = patentNumberErrorForPath(
+                  props.channelCode,
+                  props.patentQuery,
+                );
+                if (validationError) {
+                  setSearchError(validationError);
                   return;
                 }
                 props.onPatentSearchLoadingChange("Parsing patent details");
@@ -221,7 +231,7 @@ function EntryModeCard({
           active ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.92)]" : ""
         } ${card.className}`}
       >
-        <p className="max-w-[11ch] text-[1.5rem] font-semibold leading-[1.15] tracking-[-0.03em]">
+        <p className="whitespace-nowrap text-[clamp(1.125rem,1.35vw,1.5rem)] font-semibold leading-[1.15] tracking-[-0.03em] max-[360px]:whitespace-normal">
           {card.title}
         </p>
       </div>

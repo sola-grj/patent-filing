@@ -12,6 +12,7 @@ import {
   HUMAN_TRANSLATION_QUALITY_LEVEL,
   jurisdictionOptions,
 } from "@/features/requester/options";
+import { isAllowedServiceTypeConfig } from "@/features/requester/request-paths";
 import {
   getAuthenticatedUser,
   getRequesterOrganization,
@@ -286,14 +287,14 @@ function validateCommercialFields(payload: WizardPayload) {
   if (!config.jurisdictionCodes.length) {
     throw new Error("Select at least one jurisdiction.");
   }
-  const hasGrantService = config.serviceTypes.includes(
-    "european_patent_grant_registration",
-  );
   if (
-    config.channelCode !== "ep"
-    && (config.serviceTypes.includes("epv") || hasGrantService)
+    !isAllowedServiceTypeConfig(
+      config.channelCode,
+      config.serviceTypes,
+      config.epvType,
+    )
   ) {
-    throw new Error("Grant and EPV are only available for EPO.");
+    throw new Error("Select a service type available for the chosen path.");
   }
   if (config.serviceTypes.includes("filing")) {
     if (!config.filingType || !config.filingApplicationType || !config.entityType) {

@@ -29,6 +29,13 @@ import {
   jurisdictionOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
+import {
+  getServiceTypeSelection,
+  getServiceTypeSelections,
+  requestPathLabels,
+  resolveServiceTypeSelection,
+  type ServiceTypeSelectionValue,
+} from "@/features/requester/request-paths";
 import type {
   WizardConfig,
   WizardDictionaries,
@@ -176,21 +183,16 @@ export function ConfigStep({
   dictionaries: WizardDictionaries;
 }) {
   const dueDateRef = useRef<HTMLInputElement | null>(null);
-  const channelLabel = config.channelCode === "ep"
-    ? "EPO"
-    : labelForOption(dictionaries.channels, config.channelCode);
+  const channelLabel = requestPathLabels[config.channelCode]
+    ?? labelForOption(dictionaries.channels, config.channelCode);
   const isChannelLocked = sourceMode === "patent_search";
-  const hasTranslationService = config.serviceTypes.includes("translation");
   const isTranslationOnlyService = config.serviceTypes.length === 1
-    && hasTranslationService;
+    && config.serviceTypes[0] === "translation";
   const hasFilingService = config.serviceTypes.includes("filing");
-  const hasEpvService = config.serviceTypes.includes("epv");
 
   function openDueDatePicker() {
     const input = dueDateRef.current;
-    if (!input) {
-      return;
-    }
+    if (!input) return;
 
     input.focus();
     (
@@ -200,20 +202,20 @@ export function ConfigStep({
     ).showPicker?.();
   }
 
-  function handleServiceTypeChange(serviceType: ServiceTypeSelection) {
-    const nextServiceTypes = serviceTypeValues[serviceType];
-    const isNextTranslationOnly = nextServiceTypes.length === 1
-      && nextServiceTypes[0] === "translation";
+  function handleServiceTypeChange(serviceType: ServiceTypeSelectionValue) {
+    const selection = getServiceTypeSelection(serviceType);
+    if (!selection) return;
+    const nextServiceTypes: readonly string[] = selection.serviceTypes;
     onChange({
       ...config,
       serviceTypes: [...nextServiceTypes],
-      dueAt: isNextTranslationOnly ? config.dueAt : "",
+      dueAt: selection.value === "translation" ? config.dueAt : "",
       filingType: nextServiceTypes.includes("filing") ? config.filingType : "",
       filingApplicationType: nextServiceTypes.includes("filing")
         ? config.filingApplicationType
         : "",
       entityType: config.entityType,
-      epvType: nextServiceTypes.includes("epv") ? config.epvType : "",
+      epvType: selection.epvType,
     });
   }
 
@@ -223,7 +225,10 @@ export function ConfigStep({
 
   const channelOptions = dictionaries.channels
     .filter((option) => ["ep", "paris_convention", "pct"].includes(option.value))
-    .map((option) => option.value === "ep" ? { ...option, label: "EPO" } : option);
+    .map((option) => ({
+      ...option,
+      label: requestPathLabels[option.value] ?? option.label,
+    }));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -246,7 +251,7 @@ export function ConfigStep({
             <div className="space-y-2 md:col-span-2">
               <Label>
                 <span className="text-destructive" aria-hidden="true">*</span>{" "}
-                Channels
+                Path
               </Label>
               <div className={getFieldClassName(Boolean(configFieldErrors.channelCode), "flex min-h-10 items-center bg-muted/20 px-3 text-sm font-medium")}>
                 {channelLabel}
@@ -258,10 +263,10 @@ export function ConfigStep({
           ) : (
             <div className="md:col-span-2">
               <SelectField
-                label="Channels"
+                label="Path"
                 value={config.channelCode}
                 options={channelOptions}
-                placeholder="Choose an application channel"
+                placeholder="Choose a path"
                 disabled={isChannelLocked}
                 error={configFieldErrors.channelCode}
                 required
@@ -272,6 +277,7 @@ export function ConfigStep({
           <div className="md:col-span-2">
             <ServiceTypeField
               channelCode={config.channelCode}
+              epvType={config.epvType}
               error={configFieldErrors.serviceTypes}
               value={config.serviceTypes}
               onChange={handleServiceTypeChange}
@@ -313,17 +319,6 @@ export function ConfigStep({
                 onChange={onConfigValueChange(config, onChange, "entityType")}
               />
             </div>
-          ) : null}
-          {hasEpvService ? (
-            <SelectField
-              label="EPV Type"
-              value={config.epvType ?? ""}
-              options={dictionaries.epvTypes}
-              placeholder="Choose an EPV type"
-              error={configFieldErrors.epvType}
-              required
-              onChange={onConfigValueChange(config, onChange, "epvType")}
-            />
           ) : null}
           <SearchableSingleSelectField
             label="Source Language"
@@ -406,15 +401,20 @@ function ServiceTypeField(props: {
   channelCode: string;
   error?: string;
   value: string[];
-  onChange: (serviceType: ServiceTypeSelection) => void;
+  onChange: (serviceType: ServiceTypeSelectionValue) => void;
+  epvType?: string;
 }) {
-  const selectedValue = getServiceTypeSelection(props.value);
+  const selectedValue = resolveServiceTypeSelection(
+    props.channelCode,
+    props.value,
+    props.epvType,
+  )?.value;
 
   return (
     <Field label="Service type" required>
       <Select
         value={selectedValue}
-        onValueChange={(value) => props.onChange(value as ServiceTypeSelection)}
+        onValueChange={(value) => props.onChange(value as ServiceTypeSelectionValue)}
       >
         <SelectTrigger
           aria-invalid={Boolean(props.error)}
@@ -424,45 +424,16 @@ function ServiceTypeField(props: {
           <SelectValue placeholder="Choose a service type" />
         </SelectTrigger>
         <SelectContent>
-          {serviceTypeSelections
-            .filter((option) => props.channelCode === "ep" || !option.epoOnly)
-            .map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
+          {getServiceTypeSelections(props.channelCode).map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
       {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
     </Field>
   );
-}
-
-const serviceTypeSelections = [
-  { value: "translation", label: "Translation", epoOnly: false },
-  { value: "grant", label: "Grant", epoOnly: true },
-  { value: "filing", label: "Filing", epoOnly: false },
-  { value: "translation_filing", label: "Translation + Filing", epoOnly: false },
-  { value: "translation_grant", label: "Translation + Grant", epoOnly: true },
-  { value: "epv", label: "EPV", epoOnly: true },
-] as const;
-
-type ServiceTypeSelection = (typeof serviceTypeSelections)[number]["value"];
-
-const serviceTypeValues: Record<ServiceTypeSelection, readonly string[]> = {
-  translation: ["translation"],
-  grant: ["european_patent_grant_registration"],
-  filing: ["filing"],
-  translation_filing: ["translation", "filing"],
-  translation_grant: ["translation", "european_patent_grant_registration"],
-  epv: ["epv"],
-};
-
-function getServiceTypeSelection(values: string[]) {
-  const normalizedValues = [...values].sort().join("|");
-  return serviceTypeSelections.find((option) =>
-    [...serviceTypeValues[option.value]].sort().join("|") === normalizedValues
-  )?.value;
 }
 
 function SelectField(props: {
