@@ -1,6 +1,7 @@
 import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
 import { buildDashboardAttentionItems } from "./dashboard-attention";
 import { buildDashboardDeadlineItems } from "./deadlines";
+import { normalizeRequestSearchTerm } from "./requester-routes";
 import type {
   DictionaryOption,
   WizardDictionaries,
@@ -258,6 +259,9 @@ export async function getRequesterRequests(filters?: {
   }
 
   const keyword = filters?.q?.toLowerCase().trim();
+  const normalizedKeyword = keyword
+    ? normalizeRequestSearchTerm(keyword)
+    : "";
   const requests = keyword
     ? (data ?? []).filter((request) => {
         const patentQuery = (request.patent_searches ?? [])
@@ -266,10 +270,24 @@ export async function getRequesterRequests(filters?: {
         const requestPatent = Array.isArray(request.request_patents)
           ? request.request_patents[0]
           : request.request_patents;
-        return [request.request_no, request.title, patentQuery, requestPatent?.patent_number]
+        const searchableValues = [
+          request.request_no,
+          request.title,
+          patentQuery,
+          requestPatent?.patent_number,
+        ];
+        const displaySearchValue = searchableValues
           .join(" ")
-          .toLowerCase()
-          .includes(keyword);
+          .toLowerCase();
+        const patentSearchValue = searchableValues
+          .map((value) => normalizeRequestSearchTerm(String(value ?? "")))
+          .join(" ");
+
+        return displaySearchValue.includes(keyword)
+          || Boolean(
+            normalizedKeyword
+            && patentSearchValue.includes(normalizedKeyword),
+          );
       })
     : data ?? [];
 

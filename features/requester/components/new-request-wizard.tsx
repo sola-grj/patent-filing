@@ -70,6 +70,7 @@ import { useRequestWizardController } from "./requester-create-request-controlle
 import { usePatentAnalysis } from "./use-patent-analysis";
 import { PatentProcessingNotice } from "./patent-processing-notice";
 import { PatentCacheWarning } from "./patent-cache-warning";
+import type { RequestPathCode } from "../requester-routes";
 
 type WizardNegotiationDraft = {
   adjustmentNotes: string;
@@ -80,16 +81,20 @@ type WizardNegotiationDraft = {
 export function NewRequestWizard({
   initialDraft,
   initialPayload: seededPayload,
+  initialPath,
   dictionaries,
 }: {
   initialDraft?: WizardDraftSession;
   initialPayload?: Partial<WizardPayload>;
+  initialPath?: RequestPathCode;
   dictionaries: WizardDictionaries;
 }) {
   const router = useRouter();
   const { registerController } = useRequestWizardController();
   const initialPayload = initialDraft?.payload ?? seededPayload;
-  const initialConfig = normalizeWizardConfig(initialPayload?.config);
+  const initialConfig = normalizeWizardConfig(
+    initialPayload?.config ?? (initialPath ? { channelCode: initialPath } : undefined),
+  );
   const analysis = usePatentAnalysis(initialPayload?.analysis);
   const analysisStatus = analysis.status;
   const startAnalysis = analysis.start;
