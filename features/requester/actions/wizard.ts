@@ -127,12 +127,12 @@ export async function submitNegotiationFromWizard(
       "quoted",
       { sourceMode, negotiation: true },
     );
-    if (sourceMode === "patent_search") {
+    if (sourceMode === "patent_search" || sourceMode === "upload") {
       const lookupReceipt = wizardPayload.selectedPatent?.lookupReceipt;
       const analysisReceipt = wizardPayload.analysis?.analysis_receipt;
       after(async () => {
         try {
-          if (!lookupReceipt || !analysisReceipt) {
+          if (!analysisReceipt || (sourceMode === "patent_search" && !lookupReceipt)) {
             throw new Error("Verified patent data is unavailable.");
           }
           await enqueueSubmittedPatentFilePreparation({

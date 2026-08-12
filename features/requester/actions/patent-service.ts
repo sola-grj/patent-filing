@@ -41,16 +41,16 @@ export async function verifyPatentReceipts(input: {
 
 export async function enqueueSubmittedPatentCache(input: {
   requestId: string;
-  lookupReceipt: string;
+  lookupReceipt?: string;
   analysisReceipt: string;
 }) {
   return callPatentService<{
     request_id: string;
-    patent_id: string;
+    patent_id: string | null;
     status: "pending" | "processing" | "completed" | "failed";
   }>("/api/patents/cache", {
     request_id: input.requestId,
-    lookup_receipt: input.lookupReceipt,
+    ...(input.lookupReceipt ? { lookup_receipt: input.lookupReceipt } : {}),
     analysis_receipt: input.analysisReceipt,
   });
 }

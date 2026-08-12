@@ -153,6 +153,19 @@ export type WizardPatentAnalysisResult = {
   status: "success" | "partial" | "failed";
   patent_number?: string | null;
   analysis_receipt?: string | null;
+  analysis_cache?: {
+    scope: "global" | "organization";
+    outcome: "hit" | "partial_hit" | "miss" | "waited_hit" | "bypass";
+    pipeline_fingerprint: string;
+    entries: Array<{
+      filename: string;
+      document_sha256: string;
+      analysis_input_sha256: string;
+      pipeline_fingerprint: string;
+      scope: "global" | "organization";
+      status: "hit" | "waited_hit" | "miss" | "bypass";
+    }>;
+  } | null;
   artifact?: {
     artifact_id: string;
     filename: string;

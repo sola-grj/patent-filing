@@ -5,7 +5,7 @@ import { enqueueSubmittedPatentCache } from "./patent-service";
 export async function enqueueSubmittedPatentFilePreparation(input: {
   supabase: SupabaseClient;
   requestId: string;
-  lookupReceipt: string;
+  lookupReceipt?: string;
   analysisReceipt: string;
 }) {
   let accepted;

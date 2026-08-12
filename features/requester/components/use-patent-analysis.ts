@@ -73,6 +73,7 @@ export function usePatentAnalysis(initialResult?: WizardPatentAnalysisResult) {
     void fetch("/api/patents/analyze", {
       method: "POST",
       body: formData,
+      headers: { "X-Patent-Analysis-Mode": input.sourceMode },
       signal: controller.signal,
     })
       .then(async (response) => {

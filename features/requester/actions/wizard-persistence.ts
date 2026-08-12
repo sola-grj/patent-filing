@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
@@ -171,6 +171,17 @@ export async function persistWizardRequest(
           lookupReceipt: payload.selectedPatent!.lookupReceipt!,
           analysisReceipt: payload.analysis!.analysis_receipt!,
         });
+      } else if (
+        payload.sourceMode === "upload"
+        && !options?.deferPatentCache
+        && payload.analysis?.analysis_receipt
+      ) {
+        scheduleSubmittedPatentFile({
+          supabase,
+          requestId,
+          userId,
+          analysisReceipt: payload.analysis.analysis_receipt,
+        });
       }
     }
 
@@ -211,7 +222,7 @@ async function prepareSubmittedPatentFile(input: {
   supabase: SupabaseClient;
   requestId: string;
   userId: string;
-  lookupReceipt: string;
+  lookupReceipt?: string;
   analysisReceipt: string;
 }) {
   try {
@@ -506,9 +517,11 @@ async function persistUploadedFiles(
   for (const file of files) {
     const fileId = randomUUID();
     const path = `${userId}/${requestId}/${Date.now()}-${safeFileName(file.name)}`;
+    const content = new Uint8Array(await file.arrayBuffer());
+    const contentSha256 = createHash("sha256").update(content).digest("hex");
     const { error: uploadError } = await supabase.storage.from("request-files").upload(
       path,
-      new Uint8Array(await file.arrayBuffer()),
+      content,
       { contentType: file.type, upsert: false },
     );
     if (uploadError) throw new Error(uploadError.message);
@@ -526,6 +539,7 @@ async function persistUploadedFiles(
       status: "validated",
       confirmed_for_translation: true,
       metadata: { size: file.size },
+      content_sha256: contentSha256,
     });
     if (error) throw new Error(error.message);
     fileIds.push(fileId);
