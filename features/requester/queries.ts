@@ -185,7 +185,7 @@ export async function getRequesterDashboard() {
       .order("updated_at", { ascending: false }),
     supabase
       .from("orders")
-      .select("id, request_id, completed_at, updated_at, translation_tasks(id, task_deliverables(id, status, created_at))")
+      .select("id, request_id, completed_at, updated_at, translation_tasks(id, task_deliverables(id, status, created_at, jurisdiction_code, version_no))")
       .eq("requester_id", userId)
       .order("updated_at", { ascending: false }),
     getRequesterDictionaries(),

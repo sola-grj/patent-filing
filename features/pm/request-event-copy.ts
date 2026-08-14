@@ -42,6 +42,7 @@ const requestEventTitles: Record<
   "request.closed.pm": "PM closed the request",
   "order.confirmed.pm": "PM confirmed the order",
   "order.started.pm": "PM started production",
+  "deliverables.partially_submitted.pm": "PM submitted a partial country delivery",
   "deliverables.submitted.pm": "PM submitted the final deliverables",
   "filing.signature.sent.pm": "PM sent filing documents for signature",
   "filing.signature.submitted.requester": "Requester returned signed filing documents",

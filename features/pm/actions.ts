@@ -14,6 +14,7 @@ import {
   sumParseMetric,
   writeRequestEvent,
 } from "@/features/requester/actions/helpers";
+import { buildDeliverySubmissionPlan } from "@/features/deliverables/delivery-progress";
 import { safeFileName } from "@/features/requester/server-utils";
 
 import { requirePmContext, toPmErrorMessage } from "./server-utils";
@@ -642,77 +643,66 @@ export async function deliverPmOrder(
         jurisdiction_code?: string | null;
       }> | null;
     }>;
-    const deliverables = tasks.flatMap((task) => task.task_deliverables ?? []);
-    const deliveryReadyDeliverables = deliverables.filter((deliverable) =>
-      ["draft", "submitted"].includes(deliverable.status ?? ""));
-    const readyJurisdictions = new Set(
-      deliveryReadyDeliverables
-        .map((deliverable) => deliverable.jurisdiction_code)
-        .filter((code): code is string => Boolean(code)),
-    );
-    const missingJurisdictions = deliveryConfig.jurisdictionCodes.filter(
-      (code) => !readyJurisdictions.has(code),
-    );
-
     if (!deliveryConfig.jurisdictionCodes.length) {
       throw new Error("No delivery jurisdictions are configured for this request.");
     }
-    if (missingJurisdictions.length) {
-      throw new Error(
-        `Upload a delivery file for: ${missingJurisdictions.join(", ")}.`,
-      );
-    }
-
-    const draftDeliverableIds = tasks.flatMap((task) =>
-      (task.task_deliverables ?? [])
-        .filter((deliverable) => deliverable.status === "draft")
-        .map((deliverable) => deliverable.id),
+    const deliverables = tasks.flatMap((task) => task.task_deliverables ?? []);
+    const deliveryPlan = buildDeliverySubmissionPlan(
+      deliveryConfig.jurisdictionCodes,
+      deliverables,
     );
 
-    if (draftDeliverableIds.length) {
-      const { error: deliverableUpdateError } = await context.supabase
-        .from("task_deliverables")
-        .update({ status: "submitted" })
-        .in("id", draftDeliverableIds);
-      if (deliverableUpdateError) throw new Error(deliverableUpdateError.message);
+    if (!deliveryPlan.draftDeliverableIds.length) {
+      throw new Error("Upload at least one new delivery file before delivering.");
     }
 
-    const taskIds = tasks.map((task) => task.id);
-    if (taskIds.length) {
-      const { error: taskUpdateError } = await context.supabase
-        .from("translation_tasks")
+    const { error: deliverableUpdateError } = await context.supabase
+      .from("task_deliverables")
+      .update({ status: "submitted" })
+      .in("id", deliveryPlan.draftDeliverableIds);
+    if (deliverableUpdateError) throw new Error(deliverableUpdateError.message);
+
+    if (deliveryPlan.completesRequest) {
+      const taskIds = tasks.map((task) => task.id);
+      if (taskIds.length) {
+        const { error: taskUpdateError } = await context.supabase
+          .from("translation_tasks")
+          .update({ status: "completed", completed_at: now })
+          .in("id", taskIds);
+        if (taskUpdateError) throw new Error(taskUpdateError.message);
+      }
+
+      const { error: orderUpdateError } = await context.supabase
+        .from("orders")
         .update({ status: "completed", completed_at: now })
-        .in("id", taskIds);
-      if (taskUpdateError) throw new Error(taskUpdateError.message);
+        .eq("id", orderId);
+      if (orderUpdateError) throw new Error(orderUpdateError.message);
+
+      const { error: requestUpdateError } = await context.supabase
+        .from("translation_requests")
+        .update({
+          workflow_stage: "completed",
+          requester_status: "completed",
+          pm_status: "completed",
+        })
+        .eq("id", requestId);
+      if (requestUpdateError) throw new Error(requestUpdateError.message);
     }
-
-    const { error: orderUpdateError } = await context.supabase
-      .from("orders")
-      .update({ status: "completed", completed_at: now })
-      .eq("id", orderId);
-    if (orderUpdateError) throw new Error(orderUpdateError.message);
-
-    const { error: requestUpdateError } = await context.supabase
-      .from("translation_requests")
-      .update({
-        workflow_stage: "completed",
-        requester_status: "completed",
-        pm_status: "completed",
-      })
-      .eq("id", requestId);
-    if (requestUpdateError) throw new Error(requestUpdateError.message);
 
     await writeRequestEvent(
       context.supabase,
       requestId,
       context.userId,
-      "deliverables.submitted.pm",
+      deliveryPlan.completesRequest
+        ? "deliverables.submitted.pm"
+        : "deliverables.partially_submitted.pm",
       "production",
-      "completed",
+      deliveryPlan.completesRequest ? "completed" : "production",
       {
         orderId,
-        deliverableCount: deliveryReadyDeliverables.length,
-        jurisdictionCodes: deliveryConfig.jurisdictionCodes,
+        deliverableCount: deliveryPlan.draftDeliverableIds.length,
+        jurisdictionCodes: deliveryPlan.newlyDeliveredJurisdictionCodes,
+        remainingJurisdictionCodes: deliveryPlan.missingJurisdictionCodes,
       },
     );
 

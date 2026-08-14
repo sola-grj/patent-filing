@@ -45,12 +45,13 @@ export function PmDeliveryDialog({
       <DialogTrigger asChild>
         <Button type="button">Deliver</Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="flex h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="shrink-0 px-6 pb-4 pt-6 pr-12">
           <DialogTitle>Delivery</DialogTitle>
           <DialogDescription>
-            Upload one ZIP, PDF, DOC, or DOCX file for each jurisdiction, then
-            deliver all files together.
+            Upload one ZIP, PDF, DOC, or DOCX file per jurisdiction. You can
+            deliver available countries now; the Request completes after every
+            configured jurisdiction has been delivered.
           </DialogDescription>
         </DialogHeader>
         <PmDeliveryPanel

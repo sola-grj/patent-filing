@@ -17,6 +17,7 @@ export function PmCountryDeliveryCard({
   isUploading,
   label,
   selectedFile,
+  status,
   onFileChange,
   onUpload,
 }: {
@@ -27,6 +28,7 @@ export function PmCountryDeliveryCard({
   isUploading: boolean;
   label: string;
   selectedFile: File | null;
+  status: "delivered" | "missing" | "ready";
   onFileChange: (file: File | null) => void;
   onUpload: () => void;
 }) {
@@ -38,7 +40,11 @@ export function PmCountryDeliveryCard({
           <p className="mt-1 text-xs text-muted-foreground">{code}</p>
         </div>
         <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
-          {deliverable ? "Ready" : "Missing"}
+          {status === "delivered"
+            ? "Delivered"
+            : status === "ready"
+              ? "Ready to deliver"
+              : "Missing"}
         </span>
       </div>
 
@@ -72,7 +78,7 @@ export function PmCountryDeliveryCard({
       >
         {isUploading
           ? "Uploading..."
-          : deliverable
+          : status !== "missing"
             ? "Replace file"
             : "Upload file"}
       </Button>

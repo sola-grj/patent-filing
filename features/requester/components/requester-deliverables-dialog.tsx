@@ -28,38 +28,50 @@ export function RequesterDeliverablesDialog({
   deliverables,
   orderId,
   requestId,
+  totalJurisdictionCount,
 }: {
   deliverables: RequesterDeliverable[];
   orderId: string;
   requestId: string;
+  totalJurisdictionCount: number;
 }) {
+  const availableCount = deliverables.length;
+  const isComplete = totalJurisdictionCount > 0
+    && availableCount >= totalJurisdictionCount;
+
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button>
           <PackageOpen />
-          View Deliverables
+          View Deliverables ({availableCount}
+          {totalJurisdictionCount ? `/${totalJurisdictionCount}` : ""})
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader className="pr-8">
           <DialogTitle>Deliverables</DialogTitle>
           <DialogDescription>
-            Download files individually by jurisdiction or get the complete
-            delivery package.
+            {isComplete
+              ? "All jurisdiction files are available to download."
+              : "Available jurisdictions can be downloaded now. Remaining files will appear here after PM delivery."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium">Complete delivery package</p>
+            <p className="text-sm font-medium">
+              {isComplete ? "Complete delivery package" : "Available delivery package"}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              All {deliverables.length} jurisdiction {deliverables.length === 1 ? "file" : "files"} in one ZIP.
+              {availableCount}
+              {totalJurisdictionCount ? ` of ${totalJurisdictionCount}` : ""}
+              {` jurisdiction ${availableCount === 1 ? "file" : "files"} available in one ZIP.`}
             </p>
           </div>
           <DeliverableDownloadButton
             href={`/requester/requests/${requestId}/deliverables/download`}
-            label="Download all"
+            label={isComplete ? "Download all" : "Download available"}
           />
         </div>
 

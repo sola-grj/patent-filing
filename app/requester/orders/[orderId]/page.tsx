@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { latestPublishedDeliverables } from "@/features/deliverables/delivery-progress";
 import { DeliverableDownloadButton } from "@/features/requester/components/deliverable-download-button";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import {
@@ -76,18 +77,15 @@ async function OrderContent({
   const jurisdictionOrder = new Map(
     jurisdictionCodes.map((code, index) => [code, index]),
   );
-  const deliverables = tasks
+  const deliverables = latestPublishedDeliverables(tasks
     .flatMap((task) =>
       (task.task_deliverables ?? [])
-        .filter(
-          (deliverable) => deliverable.status && deliverable.status !== "draft",
-        )
         .map((deliverable) => ({
           ...deliverable,
           taskType: task.task_type,
           taskStatus: task.status,
         })),
-    )
+    ))
     .sort((left, right) => {
       const countryDifference = jurisdictionRank(
         left.jurisdiction_code,

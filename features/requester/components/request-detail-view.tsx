@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { latestPublishedDeliverables } from "@/features/deliverables/delivery-progress";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
 import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
@@ -190,12 +191,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     (left, right) => right.version_no - left.version_no,
   )[0];
   const order = firstRelation(request.orders);
-  const deliverables = (((order?.translation_tasks ?? []) as NonNullable<Order["translation_tasks"]>) ?? [])
-    .flatMap((task) => task.task_deliverables ?? [])
-    .filter((deliverable) => deliverable.status && deliverable.status !== "draft")
-    .sort((left, right) =>
-      new Date(right.created_at ?? 0).getTime()
-      - new Date(left.created_at ?? 0).getTime());
+  const deliverables = latestPublishedDeliverables(
+    (((order?.translation_tasks ?? []) as NonNullable<Order["translation_tasks"]>) ?? [])
+      .flatMap((task) => task.task_deliverables ?? []),
+  );
   const isPatentSearch = request.source_mode === "patent_search";
   const patentNumber = isPatentSearch ? patent?.patent_number ?? null : null;
   const patentCandidate = isPatentSearch && patent ? toPatentCandidate(patent) : null;
@@ -333,11 +332,12 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
                 Back to Requests
               </Link>
             </Button>
-            {request.requester_status === "completed" && order?.id && deliverables.length ? (
+            {order?.id && deliverables.length ? (
               <RequesterDeliverablesDialog
                 deliverables={deliverables}
                 orderId={order.id}
                 requestId={request.id}
+                totalJurisdictionCount={jurisdictionCodes.length}
               />
             ) : null}
           </div>

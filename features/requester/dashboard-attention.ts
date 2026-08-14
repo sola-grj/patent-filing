@@ -1,3 +1,5 @@
+import { latestPublishedDeliverables } from "@/features/deliverables/delivery-progress";
+
 export type DashboardAttentionItem = {
   id: string;
   requestId: string;
@@ -49,6 +51,8 @@ type DashboardOrder = {
       id: string;
       status?: string | null;
       created_at: string;
+      jurisdiction_code?: string | null;
+      version_no?: number | null;
     }> | null;
   }> | null;
 };
@@ -128,31 +132,37 @@ function downloadAttentionItem(
   order: DashboardOrder,
   request?: DashboardRequest,
 ): DashboardAttentionItem | null {
-  if (!request || request.requester_status !== "completed") {
+  if (!request) {
     return null;
   }
 
-  const latestDeliverable = (order.translation_tasks ?? [])
-    .flatMap((task) => task.task_deliverables ?? [])
-    .filter((deliverable) => deliverable.status && deliverable.status !== "draft")
-    .sort(sortByNewest)[0];
+  const deliverables = latestPublishedDeliverables(
+    (order.translation_tasks ?? [])
+      .flatMap((task) => task.task_deliverables ?? []),
+  );
+  const latestDeliverable = deliverables.sort(sortByNewest)[0];
 
   if (!latestDeliverable) {
     return null;
   }
 
   const completedAt = order.completed_at ?? latestDeliverable.created_at ?? order.updated_at;
+  const isCompleted = request.requester_status === "completed";
 
   return {
     id: `download-${order.id}`,
     requestId: request.id,
     kind: "download",
-    title: "Delivery ready to download",
-    detail: `${requestMatter(request)} · Completed ${formatShortDate(completedAt)}`,
+    title: isCompleted
+      ? "Delivery ready to download"
+      : "Partial delivery available",
+    detail: isCompleted
+      ? `${requestMatter(request)} · Completed ${formatShortDate(completedAt)}`
+      : `${requestMatter(request)} · ${deliverables.length} ${deliverables.length === 1 ? "file" : "files"} available`,
     action: "View deliverables",
     href: `/requester/requests/${request.id}`,
     tone: "green",
-    timestamp: completedAt,
+    timestamp: latestDeliverable.created_at ?? completedAt,
   };
 }
 

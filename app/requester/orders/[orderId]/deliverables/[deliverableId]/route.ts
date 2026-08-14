@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isPublishedDeliverable } from "@/features/deliverables/delivery-progress";
 import { createClient } from "@/lib/supabase/server";
 
 type DeliverableRow = {
@@ -51,7 +52,7 @@ export async function GET(
     .flatMap((task) => task?.task_deliverables ?? [])
     .find((item) => item.id === deliverableId);
 
-  if (!deliverable || deliverable.status === "draft") {
+  if (!deliverable || !isPublishedDeliverable(deliverable.status)) {
     return NextResponse.json({ error: "Deliverable not found" }, { status: 404 });
   }
 

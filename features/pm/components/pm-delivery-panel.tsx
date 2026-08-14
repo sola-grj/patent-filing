@@ -6,6 +6,7 @@ import { PackageCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isPublishedDeliverable } from "@/features/deliverables/delivery-progress";
 import { deliverPmOrder, uploadPmDeliverableFile } from "@/features/pm/actions";
 import { jurisdictionOptions } from "@/features/requester/options";
 import { titleCaseStatus } from "@/features/requester/format";
@@ -65,20 +66,23 @@ export function PmDeliveryPanel({
         - new Date(left.created_at ?? 0).getTime()),
     [order?.translation_tasks],
   );
-  const readyByCountry = new Map(
-    deliverables
-      .filter((item) => ["draft", "submitted"].includes(item.status ?? "")
-        && item.jurisdiction_code)
-      .map((item) => [item.jurisdiction_code as string, item]),
+  const draftsByCountry = latestByCountry(
+    deliverables.filter((item) => item.status === "draft"),
+  );
+  const deliveredByCountry = latestByCountry(
+    deliverables.filter((item) => isPublishedDeliverable(item.status)),
   );
   const legacyDeliverables = deliverables.filter((item) => !item.jurisdiction_code);
-  const readyCount = countryCodes.filter((code) => readyByCountry.has(code)).length;
-  const missingCountries = countryCodes.filter((code) => !readyByCountry.has(code));
+  const draftCountryCodes = countryCodes.filter((code) => draftsByCountry.has(code));
+  const deliveredCount = countryCodes.filter((code) => deliveredByCountry.has(code)).length;
+  const missingCountries = countryCodes.filter((code) =>
+    !draftsByCountry.has(code) && !deliveredByCountry.has(code));
   const selectedCountryCodes = countryCodes.filter((code) => selectedFiles[code]);
   const canUpload = Boolean(order?.id) && order?.status !== "completed";
-  const canDeliver = countryCodes.length > 0
-    && missingCountries.length === 0
-    && !isUploading;
+  const canDeliver = draftCountryCodes.length > 0 && !isUploading;
+  const completesRequest = countryCodes.length > 0
+    && countryCodes.every((code) =>
+      draftsByCountry.has(code) || deliveredByCountry.has(code));
 
   function handleUploads(jurisdictionCodesToUpload: string[], activeKey: string) {
     if (!order?.id || !jurisdictionCodesToUpload.length) {
@@ -164,20 +168,29 @@ export function PmDeliveryPanel({
     });
   }
 
-  const content = !order ? (
+  const summary = order ? (
+    <div className="flex items-end justify-between gap-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+          Order status
+        </p>
+        <div className="mt-1 text-sm">{titleCaseStatus(order.status)}</div>
+      </div>
+      <p className="text-right text-sm font-medium">
+        {deliveredCount} of {countryCodes.length} countries delivered
+        {draftCountryCodes.length ? (
+          <span className="block text-xs font-normal text-muted-foreground">
+            {draftCountryCodes.length} ready to deliver
+          </span>
+        ) : null}
+      </p>
+    </div>
+  ) : null;
+
+  const body = !order ? (
     <EmptyMessage>Start the translation task before uploading deliverables.</EmptyMessage>
   ) : (
     <>
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-            Order status
-          </p>
-          <div className="mt-1 text-sm">{titleCaseStatus(order.status)}</div>
-        </div>
-        <p className="text-sm font-medium">{readyCount} of {countryCodes.length} countries ready</p>
-      </div>
-
       {!countryCodes.length ? (
         <EmptyMessage>No delivery jurisdictions are configured for this request.</EmptyMessage>
       ) : (
@@ -186,12 +199,15 @@ export function PmDeliveryPanel({
             <PmCountryDeliveryCard
               key={code}
               code={code}
-              deliverable={readyByCountry.get(code)}
+              deliverable={draftsByCountry.get(code) ?? deliveredByCountry.get(code)}
               disabled={!canUpload || isUploading || isDelivering}
               inputKey={inputKeys[code] ?? 0}
               isUploading={uploadingJurisdiction === code}
               label={jurisdictionLabel(code)}
               selectedFile={selectedFiles[code] ?? null}
+              status={draftsByCountry.has(code) ? "ready" : deliveredByCountry.has(code)
+                ? "delivered"
+                : "missing"}
               onFileChange={(file) => setSelectedFiles((current) => ({
                 ...current,
                 [code]: file,
@@ -220,37 +236,60 @@ export function PmDeliveryPanel({
           Missing: {missingCountries.map(jurisdictionLabel).join(", ")}
         </p>
       ) : null}
-      {canUpload ? (
-        <div className="flex flex-wrap justify-end gap-3 pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="min-w-32"
-            disabled={!selectedCountryCodes.length || isUploading || isDelivering}
-            onClick={handleUploadAll}
-          >
-            {isUploading && uploadingJurisdiction === "all"
-              ? "Uploading..."
-              : `Upload all${selectedCountryCodes.length
-                ? ` (${selectedCountryCodes.length})`
-                : ""}`}
-          </Button>
-          <Button
-            type="button"
-            className="min-w-28"
-            disabled={!canDeliver || isDelivering}
-            onClick={handleDeliver}
-          >
-            {isDelivering ? "Delivering..." : "Deliver"}
-          </Button>
-        </div>
-      ) : (
-        <EmptyMessage>This order has already been delivered to the requester.</EmptyMessage>
-      )}
     </>
   );
 
-  if (embedded) return <div className="space-y-4">{content}</div>;
+  const actions = !order ? null : canUpload ? (
+    <div className="flex flex-wrap justify-end gap-3">
+      <Button
+        type="button"
+        variant="outline"
+        className="min-w-32"
+        disabled={!selectedCountryCodes.length || isUploading || isDelivering}
+        onClick={handleUploadAll}
+      >
+        {isUploading && uploadingJurisdiction === "all"
+          ? "Uploading..."
+          : `Upload all${selectedCountryCodes.length
+            ? ` (${selectedCountryCodes.length})`
+            : ""}`}
+      </Button>
+      <Button
+        type="button"
+        className="min-w-28"
+        disabled={!canDeliver || isDelivering}
+        onClick={handleDeliver}
+      >
+        {isDelivering
+          ? "Delivering..."
+          : completesRequest
+            ? "Deliver & complete Request"
+            : `Deliver available (${draftCountryCodes.length})`}
+      </Button>
+    </div>
+  ) : (
+    <EmptyMessage>This order has already been delivered to the requester.</EmptyMessage>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {summary ? (
+          <div className="shrink-0 border-b px-6 pb-4">
+            {summary}
+          </div>
+        ) : null}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+          {body}
+        </div>
+        {actions ? (
+          <div className="shrink-0 border-t bg-background px-6 py-4">
+            {actions}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <Card className="flex flex-col overflow-visible">
@@ -260,7 +299,11 @@ export function PmDeliveryPanel({
           Delivery
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">{content}</CardContent>
+      <CardContent className="space-y-4">
+        {summary}
+        {body}
+        {actions}
+      </CardContent>
     </Card>
   );
 }
@@ -280,4 +323,17 @@ function jurisdictionLabel(code: string) {
 function storageName(path?: string | null) {
   const parts = path?.split("/") ?? [];
   return parts[parts.length - 1] ?? "";
+}
+
+function latestByCountry(deliverables: TaskDeliverable[]) {
+  const result = new Map<string, TaskDeliverable>();
+
+  for (const deliverable of deliverables) {
+    if (deliverable.jurisdiction_code
+      && !result.has(deliverable.jurisdiction_code)) {
+      result.set(deliverable.jurisdiction_code, deliverable);
+    }
+  }
+
+  return result;
 }

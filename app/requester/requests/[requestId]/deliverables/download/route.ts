@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { NextResponse } from "next/server";
 
+import { latestPublishedDeliverables } from "@/features/deliverables/delivery-progress";
 import { createClient } from "@/lib/supabase/server";
 
 type DeliverableRow = {
@@ -9,6 +10,8 @@ type DeliverableRow = {
   storage_path: string;
   status?: string | null;
   jurisdiction_code?: string | null;
+  version_no?: number | null;
+  created_at?: string | null;
 };
 
 type OrderRow = {
@@ -35,7 +38,7 @@ export async function GET(
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status, jurisdiction_code))")
+    .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status, jurisdiction_code, version_no, created_at))")
     .eq("request_id", requestId)
     .eq("requester_id", userId)
     .maybeSingle();
@@ -47,9 +50,10 @@ export async function GET(
     return NextResponse.json({ error: "Deliverables not found" }, { status: 404 });
   }
 
-  const deliverables = (((order.translation_tasks ?? []) as OrderRow["translation_tasks"]) ?? [])
-    .flatMap((task) => task.task_deliverables ?? [])
-    .filter((deliverable) => deliverable.status && deliverable.status !== "draft");
+  const deliverables = latestPublishedDeliverables(
+    (((order.translation_tasks ?? []) as OrderRow["translation_tasks"]) ?? [])
+      .flatMap((task) => task.task_deliverables ?? []),
+  );
 
   if (!deliverables.length) {
     return NextResponse.json({ error: "No deliverables are available" }, { status: 404 });
