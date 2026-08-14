@@ -137,39 +137,50 @@ function hashInvitationToken(token: string) {
 }
 
 async function newUserInvitationLink(email: string, token: string) {
-  const service = createServiceClient();
-  const baseUrl = resolveEmailAppBaseUrl();
-  const callbackUrl = new URL("/auth/callback", baseUrl);
-  callbackUrl.searchParams.set(
-    "next",
-    `/auth/organization-invite?token=${encodeURIComponent(token)}&new=1`,
-  );
-  const { data, error } = await service.auth.admin.generateLink({
-    type: "invite",
+  return organizationAuthLink({
     email,
-    options: { redirectTo: callbackUrl.toString() },
+    token,
+    type: "invite",
+    isNewAccount: true,
   });
-  if (error) throw new Error(error.message);
-  if (!data.properties.action_link) throw new Error("Supabase did not return an invitation link.");
-  return data.properties.action_link;
 }
 
 async function existingUserInvitationLink(email: string, token: string) {
+  return organizationAuthLink({
+    email,
+    token,
+    type: "magiclink",
+    isNewAccount: false,
+  });
+}
+
+async function organizationAuthLink(input: {
+  email: string;
+  token: string;
+  type: "invite" | "magiclink";
+  isNewAccount: boolean;
+}) {
   const service = createServiceClient();
   const baseUrl = resolveEmailAppBaseUrl();
-  const callbackUrl = new URL("/auth/callback", baseUrl);
-  callbackUrl.searchParams.set(
-    "next",
-    `/auth/organization-invite?token=${encodeURIComponent(token)}`,
-  );
   const { data, error } = await service.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-    options: { redirectTo: callbackUrl.toString() },
+    type: input.type,
+    email: input.email,
   });
   if (error) throw new Error(error.message);
-  if (!data.properties.action_link) throw new Error("Supabase did not return a login link.");
-  return data.properties.action_link;
+
+  const authTokenHash = data.properties.hashed_token;
+  if (!authTokenHash) {
+    throw new Error("Supabase did not return an authentication token.");
+  }
+
+  const confirmationUrl = new URL("/auth/confirm", baseUrl);
+  confirmationUrl.searchParams.set("token_hash", authTokenHash);
+  confirmationUrl.searchParams.set("type", input.type);
+  confirmationUrl.searchParams.set(
+    "next",
+    `/auth/organization-invite?token=${encodeURIComponent(input.token)}${input.isNewAccount ? "&new=1" : ""}`,
+  );
+  return confirmationUrl.toString();
 }
 
 async function findAuthUserByEmail(email: string) {
