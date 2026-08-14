@@ -18,8 +18,10 @@ import { SignatureHistory } from "./signature-history";
 
 export function RequesterSignaturePanel({
   signatureRequests,
+  canSubmit = true,
 }: {
   signatureRequests: FilingSignatureRequest[];
+  canSubmit?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -113,7 +115,7 @@ export function RequesterSignaturePanel({
               </div>
               <SignatureFileLinks files={sourceFiles} />
             </div>
-            <div className="space-y-2">
+            {canSubmit ? <div className="space-y-2">
               <FileUploadDropzone
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
                 disabled={isPending}
@@ -132,13 +134,13 @@ export function RequesterSignaturePanel({
                   }
                 />
               </div>
-            </div>
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <div className="flex justify-end">
+            </div> : <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">Only the designated signature recipient can upload signed files.</p>}
+            {canSubmit && error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {canSubmit ? <div className="flex justify-end">
               <Button type="button" disabled={isPending || !files.length} onClick={submit}>
                 {isPending ? "Submitting..." : "Submit signed files"}
               </Button>
-            </div>
+            </div> : null}
           </div>
         ) : null}
         <SignatureHistory requests={history} viewer="requester" />

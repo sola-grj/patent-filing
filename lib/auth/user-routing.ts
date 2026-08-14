@@ -55,12 +55,22 @@ export async function getLandingPathForUser(
   const supabase = supabaseClient ?? (await createClient());
   const { data, error } = await supabase
     .from("organization_members")
-    .select("role")
+    .select("role, organizations(type)")
     .eq("user_id", userId);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return resolveLandingPath((data ?? []).map((membership) => membership.role));
+  return resolveLandingPath(
+    (data ?? []).map((membership) => {
+      const organization = Array.isArray(membership.organizations)
+        ? membership.organizations[0]
+        : membership.organizations as { type?: string } | null;
+      if (PM_LANDING_ROLES.has(membership.role) && organization?.type !== "supplier") {
+        return null;
+      }
+      return membership.role;
+    }),
+  );
 }

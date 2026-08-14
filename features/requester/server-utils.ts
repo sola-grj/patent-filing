@@ -22,7 +22,7 @@ export async function getRequesterOrganization() {
   const { supabase, userId, email } = await getAuthenticatedUser();
   const { data } = await supabase
     .from("organization_members")
-    .select("organization_id, role, organizations(id, name, type)")
+    .select("organization_id, role, is_org_admin, organizations(id, name, type)")
     .eq("user_id", userId)
     .eq("role", "requester")
     .limit(1)
@@ -32,12 +32,31 @@ export async function getRequesterOrganization() {
     ? data?.organizations[0]
     : data?.organizations;
 
+  const [{ data: relationship }, { data: settings }] = organization
+    ? await Promise.all([
+        supabase
+          .from("customer_supplier_relationships")
+          .select("supplier_organization_id")
+          .eq("customer_organization_id", organization.id)
+          .eq("status", "active")
+          .maybeSingle(),
+        supabase
+          .from("customer_organization_settings")
+          .select("request_sharing_enabled")
+          .eq("organization_id", organization.id)
+          .maybeSingle(),
+      ])
+    : [{ data: null }, { data: null }];
+
   return {
     supabase,
     userId,
     email,
     organization: organization ?? null,
     membership: data ?? null,
+    supplierOrganizationId: relationship?.supplier_organization_id ?? null,
+    requestSharingEnabled: settings?.request_sharing_enabled ?? false,
+    isOrgAdmin: data?.is_org_admin ?? false,
   };
 }
 

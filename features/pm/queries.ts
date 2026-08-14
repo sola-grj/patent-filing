@@ -55,8 +55,9 @@ export async function getPmRequests(filters?: {
     context.supabase
       .from("translation_requests")
       .select(
-        "id, request_no, title, channel_code, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations(id, name), request_files(id), request_patents(patent_number), translation_requirements(source_language, target_language, target_languages, service_types, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
+        "id, request_no, title, channel_code, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(id), request_patents(patent_number), translation_requirements(source_language, target_language, target_languages, service_types, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
       )
+      .eq("supplier_organization_id", context.organization!.id)
       .neq("workflow_stage", "draft")
       .order("updated_at", { ascending: false }),
     context.supabase
@@ -149,9 +150,10 @@ export async function getPmRequestDetail(requestId: string) {
   const { data, error } = await context.supabase
     .from("translation_requests")
     .select(
-      "*, organizations(id, name, type), request_files(*, file_parse_results(*), file_parse_jobs(*)), request_patents(*), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(*, task_deliverables(*))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
+      "*, organizations:organizations!translation_requests_organization_id_fkey(id, name, type), request_files(*, file_parse_results(*), file_parse_jobs(*)), request_patents(*), patent_searches(*, patent_candidates(*, patent_file_versions(*))), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(*, task_deliverables(*))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
     )
     .eq("id", requestId)
+    .eq("supplier_organization_id", context.organization!.id)
     .maybeSingle();
 
   if (error) {

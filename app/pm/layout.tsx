@@ -5,6 +5,7 @@ import { AppTopNav, AppTopNavFallback } from "@/components/app-top-nav";
 const pmNavLinks = [
   { href: "/pm", label: "Home", exact: true },
   { href: "/pm/orders", label: "Orders" },
+  { href: "/pm/customers", label: "Customers" },
   { href: "/pm/patent-search", label: "Patent Search" },
 ];
 

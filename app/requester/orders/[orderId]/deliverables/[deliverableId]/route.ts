@@ -44,7 +44,7 @@ export async function GET(
     return NextResponse.json({ error: orderError.message }, { status: 500 });
   }
 
-  if (!order || order.requester_id !== userId) {
+  if (!order) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
 

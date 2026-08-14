@@ -172,6 +172,7 @@ type RequestDetail = {
   quote_negotiations?: QuoteNegotiation[] | null;
   orders?: Order | Order[] | null;
   filing_signature_requests?: FilingSignatureRequest[] | null;
+  viewer_is_owner?: boolean;
 };
 
 export function RequestDetailView({ request }: { request: RequestDetail }) {
@@ -217,6 +218,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const jurisdictionCodes = config.jurisdictionCodes;
   const dueAt = config.dueAt;
   const showFilingFields = serviceTypes.includes("filing");
+  const isReadOnly = request.viewer_is_owner === false;
   const showEpvType = serviceTypes.includes("epv");
   const showDueDate = serviceTypes.includes("translation") && Boolean(dueAt);
   const deadlineItems = buildRequestDeadlineItems({
@@ -327,7 +329,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
         action={
           <div className="flex flex-wrap items-start justify-end gap-3">
             <Button asChild variant="outline">
-              <Link href="/requester/requests">
+              <Link href={isReadOnly ? "/requester/requests?scope=organization" : "/requester/requests"}>
                 <ArrowLeft />
                 Back to Requests
               </Link>
@@ -345,6 +347,11 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       />
       <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="flex flex-col gap-6 pr-1">
+          {isReadOnly ? (
+            <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
+              This Request is shared by your organization. You have read-only access.
+            </p>
+          ) : null}
           <Section
             title="Request overview"
             icon={<ClipboardList className="size-5" />}
@@ -367,7 +374,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             </section>
           </Section>
           {showFilingFields && signatureRequests.length ? (
-            <RequesterSignaturePanel signatureRequests={signatureRequests} />
+            <RequesterSignaturePanel signatureRequests={signatureRequests} canSubmit={!isReadOnly} />
           ) : null}
           {isPatentSearch ? (
             <Section
@@ -386,6 +393,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
                 requestId={request.id}
                 status={patentFileStatus}
                 updatedAt={patentFile?.updated_at}
+                canRetry={!isReadOnly}
               />
               {patentCandidate ? (
                 <PatentDetailStep

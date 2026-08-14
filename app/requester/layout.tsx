@@ -7,6 +7,7 @@ const requesterNavLinks = [
   { href: "/requester", label: "Home", exact: true },
   { href: "/requester/requests", label: "Requests" },
   { href: "/requester/drafts", label: "Drafts" },
+  { href: "/requester/organization", label: "Organization" },
 ];
 
 export default function RequesterLayout({

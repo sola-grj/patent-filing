@@ -23,12 +23,14 @@ export async function getPmContext() {
     throw new Error(membershipError.message);
   }
 
-  const staffMembership = (memberships ?? []).find((membership) =>
-    staffRoles.includes(membership.role as StaffRole),
-  );
-  const organization = Array.isArray(staffMembership?.organizations)
-    ? staffMembership?.organizations[0]
-    : staffMembership?.organizations;
+  const supplierMemberships = (memberships ?? []).filter((membership) => {
+    const organization = firstOrganization(membership.organizations);
+    return staffRoles.includes(membership.role as StaffRole) &&
+      organization?.type === "supplier";
+  });
+  const staffMembership = supplierMemberships.find((membership) => membership.role === "admin")
+    ?? supplierMemberships[0];
+  const organization = firstOrganization(staffMembership?.organizations);
 
   return {
     supabase,
@@ -37,7 +39,17 @@ export async function getPmContext() {
     organization: organization ?? null,
     membership: staffMembership ?? null,
     isStaff: Boolean(staffMembership),
+    isSupplierAdmin: staffMembership?.role === "admin",
   };
+}
+
+function firstOrganization(value: unknown) {
+  const organization = Array.isArray(value) ? value[0] : value;
+  return (organization ?? null) as {
+    id: string;
+    name: string;
+    type: string;
+  } | null;
 }
 
 export async function requirePmContext() {

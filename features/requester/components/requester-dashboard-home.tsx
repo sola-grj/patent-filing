@@ -6,7 +6,6 @@ import {
   RecentRequestsPanel,
 } from "./requester-dashboard-panels";
 import { HeroSection } from "./requester-dashboard-hero";
-import { WorkspaceSetupForm } from "./workspace-setup-form";
 
 type DashboardData = Awaited<ReturnType<typeof getRequesterDashboard>>;
 
@@ -25,14 +24,13 @@ export function RequesterDashboardHome({
             Requester Portal
           </p>
           <h1 className="text-3xl font-semibold tracking-tight">
-            Set up your Pat workspace
+            Waiting for organization assignment
           </h1>
           <p className="mx-auto max-w-xl text-sm text-muted-foreground">
-            Create your organization profile before starting patent translation
-            requests.
+            Pat is invitation only. Ask your customer administrator or ECI
+            supplier administrator to invite this email address.
           </p>
         </div>
-        <WorkspaceSetupForm />
       </div>
     );
   }

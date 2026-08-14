@@ -40,7 +40,6 @@ export async function GET(
     .from("orders")
     .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status, jurisdiction_code, version_no, created_at))")
     .eq("request_id", requestId)
-    .eq("requester_id", userId)
     .maybeSingle();
 
   if (orderError) {

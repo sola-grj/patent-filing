@@ -46,8 +46,11 @@ export async function persistWizardRequest(
   let persistedResult: WizardPersistResult | undefined;
   try {
     let payload = parseWizardPayload(formData);
-    const { supabase, userId, organization } = await getRequesterOrganization();
-    if (!organization) throw new Error("Create an organization before creating requests.");
+    const { supabase, userId, organization, supplierOrganizationId } =
+      await getRequesterOrganization();
+    if (!organization || !supplierOrganizationId) {
+      throw new Error("Your organization is not linked to a supplier.");
+    }
     const dictionaryValidation = validateDictionaryValues(supabase, payload);
     if (mode !== "draft") {
       validateCommercialFields(payload);
@@ -112,6 +115,7 @@ export async function persistWizardRequest(
       supabase,
       requestId,
       organization.id,
+      supplierOrganizationId,
       userId,
       payload,
       mode,
@@ -417,12 +421,14 @@ async function upsertRequest(
   supabase: SupabaseClient,
   requestId: string,
   organizationId: string,
+  supplierOrganizationId: string,
   userId: string,
   payload: WizardPayload,
   mode: "draft" | "submit",
 ) {
   const requestInput = {
     organization_id: organizationId,
+    supplier_organization_id: supplierOrganizationId,
     requester_id: userId,
     source_mode: payload.sourceMode,
     channel_code: payload.config.channelCode,

@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/lib/supabase/server";
+import { getPmContext } from "@/features/pm/server-utils";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -23,33 +23,17 @@ export async function GET(
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
 
-  const supabase = await createClient();
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-  const userId = claimsData?.claims?.sub;
-
-  if (claimsError || !userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: memberships, error: membershipError } = await supabase
-    .from("organization_members")
-    .select("id")
-    .eq("user_id", userId)
-    .in("role", ["pm", "ops", "admin"])
-    .limit(1);
-
-  if (membershipError) {
-    return NextResponse.json({ error: membershipError.message }, { status: 500 });
-  }
-
-  if (!(memberships ?? []).length) {
+  const context = await getPmContext();
+  if (!context.isStaff || !context.organization) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const supabase = context.supabase;
 
   const { data: requestRow, error: requestError } = await supabase
     .from("translation_requests")
     .select("request_no, request_files(source, storage_bucket, storage_path, original_filename, metadata)")
     .eq("id", requestId)
+    .eq("supplier_organization_id", context.organization.id)
     .maybeSingle();
 
   if (requestError) {
@@ -110,7 +94,7 @@ export async function GET(
 }
 
 async function readFileBytes(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof getPmContext>>["supabase"],
   file: RequestFileRow,
 ) {
   const sourceUrl = typeof file.metadata?.source_url === "string"

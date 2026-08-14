@@ -165,7 +165,12 @@ async function QuoteContent({
               <Card>
                 <CardHeader><CardTitle>Actions</CardTitle></CardHeader>
                 <CardContent>
-                  {isWaitingForPmFeedback ? (
+                  {request.viewer_is_owner === false ? (
+                    <div className="rounded-xl border border-dashed px-4 py-5">
+                      <p className="text-sm font-medium">Read-only organization Request</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Only the Request creator can accept, reject, or negotiate this quote.</p>
+                    </div>
+                  ) : isWaitingForPmFeedback ? (
                     <div className="rounded-xl border border-dashed px-4 py-5">
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary" className="gap-1.5">

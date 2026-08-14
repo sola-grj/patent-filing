@@ -7,7 +7,9 @@
     "lint": "eslint .",
     "test:deadlines": "node --experimental-strip-types --test features/requester/deadlines.test.ts",
     "test:deliverables": "node --experimental-strip-types --test features/deliverables/delivery-progress.test.ts",
-    "backfill:deadlines": "node --env-file=.env.local scripts/backfill-deadline-basis.mjs"
+    "test:organization-access": "node --experimental-strip-types --test features/requester/request-scope.test.ts",
+    "backfill:deadlines": "node --env-file=.env.local scripts/backfill-deadline-basis.mjs",
+    "admin:request-sharing": "node --env-file=.env.local scripts/set-request-sharing.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.17",

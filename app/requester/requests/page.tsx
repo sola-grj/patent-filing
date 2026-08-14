@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import Link from "next/link";
 
 import { PaginationNav } from "@/components/ui/pagination";
 import { RequestListEmptyState } from "@/features/requests/components/request-list-empty-state";
@@ -31,6 +32,7 @@ export default async function RequesterRequestsPage({
     q?: string;
     page?: string;
     from?: string;
+    scope?: string;
   }>;
 }) {
   return (
@@ -49,6 +51,7 @@ async function RequestsContent({
     q?: string;
     page?: string;
     from?: string;
+    scope?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -60,11 +63,14 @@ async function RequestsContent({
     totalPages,
     page: currentPage,
     dictionaries,
+    requestSharingEnabled,
+    scope,
   } = await getRequesterRequests({
     status: params.status,
     channel: params.channel,
     q: params.q,
     page: Number.isFinite(page) ? page : 1,
+    scope: params.scope === "organization" ? "organization" : "mine",
   });
 
   if (!organization) {
@@ -82,7 +88,16 @@ async function RequestsContent({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
-      <RequesterHeader title="My requests" description="Track patent translation requests from draft through quote and order." />
+      <RequesterHeader
+        title={scope === "organization" ? "Organization requests" : "My requests"}
+        description={scope === "organization" ? "Read-only requests shared by other members of your organization." : "Track patent translation requests from draft through quote and order."}
+      />
+      {requestSharingEnabled ? (
+        <div className="flex w-fit rounded-lg border bg-muted/30 p-1 text-sm">
+          <Link className={`rounded-md px-3 py-1.5 ${scope === "mine" ? "bg-background font-medium shadow-sm" : "text-muted-foreground"}`} href="/requester/requests">My requests</Link>
+          <Link className={`rounded-md px-3 py-1.5 ${scope === "organization" ? "bg-background font-medium shadow-sm" : "text-muted-foreground"}`} href="/requester/requests?scope=organization">Organization requests</Link>
+        </div>
+      ) : null}
       <RequestFilterForm
         channels={dictionaries?.channels ?? []}
         channel={params.channel}
@@ -105,7 +120,7 @@ async function RequestsContent({
         gridClassName={requestGridClassName}
         minWidthClassName="min-w-[980px]"
         hasRows={requests.length > 0}
-        emptyState={<RequestListEmptyState actionHref={buildFreshRequestHref()} />}
+        emptyState={scope === "organization" ? <p className="py-12 text-center text-sm text-muted-foreground">No shared organization Requests are available.</p> : <RequestListEmptyState actionHref={buildFreshRequestHref()} />}
       >
         {requests.map((request) => {
           const latestQuote = [...(request.quotes ?? [])].sort((a, b) =>
@@ -180,7 +195,7 @@ async function RequestsContent({
 
 function buildPageHref(
   page: number,
-  filters: { status?: string; channel?: string; q?: string },
+  filters: { status?: string; channel?: string; q?: string; scope?: string },
 ) {
   const searchParams = new URLSearchParams();
 
@@ -190,6 +205,7 @@ function buildPageHref(
       searchParams.set(key, value);
     }
   }
+  if (filters.scope === "organization") searchParams.set("scope", "organization");
   searchParams.set("page", String(page));
 
   return `/requester/requests?${searchParams.toString()}`;

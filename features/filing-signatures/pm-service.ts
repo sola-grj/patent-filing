@@ -29,6 +29,7 @@ export async function getEligibleFilingRequest(
     .from("translation_requests")
     .select("id, requester_id, pm_status, translation_requirements(service_types)")
     .eq("id", requestId)
+    .eq("supplier_organization_id", context.organization!.id)
     .single();
   if (error) throw new Error(error.message);
   const requirement = firstRelation(data.translation_requirements);

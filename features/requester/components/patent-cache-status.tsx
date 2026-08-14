@@ -11,10 +11,12 @@ export function PatentCacheStatus({
   requestId,
   status,
   updatedAt,
+  canRetry = true,
 }: {
   requestId: string;
   status?: string | null;
   updatedAt?: string | null;
+  canRetry?: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -56,10 +58,10 @@ export function PatentCacheStatus({
       <p className="min-w-0 flex-1">
         {error
           ?? (isStale
-            ? "Making the patent document available is taking longer than expected. You can retry it."
-            : "The patent document could not be made available. You can retry it.")}
+            ? `Making the patent document available is taking longer than expected.${canRetry ? " You can retry it." : ""}`
+            : `The patent document could not be made available.${canRetry ? " You can retry it." : ""}`)}
       </p>
-      <Button
+      {canRetry ? <Button
         type="button"
         size="sm"
         variant="outline"
@@ -74,7 +76,7 @@ export function PatentCacheStatus({
       >
         <RotateCcw className="mr-2 h-4 w-4" />
         Retry
-      </Button>
+      </Button> : null}
     </div>
   );
 }

@@ -18,8 +18,11 @@ import { inferFileRole, inferLanguage, writeRequestEvent } from "./helpers";
 
 export async function createDraftRequest(formData: FormData): Promise<ActionResult<{ id: string }>> {
   try {
-    const { supabase, userId, organization } = await getRequesterOrganization();
-    if (!organization) throw new Error("Create an organization before creating requests.");
+    const { supabase, userId, organization, supplierOrganizationId } =
+      await getRequesterOrganization();
+    if (!organization || !supplierOrganizationId) {
+      throw new Error("Your organization is not linked to a supplier.");
+    }
 
     const requestId = randomUUID();
     const { error } = await supabase
@@ -27,6 +30,7 @@ export async function createDraftRequest(formData: FormData): Promise<ActionResu
       .insert({
         id: requestId,
         organization_id: organization.id,
+        supplier_organization_id: supplierOrganizationId,
         requester_id: userId,
         source_mode: requiredString(formData.get("sourceMode"), "File source"),
         title: requiredString(formData.get("title"), "Request title"),

@@ -1,4 +1,5 @@
 import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
+import { resolveRequesterRequestScope } from "./request-scope";
 import { buildDashboardAttentionItems } from "./dashboard-attention";
 import { buildDashboardDeadlineItems } from "./deadlines";
 import { normalizeRequestSearchTerm } from "./requester-routes";
@@ -227,24 +228,30 @@ export async function getRequesterRequests(filters?: {
   channel?: string;
   q?: string;
   page?: number;
+  scope?: "mine" | "organization";
 }) {
-  const { supabase, userId, organization } = await getRequesterOrganization();
+  const { supabase, userId, organization, requestSharingEnabled } =
+    await getRequesterOrganization();
 
   if (!organization) {
-    return { organization: null, requests: [], totalCount: 0, totalPages: 0, page: 1, pageSize: 10, dictionaries: null };
+    return { organization: null, requests: [], totalCount: 0, totalPages: 0, page: 1, pageSize: 10, dictionaries: null, requestSharingEnabled: false, scope: "mine" as const };
   }
 
   const pageSize = 10;
   const page = Math.max(1, filters?.page ?? 1);
 
+  const scope = resolveRequesterRequestScope(requestSharingEnabled, filters?.scope);
   let query = supabase
     .from("translation_requests")
     .select(
-      "id, request_no, title, channel_code, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language, target_languages, jurisdiction_codes, service_types, is_urgent), request_patents(patent_number), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
+      "id, request_no, requester_id, title, channel_code, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language, target_languages, jurisdiction_codes, service_types, is_urgent), request_patents(patent_number), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
     )
-    .eq("requester_id", userId)
     .neq("workflow_stage", "draft")
     .order("updated_at", { ascending: false });
+
+  query = scope === "organization"
+    ? query.eq("organization_id", organization.id).neq("requester_id", userId)
+    : query.eq("requester_id", userId);
 
   if (filters?.status && filters.status !== "all") {
     query = query.eq("requester_status", filters.status);
@@ -305,15 +312,17 @@ export async function getRequesterRequests(filters?: {
     page: safePage,
     pageSize,
     dictionaries,
+    requestSharingEnabled,
+    scope,
   };
 }
 
 export async function getRequesterRequest(requestId: string) {
-  const { supabase } = await getAuthenticatedUser();
+  const { supabase, userId } = await getAuthenticatedUser();
   const { data, error } = await supabase
     .from("translation_requests")
     .select(
-      "*, organizations(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language, jurisdiction_code))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
+      "*, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language, jurisdiction_code))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -331,7 +340,7 @@ export async function getRequesterRequest(requestId: string) {
   );
 
   if (!order?.id) {
-    return data;
+    return data ? { ...data, viewer_is_owner: data.requester_id === userId } : data;
   }
 
   const { data: assignmentRows, error: assignmentError } = await supabase.rpc(
@@ -351,6 +360,7 @@ export async function getRequesterRequest(requestId: string) {
 
   return {
     ...data,
+    viewer_is_owner: data.requester_id === userId,
     orders: Array.isArray(data.orders) ? [enrichedOrder] : enrichedOrder,
   };
 }

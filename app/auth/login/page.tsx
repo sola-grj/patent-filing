@@ -10,7 +10,7 @@ import {
 export default function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; registration?: string }>;
 }) {
   return (
     <Suspense fallback={<LoginPageShell />}>
@@ -22,9 +22,9 @@ export default function Page({
 async function LoginPageContent({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; registration?: string }>;
 }) {
-  const { next } = await searchParams;
+  const { next, registration } = await searchParams;
   const nextPath = safeNextPath(next);
   const user = await getOptionalAuthenticatedUser();
 
@@ -33,14 +33,29 @@ async function LoginPageContent({
     redirect(nextPath ?? landingPath);
   }
 
-  return <LoginPageShell nextPath={nextPath ?? "/"} />;
+  return (
+    <LoginPageShell
+      nextPath={nextPath ?? "/"}
+      notice={
+        registration === "disabled"
+          ? "Registration is invitation only."
+          : undefined
+      }
+    />
+  );
 }
 
-function LoginPageShell({ nextPath = "/" }: { nextPath?: string }) {
+function LoginPageShell({
+  nextPath = "/",
+  notice,
+}: {
+  nextPath?: string;
+  notice?: string;
+}) {
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
-        <LoginForm nextPath={nextPath} />
+        <LoginForm nextPath={nextPath} notice={notice} />
       </div>
     </div>
   );
