@@ -105,6 +105,7 @@ export async function acceptOrganizationInvitation(formData: FormData) {
   const token = requiredText(formData, "token", "Invitation token");
   const isNewAccount = formData.get("newAccount") === "true";
   let failure: string | null = null;
+  let requiresPasswordSetup = false;
 
   try {
     const { userId, email } = await getAuthenticatedUser();
@@ -118,6 +119,14 @@ export async function acceptOrganizationInvitation(formData: FormData) {
     });
     if (error) throw new Error(error.message);
 
+    const { data: profile, error: profileError } = await service
+      .from("profiles")
+      .select("password_setup_required")
+      .eq("user_id", userId)
+      .single();
+    if (profileError) throw new Error(profileError.message);
+    requiresPasswordSetup = profile.password_setup_required === true;
+
     revalidatePath("/requester");
   } catch (error) {
     failure = errorMessage(error);
@@ -129,7 +138,11 @@ export async function acceptOrganizationInvitation(formData: FormData) {
     redirect(`/auth/organization-invite?${params.toString()}`);
   }
 
-  redirect(isNewAccount ? "/auth/update-password?next=/requester" : "/requester");
+  redirect(
+    requiresPasswordSetup
+      ? "/auth/update-password?next=/requester"
+      : "/requester",
+  );
 }
 
 function hashInvitationToken(token: string) {

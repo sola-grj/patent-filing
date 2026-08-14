@@ -63,6 +63,27 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (user?.sub && !request.nextUrl.pathname.startsWith("/auth")) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("password_setup_required")
+      .eq("user_id", user.sub)
+      .maybeSingle();
+
+    if (profile?.password_setup_required) {
+      const url = request.nextUrl.clone();
+      const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+      url.pathname = "/auth/update-password";
+      url.search = "";
+      url.searchParams.set("next", nextPath);
+      const redirectResponse = NextResponse.redirect(url);
+      supabaseResponse.cookies.getAll().forEach((cookie) =>
+        redirectResponse.cookies.set(cookie),
+      );
+      return redirectResponse;
+    }
+  }
+
   if (user?.sub && requiresRequesterWorkspace(request.nextUrl.pathname)) {
     const { data: requesterMembership, error: membershipError } = await supabase
       .from("organization_members")
