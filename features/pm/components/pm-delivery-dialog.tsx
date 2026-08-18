@@ -26,16 +26,21 @@ type DeliveryOrder = {
       storage_path?: string | null;
       created_at?: string | null;
       language?: string | null;
+      ep_country_id?: number | null;
       jurisdiction_code?: string | null;
     }> | null;
   }> | null;
 };
 
 export function PmDeliveryDialog({
+  epCountryIds,
+  epCountries,
   jurisdictionCodes,
   order,
   requestId,
 }: {
+  epCountryIds: number[];
+  epCountries: Array<{ id: number; name: string; abbr: string }>;
   jurisdictionCodes: string[];
   order?: DeliveryOrder | null;
   requestId: string;
@@ -56,6 +61,8 @@ export function PmDeliveryDialog({
         </DialogHeader>
         <PmDeliveryPanel
           embedded
+          epCountryIds={epCountryIds}
+          epCountries={epCountries}
           jurisdictionCodes={jurisdictionCodes}
           requestId={requestId}
           order={order}

@@ -9,6 +9,7 @@ type DeliverableRow = {
   storage_bucket: string;
   storage_path: string;
   status?: string | null;
+  ep_country_id?: number | null;
   jurisdiction_code?: string | null;
   version_no?: number | null;
   created_at?: string | null;
@@ -38,7 +39,7 @@ export async function GET(
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status, jurisdiction_code, version_no, created_at))")
+    .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status, ep_country_id, jurisdiction_code, version_no, created_at))")
     .eq("request_id", requestId)
     .maybeSingle();
 
@@ -107,7 +108,9 @@ function uniqueArchiveName(
   usedNames: Set<string>,
 ) {
   const sourceName = storageName(deliverable.storage_path) || "delivery-file";
-  const jurisdiction = safeBaseName(deliverable.jurisdiction_code ?? "GENERAL");
+  const jurisdiction = safeBaseName(deliverable.ep_country_id
+    ? `EP-${deliverable.ep_country_id}`
+    : deliverable.jurisdiction_code ?? "GENERAL");
   const candidate = `${jurisdiction}-${sourceName}`;
   const extensionIndex = candidate.lastIndexOf(".");
   const stem = extensionIndex > 0 ? candidate.slice(0, extensionIndex) : candidate;

@@ -58,6 +58,7 @@ type TranslationRequirement = {
   application_type_code?: string | null;
   epv_type_code?: string | null;
   pct_chapter_code?: string | null;
+  ep_country_ids?: number[] | null;
   jurisdiction_codes?: string[] | null;
   quality_level?: string | null;
   delivery_option?: string | null;
@@ -141,6 +142,7 @@ type Order = {
       storage_path?: string | null;
       created_at?: string | null;
       language?: string | null;
+      ep_country_id?: number | null;
       jurisdiction_code?: string | null;
     }> | null;
   }> | null;
@@ -172,6 +174,12 @@ type RequestDetail = {
   quote_negotiations?: QuoteNegotiation[] | null;
   orders?: Order | Order[] | null;
   filing_signature_requests?: FilingSignatureRequest[] | null;
+  ep_countries?: Array<{
+    id: number;
+    name: string;
+    cname: string;
+    abbr: string;
+  }> | null;
   viewer_is_owner?: boolean;
 };
 
@@ -215,6 +223,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     : null;
   const organization = firstRelation(request.organizations);
   const serviceTypes = config.serviceTypes;
+  const epCountries = request.ep_countries ?? [];
+  const epCountryNames = config.epCountryIds.map((id) =>
+    epCountries.find((country) => country.id === id)?.name ?? `EP country ${id}`,
+  );
   const jurisdictionCodes = config.jurisdictionCodes;
   const dueAt = config.dueAt;
   const showFilingFields = serviceTypes.includes("filing");
@@ -295,8 +307,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       value: channelLabel(config.channelCode),
     },
     {
-      label: "Jurisdictions",
-      value: formatConfigLabels(jurisdictionOptions, jurisdictionCodes),
+      label: config.epCountryIds.length ? "EP countries" : "Jurisdictions",
+      value: config.epCountryIds.length
+        ? epCountryNames.join(", ") || "-"
+        : formatConfigLabels(jurisdictionOptions, jurisdictionCodes),
     },
     {
       label: "Delivery option",
@@ -339,7 +353,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
                 deliverables={deliverables}
                 orderId={order.id}
                 requestId={request.id}
-                totalJurisdictionCount={jurisdictionCodes.length}
+                totalJurisdictionCount={config.epCountryIds.length
+                  ? config.epCountryIds.length
+                  : jurisdictionCodes.length}
+                epCountries={epCountries}
               />
             ) : null}
           </div>
@@ -424,6 +441,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           <RequestQuoteSheet
             config={config}
             translationWordCount={translationWordCount}
+            epCountries={epCountries}
           />
         </div>
       </div>
@@ -447,6 +465,7 @@ function resolveRequestConfig(
   return {
     channelCode: snapshot.channelCode ?? request.channel_code ?? "",
     sourceLanguage: snapshot.sourceLanguage ?? requirement?.source_language ?? "",
+    epCountryIds: snapshot.epCountryIds ?? requirement?.ep_country_ids ?? [],
     jurisdictionCodes:
       snapshot.jurisdictionCodes ?? requirement?.jurisdiction_codes ?? [],
     scopeType: snapshot.scopeType ?? requirement?.scope_type ?? "full_text",

@@ -82,6 +82,7 @@ export type WizardPatentCandidate = {
 export type WizardConfig = {
   channelCode: string;
   sourceLanguage: string;
+  epCountryIds: number[];
   jurisdictionCodes: string[];
   scopeType: string;
   purpose: string;
@@ -105,6 +106,13 @@ export type DictionaryOption = {
   countryGroup?: string;
 };
 
+export type EpCountryOption = {
+  id: number;
+  name: string;
+  cname: string;
+  abbr: string;
+};
+
 export type WizardDictionaries = {
   channels: DictionaryOption[];
   serviceTypes: DictionaryOption[];
@@ -112,6 +120,7 @@ export type WizardDictionaries = {
   applicationTypes: DictionaryOption[];
   entityTypes: DictionaryOption[];
   epvTypes: DictionaryOption[];
+  epCountries: EpCountryOption[];
   jurisdictions: DictionaryOption[];
 };
 

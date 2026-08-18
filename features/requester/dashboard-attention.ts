@@ -51,6 +51,7 @@ type DashboardOrder = {
       id: string;
       status?: string | null;
       created_at: string;
+      ep_country_id?: number | null;
       jurisdiction_code?: string | null;
       version_no?: number | null;
     }> | null;

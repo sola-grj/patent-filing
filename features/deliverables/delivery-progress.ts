@@ -2,6 +2,7 @@ export type DeliveryStatus = string | null | undefined;
 
 export type DeliveryProgressItem = {
   id: string;
+  ep_country_id?: number | null;
   jurisdiction_code?: string | null;
   status?: DeliveryStatus;
   version_no?: number | null;
@@ -12,6 +13,39 @@ const publishedStatuses = new Set(["submitted", "accepted"]);
 
 export function isPublishedDeliverable(status: DeliveryStatus) {
   return Boolean(status && publishedStatuses.has(status));
+}
+
+export function buildEpDeliverySubmissionPlan(
+  configuredCountryIds: number[],
+  deliverables: DeliveryProgressItem[],
+) {
+  const configured = normalizeCountryIds(configuredCountryIds);
+  const configuredSet = new Set(configured);
+  const draftDeliverables = deliverables.filter(
+    (deliverable) => deliverable.status === "draft"
+      && deliverable.ep_country_id
+      && configuredSet.has(deliverable.ep_country_id),
+  );
+  const deliveredCountryIds = new Set(
+    deliverables
+      .filter((deliverable) => isPublishedDeliverable(deliverable.status))
+      .map((deliverable) => deliverable.ep_country_id)
+      .filter((id): id is number => Number.isInteger(id) && configuredSet.has(id as number)),
+  );
+  for (const deliverable of draftDeliverables) {
+    deliveredCountryIds.add(deliverable.ep_country_id as number);
+  }
+
+  const missingCountryIds = configured.filter((id) => !deliveredCountryIds.has(id));
+  return {
+    draftDeliverableIds: draftDeliverables.map((deliverable) => deliverable.id),
+    newlyDeliveredCountryIds: normalizeCountryIds(
+      draftDeliverables.map((deliverable) => deliverable.ep_country_id as number),
+    ),
+    deliveredCountryIds: configured.filter((id) => deliveredCountryIds.has(id)),
+    missingCountryIds,
+    completesRequest: configured.length > 0 && missingCountryIds.length === 0,
+  };
 }
 
 export function buildDeliverySubmissionPlan(
@@ -62,16 +96,25 @@ export function latestPublishedDeliverables<T extends DeliveryProgressItem>(
   for (const deliverable of deliverables
     .filter((item) => isPublishedDeliverable(item.status))
     .sort(compareNewest)) {
-    if (!deliverable.jurisdiction_code) {
+    const destinationKey = deliverable.ep_country_id
+      ? `ep:${deliverable.ep_country_id}`
+      : deliverable.jurisdiction_code
+        ? `legacy:${deliverable.jurisdiction_code}`
+        : null;
+    if (!destinationKey) {
       general.push(deliverable);
       continue;
     }
-    if (!latestByJurisdiction.has(deliverable.jurisdiction_code)) {
-      latestByJurisdiction.set(deliverable.jurisdiction_code, deliverable);
+    if (!latestByJurisdiction.has(destinationKey)) {
+      latestByJurisdiction.set(destinationKey, deliverable);
     }
   }
 
   return [...latestByJurisdiction.values(), ...general].sort(compareNewest);
+}
+
+function normalizeCountryIds(values: number[]) {
+  return [...new Set(values.filter((value) => Number.isInteger(value) && value > 0))];
 }
 
 function normalizeJurisdictions(values: string[]) {

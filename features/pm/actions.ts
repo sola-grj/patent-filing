@@ -14,7 +14,10 @@ import {
   sumParseMetric,
   writeRequestEvent,
 } from "@/features/requester/actions/helpers";
-import { buildDeliverySubmissionPlan } from "@/features/deliverables/delivery-progress";
+import {
+  buildDeliverySubmissionPlan,
+  buildEpDeliverySubmissionPlan,
+} from "@/features/deliverables/delivery-progress";
 import { safeFileName } from "@/features/requester/server-utils";
 
 import { requirePmContext, toPmErrorMessage } from "./server-utils";
@@ -568,10 +571,15 @@ export async function uploadPmDeliverableFile(
     const context = await assertPm();
     const requestId = requiredString(formData.get("requestId"), "Request");
     const orderId = requiredString(formData.get("orderId"), "Order");
-    const jurisdictionCode = requiredString(
-      formData.get("jurisdictionCode"),
-      "Jurisdiction",
-    ).trim().toUpperCase();
+    const epCountryId = parsePositiveInteger(formData.get("epCountryId"));
+    const rawJurisdictionCode = optionalString(formData.get("jurisdictionCode"));
+    const jurisdictionCode = rawJurisdictionCode?.trim().toUpperCase() ?? null;
+    if (epCountryId && jurisdictionCode) {
+      throw new Error("Choose either an EP country or a legacy jurisdiction.");
+    }
+    if (!epCountryId && !jurisdictionCode) {
+      throw new Error("Delivery country is required.");
+    }
     const upload = formData.get("deliverableFile");
 
     if (!(upload instanceof File)) {
@@ -588,9 +596,14 @@ export async function uploadPmDeliverableFile(
       context.supabase,
       requestId,
     );
-    assertDeliveryJurisdiction(jurisdictionCode, deliveryConfig.jurisdictionCodes);
+    if (epCountryId) {
+      assertDeliveryEpCountry(epCountryId, deliveryConfig.epCountryIds);
+    } else {
+      assertDeliveryJurisdiction(jurisdictionCode!, deliveryConfig.jurisdictionCodes);
+    }
     const targetTask = selectDeliveryTask(order.translation_tasks ?? []);
     const deliverableId = await saveCountryDeliverable(context.supabase, {
+      epCountryId,
       jurisdictionCode,
       language: deliveryConfig.targetLanguage,
       orderId,
@@ -618,7 +631,7 @@ export async function deliverPmOrder(
 
     const { data: order, error: orderError } = await context.supabase
       .from("orders")
-      .select("id, request_id, status, translation_tasks(id, status, task_deliverables(id, status, jurisdiction_code))")
+      .select("id, request_id, status, translation_tasks(id, status, task_deliverables(id, status, ep_country_id, jurisdiction_code))")
       .eq("id", orderId)
       .single();
     if (orderError) throw new Error(orderError.message);
@@ -640,29 +653,36 @@ export async function deliverPmOrder(
       task_deliverables?: Array<{
         id: string;
         status?: string | null;
+        ep_country_id?: number | null;
         jurisdiction_code?: string | null;
       }> | null;
     }>;
-    if (!deliveryConfig.jurisdictionCodes.length) {
+    if (!deliveryConfig.epCountryIds.length && !deliveryConfig.jurisdictionCodes.length) {
       throw new Error("No delivery jurisdictions are configured for this request.");
     }
     const deliverables = tasks.flatMap((task) => task.task_deliverables ?? []);
-    const deliveryPlan = buildDeliverySubmissionPlan(
-      deliveryConfig.jurisdictionCodes,
-      deliverables,
-    );
+    const epDeliveryPlan = deliveryConfig.epCountryIds.length
+      ? buildEpDeliverySubmissionPlan(deliveryConfig.epCountryIds, deliverables)
+      : null;
+    const legacyDeliveryPlan = epDeliveryPlan
+      ? null
+      : buildDeliverySubmissionPlan(deliveryConfig.jurisdictionCodes, deliverables);
+    const draftDeliverableIds = epDeliveryPlan?.draftDeliverableIds
+      ?? legacyDeliveryPlan!.draftDeliverableIds;
+    const completesRequest = epDeliveryPlan?.completesRequest
+      ?? legacyDeliveryPlan!.completesRequest;
 
-    if (!deliveryPlan.draftDeliverableIds.length) {
+    if (!draftDeliverableIds.length) {
       throw new Error("Upload at least one new delivery file before delivering.");
     }
 
     const { error: deliverableUpdateError } = await context.supabase
       .from("task_deliverables")
       .update({ status: "submitted" })
-      .in("id", deliveryPlan.draftDeliverableIds);
+      .in("id", draftDeliverableIds);
     if (deliverableUpdateError) throw new Error(deliverableUpdateError.message);
 
-    if (deliveryPlan.completesRequest) {
+    if (completesRequest) {
       const taskIds = tasks.map((task) => task.id);
       if (taskIds.length) {
         const { error: taskUpdateError } = await context.supabase
@@ -693,16 +713,23 @@ export async function deliverPmOrder(
       context.supabase,
       requestId,
       context.userId,
-      deliveryPlan.completesRequest
+      completesRequest
         ? "deliverables.submitted.pm"
         : "deliverables.partially_submitted.pm",
       "production",
-      deliveryPlan.completesRequest ? "completed" : "production",
+      completesRequest ? "completed" : "production",
       {
         orderId,
-        deliverableCount: deliveryPlan.draftDeliverableIds.length,
-        jurisdictionCodes: deliveryPlan.newlyDeliveredJurisdictionCodes,
-        remainingJurisdictionCodes: deliveryPlan.missingJurisdictionCodes,
+        deliverableCount: draftDeliverableIds.length,
+        ...(epDeliveryPlan
+          ? {
+              epCountryIds: epDeliveryPlan.newlyDeliveredCountryIds,
+              remainingEpCountryIds: epDeliveryPlan.missingCountryIds,
+            }
+          : {
+              jurisdictionCodes: legacyDeliveryPlan!.newlyDeliveredJurisdictionCodes,
+              remainingJurisdictionCodes: legacyDeliveryPlan!.missingJurisdictionCodes,
+            }),
       },
     );
 
@@ -899,6 +926,7 @@ type DeliveryTask = {
 };
 
 type DeliveryConfiguration = {
+  epCountryIds: number[];
   jurisdictionCodes: string[];
   targetLanguage: string | null;
 };
@@ -932,7 +960,7 @@ async function getDeliveryConfiguration(
   const [requirementResult, configVersionResult] = await Promise.all([
     supabase
       .from("translation_requirements")
-      .select("target_language, jurisdiction_codes, config_snapshot")
+      .select("target_language, ep_country_ids, jurisdiction_codes, config_snapshot")
       .eq("request_id", requestId)
       .maybeSingle(),
     supabase
@@ -954,11 +982,23 @@ async function getDeliveryConfiguration(
     (latestSnapshot as { jurisdictionCodes?: unknown } | null)?.jurisdictionCodes,
   );
   const storedCodes = normalizeJurisdictionCodes(requirement?.jurisdiction_codes);
+  const snapshotCountryIds = normalizeEpCountryIds(
+    (latestSnapshot as { epCountryIds?: unknown } | null)?.epCountryIds,
+  );
+  const storedCountryIds = normalizeEpCountryIds(requirement?.ep_country_ids);
 
   return {
+    epCountryIds: snapshotCountryIds.length ? snapshotCountryIds : storedCountryIds,
     jurisdictionCodes: snapshotCodes.length ? snapshotCodes : storedCodes,
     targetLanguage: requirement?.target_language ?? null,
   };
+}
+
+function normalizeEpCountryIds(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .map(Number)
+    .filter((item) => Number.isInteger(item) && item > 0))];
 }
 
 function normalizeJurisdictionCodes(value: unknown) {
@@ -983,6 +1023,21 @@ function assertDeliveryJurisdiction(
   }
 }
 
+function assertDeliveryEpCountry(epCountryId: number, allowedCountryIds: number[]) {
+  if (!allowedCountryIds.includes(epCountryId)) {
+    throw new Error("EP country is not configured for this request.");
+  }
+}
+
+function parsePositiveInteger(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error("EP country is invalid.");
+  }
+  return parsed;
+}
+
 function selectDeliveryTask(tasks: DeliveryTask[]) {
   const targetTask = [...tasks]
     .filter((task) => task.task_type === "translation")
@@ -1002,7 +1057,8 @@ function selectDeliveryTask(tasks: DeliveryTask[]) {
 async function saveCountryDeliverable(
   supabase: SupabaseClient,
   input: {
-    jurisdictionCode: string;
+    epCountryId: number | null;
+    jurisdictionCode: string | null;
     language: string | null;
     orderId: string;
     submittedBy: string;
@@ -1010,11 +1066,14 @@ async function saveCountryDeliverable(
     upload: File;
   },
 ) {
-  const { data: existingDeliverables, error } = await supabase
+  let existingQuery = supabase
     .from("task_deliverables")
     .select("id, storage_path, version_no, status")
-    .eq("task_id", input.taskId)
-    .eq("jurisdiction_code", input.jurisdictionCode)
+    .eq("task_id", input.taskId);
+  existingQuery = input.epCountryId
+    ? existingQuery.eq("ep_country_id", input.epCountryId)
+    : existingQuery.eq("jurisdiction_code", input.jurisdictionCode!);
+  const { data: existingDeliverables, error } = await existingQuery
     .order("version_no", { ascending: false });
   if (error) throw new Error(error.message);
 
@@ -1023,7 +1082,7 @@ async function saveCountryDeliverable(
   const storagePath = [
     "deliverables",
     input.orderId,
-    input.jurisdictionCode,
+    input.epCountryId ? `ep-${input.epCountryId}` : input.jurisdictionCode,
     `${Date.now()}-${safeFileName(input.upload.name)}`,
   ].join("/");
   const bytes = new Uint8Array(await input.upload.arrayBuffer());
@@ -1055,7 +1114,8 @@ async function updateCountryDeliverable(
   deliverableId: string,
   storagePath: string,
   input: {
-    jurisdictionCode: string;
+    epCountryId: number | null;
+    jurisdictionCode: string | null;
     language: string | null;
     submittedBy: string;
   },
@@ -1064,6 +1124,7 @@ async function updateCountryDeliverable(
     .from("task_deliverables")
     .update({
       jurisdiction_code: input.jurisdictionCode,
+      ep_country_id: input.epCountryId,
       language: input.language,
       storage_bucket: "request-files",
       storage_path: storagePath,
@@ -1081,7 +1142,8 @@ async function createCountryDeliverable(
   storagePath: string,
   versionNo: number,
   input: {
-    jurisdictionCode: string;
+    epCountryId: number | null;
+    jurisdictionCode: string | null;
     language: string | null;
     submittedBy: string;
     taskId: string;
@@ -1091,6 +1153,7 @@ async function createCountryDeliverable(
     .from("task_deliverables")
     .insert({
       jurisdiction_code: input.jurisdictionCode,
+      ep_country_id: input.epCountryId,
       language: input.language,
       status: "draft",
       storage_bucket: "request-files",

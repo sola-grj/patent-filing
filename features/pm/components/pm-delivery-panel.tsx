@@ -20,7 +20,16 @@ type TaskDeliverable = {
   storage_path?: string | null;
   created_at?: string | null;
   language?: string | null;
+  ep_country_id?: number | null;
   jurisdiction_code?: string | null;
+};
+
+type DeliveryDestination = {
+  key: string;
+  label: string;
+  displayCode: string;
+  epCountryId?: number;
+  jurisdictionCode?: string;
 };
 
 type Order = {
@@ -36,11 +45,15 @@ type Order = {
 
 export function PmDeliveryPanel({
   embedded = false,
+  epCountryIds,
+  epCountries,
   jurisdictionCodes,
   requestId,
   order,
 }: {
   embedded?: boolean;
+  epCountryIds: number[];
+  epCountries: Array<{ id: number; name: string; abbr: string }>;
   jurisdictionCodes: string[];
   requestId: string;
   order?: Order | null;
@@ -53,11 +66,29 @@ export function PmDeliveryPanel({
   const [uploadingJurisdiction, setUploadingJurisdiction] = useState<string | null>(null);
   const [isUploading, startUploadTransition] = useTransition();
   const [isDelivering, startDeliverTransition] = useTransition();
-  const countryCodes = useMemo(
-    () => [...new Set(jurisdictionCodes.map((code) => code.trim().toUpperCase()))]
-      .filter((code) => /^[A-Z]{2}$/.test(code)),
-    [jurisdictionCodes],
-  );
+  const destinations = useMemo<DeliveryDestination[]>(() => {
+    const countryIds = [...new Set(epCountryIds)]
+      .filter((id) => Number.isInteger(id) && id > 0);
+    if (countryIds.length) {
+      return countryIds.map((id) => {
+        const country = epCountries.find((item) => item.id === id);
+        return {
+          key: `ep:${id}`,
+          label: country?.name ?? `EP country ${id}`,
+          displayCode: country?.abbr || `ID ${id}`,
+          epCountryId: id,
+        };
+      });
+    }
+    return [...new Set(jurisdictionCodes.map((code) => code.trim().toUpperCase()))]
+      .filter((code) => /^[A-Z]{2}$/.test(code))
+      .map((code) => ({
+        key: `legacy:${code}`,
+        label: jurisdictionLabel(code),
+        displayCode: code,
+        jurisdictionCode: code,
+      }));
+  }, [epCountries, epCountryIds, jurisdictionCodes]);
   const deliverables = useMemo(
     () => (order?.translation_tasks ?? [])
       .flatMap((task) => task.task_deliverables ?? [])
@@ -66,26 +97,35 @@ export function PmDeliveryPanel({
         - new Date(left.created_at ?? 0).getTime()),
     [order?.translation_tasks],
   );
-  const draftsByCountry = latestByCountry(
+  const draftsByDestination = latestByDestination(
     deliverables.filter((item) => item.status === "draft"),
   );
-  const deliveredByCountry = latestByCountry(
+  const deliveredByDestination = latestByDestination(
     deliverables.filter((item) => isPublishedDeliverable(item.status)),
   );
-  const legacyDeliverables = deliverables.filter((item) => !item.jurisdiction_code);
-  const draftCountryCodes = countryCodes.filter((code) => draftsByCountry.has(code));
-  const deliveredCount = countryCodes.filter((code) => deliveredByCountry.has(code)).length;
-  const missingCountries = countryCodes.filter((code) =>
-    !draftsByCountry.has(code) && !deliveredByCountry.has(code));
-  const selectedCountryCodes = countryCodes.filter((code) => selectedFiles[code]);
+  const generalDeliverables = deliverables.filter(
+    (item) => !item.ep_country_id && !item.jurisdiction_code,
+  );
+  const draftDestinationKeys = destinations
+    .filter((destination) => draftsByDestination.has(destination.key))
+    .map((destination) => destination.key);
+  const deliveredCount = destinations.filter((destination) =>
+    deliveredByDestination.has(destination.key)).length;
+  const missingDestinations = destinations.filter((destination) =>
+    !draftsByDestination.has(destination.key)
+    && !deliveredByDestination.has(destination.key));
+  const selectedDestinationKeys = destinations
+    .filter((destination) => selectedFiles[destination.key])
+    .map((destination) => destination.key);
   const canUpload = Boolean(order?.id) && order?.status !== "completed";
-  const canDeliver = draftCountryCodes.length > 0 && !isUploading;
-  const completesRequest = countryCodes.length > 0
-    && countryCodes.every((code) =>
-      draftsByCountry.has(code) || deliveredByCountry.has(code));
+  const canDeliver = draftDestinationKeys.length > 0 && !isUploading;
+  const completesRequest = destinations.length > 0
+    && destinations.every((destination) =>
+      draftsByDestination.has(destination.key)
+      || deliveredByDestination.has(destination.key));
 
-  function handleUploads(jurisdictionCodesToUpload: string[], activeKey: string) {
-    if (!order?.id || !jurisdictionCodesToUpload.length) {
+  function handleUploads(destinationKeys: string[], activeKey: string) {
+    if (!order?.id || !destinationKeys.length) {
       setUploadError("Choose at least one delivery file before uploading.");
       return;
     }
@@ -94,18 +134,24 @@ export function PmDeliveryPanel({
     setDeliverError(null);
     setUploadingJurisdiction(activeKey);
     startUploadTransition(async () => {
-      const results = await Promise.all(jurisdictionCodesToUpload.map(async (code) => {
+      const results = await Promise.all(destinationKeys.map(async (key) => {
+        const destination = destinations.find((item) => item.key === key)!;
         const formData = new FormData();
         formData.set("requestId", requestId);
         formData.set("orderId", order.id);
-        formData.set("jurisdictionCode", code);
-        formData.set("deliverableFile", selectedFiles[code] as File);
+        if (destination.epCountryId) {
+          formData.set("epCountryId", String(destination.epCountryId));
+        } else {
+          formData.set("jurisdictionCode", destination.jurisdictionCode ?? "");
+        }
+        formData.set("deliverableFile", selectedFiles[key] as File);
 
         try {
-          return { code, result: await uploadPmDeliverableFile(formData) };
+          return { key, destination, result: await uploadPmDeliverableFile(formData) };
         } catch (error) {
           return {
-            code,
+            key,
+            destination,
             result: {
               success: false,
               error: error instanceof Error ? error.message : "Upload failed.",
@@ -113,42 +159,42 @@ export function PmDeliveryPanel({
           };
         }
       }));
-      const successfulCodes = results
+      const successfulKeys = results
         .filter(({ result }) => result.success)
-        .map(({ code }) => code);
+        .map(({ key }) => key);
       const failures = results.filter(({ result }) => !result.success);
 
-      if (successfulCodes.length) {
+      if (successfulKeys.length) {
         setSelectedFiles((current) => Object.fromEntries(
-          Object.entries(current).map(([code, file]) => [
-            code,
-            successfulCodes.includes(code) ? null : file,
+          Object.entries(current).map(([key, file]) => [
+            key,
+            successfulKeys.includes(key) ? null : file,
           ]),
         ));
         setInputKeys((current) => ({
           ...current,
-          ...Object.fromEntries(successfulCodes.map((code) => [
-            code,
-            (current[code] ?? 0) + 1,
+          ...Object.fromEntries(successfulKeys.map((key) => [
+            key,
+            (current[key] ?? 0) + 1,
           ])),
         }));
         router.refresh();
       }
       if (failures.length) {
-        setUploadError(failures.map(({ code, result }) =>
-          `${jurisdictionLabel(code)}: ${result.error ?? "Upload failed."}`,
+        setUploadError(failures.map(({ destination, result }) =>
+          `${destination.label}: ${result.error ?? "Upload failed."}`,
         ).join(" "));
       }
       setUploadingJurisdiction(null);
     });
   }
 
-  function handleUpload(jurisdictionCode: string) {
-    handleUploads([jurisdictionCode], jurisdictionCode);
+  function handleUpload(destinationKey: string) {
+    handleUploads([destinationKey], destinationKey);
   }
 
   function handleUploadAll() {
-    handleUploads(selectedCountryCodes, "all");
+    handleUploads(selectedDestinationKeys, "all");
   }
 
   function handleDeliver() {
@@ -177,10 +223,10 @@ export function PmDeliveryPanel({
         <div className="mt-1 text-sm">{titleCaseStatus(order.status)}</div>
       </div>
       <p className="text-right text-sm font-medium">
-        {deliveredCount} of {countryCodes.length} countries delivered
-        {draftCountryCodes.length ? (
+        {deliveredCount} of {destinations.length} countries delivered
+        {draftDestinationKeys.length ? (
           <span className="block text-xs font-normal text-muted-foreground">
-            {draftCountryCodes.length} ready to deliver
+            {draftDestinationKeys.length} ready to deliver
           </span>
         ) : null}
       </p>
@@ -191,37 +237,40 @@ export function PmDeliveryPanel({
     <EmptyMessage>Start the translation task before uploading deliverables.</EmptyMessage>
   ) : (
     <>
-      {!countryCodes.length ? (
+      {!destinations.length ? (
         <EmptyMessage>No delivery jurisdictions are configured for this request.</EmptyMessage>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {countryCodes.map((code) => (
+          {destinations.map((destination) => (
             <PmCountryDeliveryCard
-              key={code}
-              code={code}
-              deliverable={draftsByCountry.get(code) ?? deliveredByCountry.get(code)}
+              key={destination.key}
+              code={destination.displayCode}
+              deliverable={draftsByDestination.get(destination.key)
+                ?? deliveredByDestination.get(destination.key)}
               disabled={!canUpload || isUploading || isDelivering}
-              inputKey={inputKeys[code] ?? 0}
-              isUploading={uploadingJurisdiction === code}
-              label={jurisdictionLabel(code)}
-              selectedFile={selectedFiles[code] ?? null}
-              status={draftsByCountry.has(code) ? "ready" : deliveredByCountry.has(code)
+              inputKey={inputKeys[destination.key] ?? 0}
+              isUploading={uploadingJurisdiction === destination.key}
+              label={destination.label}
+              selectedFile={selectedFiles[destination.key] ?? null}
+              status={draftsByDestination.has(destination.key)
+                ? "ready"
+                : deliveredByDestination.has(destination.key)
                 ? "delivered"
                 : "missing"}
               onFileChange={(file) => setSelectedFiles((current) => ({
                 ...current,
-                [code]: file,
+                [destination.key]: file,
               }))}
-              onUpload={() => handleUpload(code)}
+              onUpload={() => handleUpload(destination.key)}
             />
           ))}
         </div>
       )}
 
-      {legacyDeliverables.length ? (
+      {generalDeliverables.length ? (
         <div className="space-y-2 rounded-xl border p-4 text-sm">
           <p className="font-medium">General</p>
-          {legacyDeliverables.map((deliverable) => (
+          {generalDeliverables.map((deliverable) => (
             <p key={deliverable.id} className="truncate text-muted-foreground">
               {storageName(deliverable.storage_path) || "Legacy delivery file"}
             </p>
@@ -231,9 +280,9 @@ export function PmDeliveryPanel({
 
       {uploadError ? <p className="text-sm text-destructive">{uploadError}</p> : null}
       {deliverError ? <p className="text-sm text-destructive">{deliverError}</p> : null}
-      {missingCountries.length ? (
+      {missingDestinations.length ? (
         <p className="text-sm text-muted-foreground">
-          Missing: {missingCountries.map(jurisdictionLabel).join(", ")}
+          Missing: {missingDestinations.map((destination) => destination.label).join(", ")}
         </p>
       ) : null}
     </>
@@ -245,13 +294,13 @@ export function PmDeliveryPanel({
         type="button"
         variant="outline"
         className="min-w-32"
-        disabled={!selectedCountryCodes.length || isUploading || isDelivering}
+        disabled={!selectedDestinationKeys.length || isUploading || isDelivering}
         onClick={handleUploadAll}
       >
         {isUploading && uploadingJurisdiction === "all"
           ? "Uploading..."
-          : `Upload all${selectedCountryCodes.length
-            ? ` (${selectedCountryCodes.length})`
+          : `Upload all${selectedDestinationKeys.length
+            ? ` (${selectedDestinationKeys.length})`
             : ""}`}
       </Button>
       <Button
@@ -264,7 +313,7 @@ export function PmDeliveryPanel({
           ? "Delivering..."
           : completesRequest
             ? "Deliver & complete Request"
-            : `Deliver available (${draftCountryCodes.length})`}
+            : `Deliver available (${draftDestinationKeys.length})`}
       </Button>
     </div>
   ) : (
@@ -325,13 +374,17 @@ function storageName(path?: string | null) {
   return parts[parts.length - 1] ?? "";
 }
 
-function latestByCountry(deliverables: TaskDeliverable[]) {
+function latestByDestination(deliverables: TaskDeliverable[]) {
   const result = new Map<string, TaskDeliverable>();
 
   for (const deliverable of deliverables) {
-    if (deliverable.jurisdiction_code
-      && !result.has(deliverable.jurisdiction_code)) {
-      result.set(deliverable.jurisdiction_code, deliverable);
+    const key = deliverable.ep_country_id
+      ? `ep:${deliverable.ep_country_id}`
+      : deliverable.jurisdiction_code
+        ? `legacy:${deliverable.jurisdiction_code}`
+        : null;
+    if (key && !result.has(key)) {
+      result.set(key, deliverable);
     }
   }
 

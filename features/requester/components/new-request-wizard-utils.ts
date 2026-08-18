@@ -23,6 +23,7 @@ export const wizardSteps = [
 export const defaultWizardConfig: WizardConfig = {
   channelCode: "ep",
   sourceLanguage: "",
+  epCountryIds: [],
   jurisdictionCodes: [],
   scopeType: "full_text",
   purpose: "european_validation",
@@ -48,6 +49,7 @@ export type WizardConfigFieldErrors = Partial<Record<
   | "epvType"
   | "pctChapter"
   | "sourceLanguage"
+  | "epCountryIds"
   | "jurisdictionCodes"
   | "dueAt",
   string
@@ -189,6 +191,8 @@ export function updateWizardChannel(
     epvType: "",
     pctChapter: channelCode === "pct" ? "chapter_i" : "",
     dueAt: "",
+    epCountryIds: [],
+    jurisdictionCodes: [],
   };
 }
 
@@ -239,6 +243,7 @@ export function normalizeWizardConfig(
     jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
+    epCountryIds: normalizeEpCountryIds(config?.epCountryIds),
     scopeType: "full_text",
     qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
   };
@@ -303,7 +308,11 @@ export function validateWizardConfigFields(
     errors.sourceLanguage = "Select a source language before continuing.";
   }
 
-  if (!config.jurisdictionCodes.length) {
+  if (config.channelCode === "ep" && !config.epCountryIds.length) {
+    errors.epCountryIds = "Select at least one EP country before continuing.";
+  }
+
+  if (config.channelCode !== "ep" && !config.jurisdictionCodes.length) {
     errors.jurisdictionCodes = "Select at least one jurisdiction before continuing.";
   }
 
@@ -316,4 +325,11 @@ export function validateWizardConfigFields(
   }
 
   return errors;
+}
+
+export function normalizeEpCountryIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .map(Number)
+    .filter((item) => Number.isInteger(item) && item > 0))];
 }

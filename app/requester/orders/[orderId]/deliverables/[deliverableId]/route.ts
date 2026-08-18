@@ -8,6 +8,7 @@ type DeliverableRow = {
   storage_bucket: string;
   storage_path: string;
   status?: string | null;
+  ep_country_id?: number | null;
   jurisdiction_code?: string | null;
 };
 
@@ -36,7 +37,7 @@ export async function GET(
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status, jurisdiction_code))")
+    .select("id, order_no, requester_id, translation_tasks(id, task_deliverables(id, storage_bucket, storage_path, status, ep_country_id, jurisdiction_code))")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -66,7 +67,9 @@ export async function GET(
 
   const fileName = [
     safeBaseName(order.order_no ?? orderId),
-    deliverable.jurisdiction_code ?? "GENERAL",
+    deliverable.ep_country_id
+      ? `EP-${deliverable.ep_country_id}`
+      : deliverable.jurisdiction_code ?? "GENERAL",
     storageName(deliverable.storage_path) || "delivery-file",
   ].join("-");
 

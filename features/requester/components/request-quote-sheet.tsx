@@ -17,6 +17,7 @@ import {
   serviceTypeOptions,
 } from "@/features/requester/options";
 import type { WizardConfig, WizardDictionaries } from "@/features/requester/wizard-types";
+import type { EpCountryOption } from "@/features/requester/wizard-types";
 
 const estimateDictionaries: WizardDictionaries = {
   channels: channelOptions,
@@ -25,21 +26,24 @@ const estimateDictionaries: WizardDictionaries = {
   applicationTypes: filingApplicationTypeOptions,
   entityTypes: entityTypeOptions,
   epvTypes: epvTypeOptions,
+  epCountries: [],
   jurisdictions: jurisdictionOptions,
 };
 
 export function RequestQuoteSheet({
   config,
   translationWordCount,
+  epCountries = [],
   showEditAction = false,
 }: {
   config: WizardConfig;
   translationWordCount: number;
+  epCountries?: EpCountryOption[];
   showEditAction?: boolean;
 }) {
   const rows = buildEstimateRowsForConfig(
     config,
-    estimateDictionaries,
+    { ...estimateDictionaries, epCountries },
     translationWordCount,
   );
   const includeTranslation = hasTranslationPricingForServiceTypes(config.serviceTypes);

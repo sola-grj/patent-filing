@@ -21,6 +21,7 @@ export type RequesterDeliverable = {
   storage_path?: string | null;
   created_at?: string | null;
   language?: string | null;
+  ep_country_id?: number | null;
   jurisdiction_code?: string | null;
 };
 
@@ -29,11 +30,13 @@ export function RequesterDeliverablesDialog({
   orderId,
   requestId,
   totalJurisdictionCount,
+  epCountries = [],
 }: {
   deliverables: RequesterDeliverable[];
   orderId: string;
   requestId: string;
   totalJurisdictionCount: number;
+  epCountries?: Array<{ id: number; name: string }>;
 }) {
   const availableCount = deliverables.length;
   const isComplete = totalJurisdictionCount > 0
@@ -83,7 +86,7 @@ export function RequesterDeliverablesDialog({
             >
               <div className="min-w-0">
                 <p className="font-medium">
-                  {jurisdictionLabel(deliverable.jurisdiction_code)}
+                  {destinationLabel(deliverable, epCountries)}
                 </p>
                 <p className="mt-1 truncate text-sm text-muted-foreground">
                   {storageName(deliverable.storage_path) || "Delivery file"}
@@ -99,7 +102,7 @@ export function RequesterDeliverablesDialog({
               <DeliverableDownloadButton
                 href={`/requester/orders/${orderId}/deliverables/${deliverable.id}`}
                 iconOnly
-                label={`Download ${jurisdictionLabel(deliverable.jurisdiction_code)} file`}
+                label={`Download ${destinationLabel(deliverable, epCountries)} file`}
               />
             </div>
           ))}
@@ -116,6 +119,17 @@ function jurisdictionLabel(code?: string | null) {
   }
 
   return jurisdictionOptions.find((option) => option.value === code)?.label ?? code;
+}
+
+function destinationLabel(
+  deliverable: RequesterDeliverable,
+  epCountries: Array<{ id: number; name: string }>,
+) {
+  if (deliverable.ep_country_id) {
+    return epCountries.find((country) => country.id === deliverable.ep_country_id)?.name
+      ?? `EP country ${deliverable.ep_country_id}`;
+  }
+  return jurisdictionLabel(deliverable.jurisdiction_code);
 }
 
 function storageName(path?: string | null) {

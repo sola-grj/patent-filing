@@ -15,17 +15,22 @@ type HeaderOrder = {
       storage_path?: string | null;
       created_at?: string | null;
       language?: string | null;
+      ep_country_id?: number | null;
       jurisdiction_code?: string | null;
     }> | null;
   }> | null;
 };
 
 export function PmRequestHeaderAction({
+  epCountryIds,
+  epCountries,
   jurisdictionCodes,
   order,
   requestId,
   status,
 }: {
+  epCountryIds: number[];
+  epCountries: Array<{ id: number; name: string; abbr: string }>;
   jurisdictionCodes: string[];
   order?: HeaderOrder | null;
   requestId: string;
@@ -38,6 +43,8 @@ export function PmRequestHeaderAction({
   if (status === "in_progress") {
     return (
       <PmDeliveryDialog
+        epCountryIds={epCountryIds}
+        epCountries={epCountries}
         jurisdictionCodes={jurisdictionCodes}
         requestId={requestId}
         order={order}

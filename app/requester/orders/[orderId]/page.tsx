@@ -21,6 +21,7 @@ type TaskDeliverable = {
   storage_path?: string | null;
   created_at?: string | null;
   language?: string | null;
+  ep_country_id?: number | null;
   jurisdiction_code?: string | null;
 };
 
@@ -33,15 +34,26 @@ type OrderTask = {
 
 type DeliveryRequest = {
   translation_requirements?: {
+    ep_country_ids?: number[] | null;
     jurisdiction_codes?: string[] | null;
-    config_snapshot?: { jurisdictionCodes?: string[] | null } | null;
+    config_snapshot?: {
+      epCountryIds?: number[] | null;
+      jurisdictionCodes?: string[] | null;
+    } | null;
   } | Array<{
+    ep_country_ids?: number[] | null;
     jurisdiction_codes?: string[] | null;
-    config_snapshot?: { jurisdictionCodes?: string[] | null } | null;
+    config_snapshot?: {
+      epCountryIds?: number[] | null;
+      jurisdictionCodes?: string[] | null;
+    } | null;
   }> | null;
   request_config_versions?: Array<{
     version_no?: number | null;
-    config_snapshot?: { jurisdictionCodes?: string[] | null } | null;
+    config_snapshot?: {
+      epCountryIds?: number[] | null;
+      jurisdictionCodes?: string[] | null;
+    } | null;
   }> | null;
 };
 
@@ -71,12 +83,19 @@ async function OrderContent({
 
   if (!order) notFound();
   const tasks = (order.translation_tasks ?? []) as OrderTask[];
+  const epCountryIds = resolveOrderEpCountryIds(
+    order.translation_requests as DeliveryRequest | null,
+  );
   const jurisdictionCodes = resolveOrderJurisdictionCodes(
     order.translation_requests as DeliveryRequest | null,
   );
   const jurisdictionOrder = new Map(
     jurisdictionCodes.map((code, index) => [code, index]),
   );
+  const epCountryOrder = new Map(
+    epCountryIds.map((id, index) => [id, index]),
+  );
+  const epCountries = (order.ep_countries ?? []) as Array<{ id: number; name: string }>;
   const deliverables = latestPublishedDeliverables(tasks
     .flatMap((task) =>
       (task.task_deliverables ?? [])
@@ -87,10 +106,11 @@ async function OrderContent({
         })),
     ))
     .sort((left, right) => {
-      const countryDifference = jurisdictionRank(
-        left.jurisdiction_code,
-        jurisdictionOrder,
-      ) - jurisdictionRank(right.jurisdiction_code, jurisdictionOrder);
+      const countryDifference = epCountryIds.length
+        ? epCountryRank(left.ep_country_id, epCountryOrder)
+          - epCountryRank(right.ep_country_id, epCountryOrder)
+        : jurisdictionRank(left.jurisdiction_code, jurisdictionOrder)
+          - jurisdictionRank(right.jurisdiction_code, jurisdictionOrder);
       if (countryDifference) return countryDifference;
       const rightTime = new Date(right.created_at ?? 0).getTime();
       const leftTime = new Date(left.created_at ?? 0).getTime();
@@ -150,8 +170,10 @@ async function OrderContent({
               >
                 <div>
                   <p className="font-semibold">
-                    {jurisdictionLabel(deliverable.jurisdiction_code)}
-                    {deliverable.jurisdiction_code
+                    {destinationLabel(deliverable, epCountries)}
+                    {deliverable.ep_country_id
+                      ? ` (ID ${deliverable.ep_country_id})`
+                      : deliverable.jurisdiction_code
                       ? ` (${deliverable.jurisdiction_code})`
                       : ""}
                   </p>
@@ -206,6 +228,21 @@ function resolveOrderJurisdictionCodes(request?: DeliveryRequest | null) {
   return snapshotCodes.length ? snapshotCodes : storedCodes;
 }
 
+function resolveOrderEpCountryIds(request?: DeliveryRequest | null) {
+  if (!request) return [];
+  const requirement = firstRelation(request.translation_requirements);
+  const latestSnapshot = [...(request.request_config_versions ?? [])]
+    .sort((left, right) => Number(right.version_no ?? 0) - Number(left.version_no ?? 0))[0]
+    ?.config_snapshot ?? requirement?.config_snapshot;
+  const snapshotIds = normalizeEpCountryIds(latestSnapshot?.epCountryIds);
+  const storedIds = normalizeEpCountryIds(requirement?.ep_country_ids);
+  return snapshotIds.length ? snapshotIds : storedIds;
+}
+
+function normalizeEpCountryIds(value?: number[] | null) {
+  return [...new Set((value ?? []).filter((id) => Number.isInteger(id) && id > 0))];
+}
+
 function normalizeJurisdictionCodes(value?: string[] | null) {
   return [...new Set(
     (value ?? [])
@@ -222,9 +259,28 @@ function jurisdictionRank(
   return order.get(code) ?? Number.MAX_SAFE_INTEGER - 1;
 }
 
+function epCountryRank(
+  id: number | null | undefined,
+  order: Map<number, number>,
+) {
+  if (!id) return Number.MAX_SAFE_INTEGER;
+  return order.get(id) ?? Number.MAX_SAFE_INTEGER - 1;
+}
+
 function jurisdictionLabel(code?: string | null) {
   if (!code) return "General";
   return jurisdictionOptions.find((option) => option.value === code)?.label ?? code;
+}
+
+function destinationLabel(
+  deliverable: TaskDeliverable,
+  epCountries: Array<{ id: number; name: string }>,
+) {
+  if (deliverable.ep_country_id) {
+    return epCountries.find((country) => country.id === deliverable.ep_country_id)?.name
+      ?? `EP country ${deliverable.ep_country_id}`;
+  }
+  return jurisdictionLabel(deliverable.jurisdiction_code);
 }
 
 function firstRelation<T>(value?: T | T[] | null) {

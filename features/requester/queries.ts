@@ -22,13 +22,21 @@ const dictionaryCategoryMap = {
 
 export async function getRequesterDictionaries(): Promise<WizardDictionaries> {
   const { supabase } = await getAuthenticatedUser();
-  const { data, error } = await supabase
-    .from("dictionary_items")
-    .select("category, code, label, iso_country_code, country_group")
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true });
+  const [dictionaryResult, epCountriesResult] = await Promise.all([
+    supabase
+      .from("dictionary_items")
+      .select("category, code, label, iso_country_code, country_group")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("ep_countries")
+      .select("id, name, cname, abbr")
+      .eq("enabled", true)
+      .order("name", { ascending: true }),
+  ]);
 
-  if (error) throw new Error(error.message);
+  if (dictionaryResult.error) throw new Error(dictionaryResult.error.message);
+  if (epCountriesResult.error) throw new Error(epCountriesResult.error.message);
 
   const result: WizardDictionaries = {
     channels: [],
@@ -37,10 +45,16 @@ export async function getRequesterDictionaries(): Promise<WizardDictionaries> {
     applicationTypes: [],
     entityTypes: [],
     epvTypes: [],
+    epCountries: (epCountriesResult.data ?? []).map((country) => ({
+      id: country.id,
+      name: country.name,
+      cname: country.cname,
+      abbr: country.abbr,
+    })),
     jurisdictions: [],
   };
 
-  for (const item of data ?? []) {
+  for (const item of dictionaryResult.data ?? []) {
     const key = dictionaryCategoryMap[item.category as keyof typeof dictionaryCategoryMap];
     if (!key) continue;
     const option: DictionaryOption = {
@@ -186,7 +200,7 @@ export async function getRequesterDashboard() {
       .order("updated_at", { ascending: false }),
     supabase
       .from("orders")
-      .select("id, request_id, completed_at, updated_at, translation_tasks(id, task_deliverables(id, status, created_at, jurisdiction_code, version_no))")
+      .select("id, request_id, completed_at, updated_at, translation_tasks(id, task_deliverables(id, status, created_at, ep_country_id, jurisdiction_code, version_no))")
       .eq("requester_id", userId)
       .order("updated_at", { ascending: false }),
     getRequesterDictionaries(),
@@ -322,7 +336,7 @@ export async function getRequesterRequest(requestId: string) {
   const { data, error } = await supabase
     .from("translation_requests")
     .select(
-      "*, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language, jurisdiction_code))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
+      "*, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language, ep_country_id, jurisdiction_code))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -335,12 +349,23 @@ export async function getRequesterRequest(requestId: string) {
     return null;
   }
 
+  const { data: epCountries, error: epCountriesError } = await supabase
+    .from("ep_countries")
+    .select("id, name, cname, abbr")
+    .eq("enabled", true)
+    .order("name", { ascending: true });
+  if (epCountriesError) throw new Error(epCountriesError.message);
+
+  const enrichedData = data ? { ...data, ep_countries: epCountries ?? [] } : data;
+
   const order = firstRelation<{ id: string }>(
-    (data?.orders as { id: string } | Array<{ id: string }> | null) ?? null,
+    (enrichedData?.orders as { id: string } | Array<{ id: string }> | null) ?? null,
   );
 
   if (!order?.id) {
-    return data ? { ...data, viewer_is_owner: data.requester_id === userId } : data;
+    return enrichedData
+      ? { ...enrichedData, viewer_is_owner: enrichedData.requester_id === userId }
+      : enrichedData;
   }
 
   const { data: assignmentRows, error: assignmentError } = await supabase.rpc(
@@ -359,9 +384,9 @@ export async function getRequesterRequest(requestId: string) {
   };
 
   return {
-    ...data,
-    viewer_is_owner: data.requester_id === userId,
-    orders: Array.isArray(data.orders) ? [enrichedOrder] : enrichedOrder,
+    ...enrichedData,
+    viewer_is_owner: enrichedData!.requester_id === userId,
+    orders: Array.isArray(enrichedData!.orders) ? [enrichedOrder] : enrichedOrder,
   };
 }
 
@@ -553,7 +578,7 @@ export async function getRequesterOrder(orderId: string) {
   const { supabase } = await getAuthenticatedUser();
   const { data, error } = await supabase
     .from("orders")
-    .select("*, translation_requests(*, translation_requirements(jurisdiction_codes, config_snapshot), request_config_versions(version_no, config_snapshot)), quotes:accepted_quote_id(*), translation_tasks(*, task_deliverables(*))")
+    .select("*, translation_requests(*, translation_requirements(ep_country_ids, jurisdiction_codes, config_snapshot), request_config_versions(version_no, config_snapshot)), quotes:accepted_quote_id(*), translation_tasks(*, task_deliverables(*))")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -561,7 +586,14 @@ export async function getRequesterOrder(orderId: string) {
     throw new Error(error.message);
   }
 
-  return data;
+  const { data: epCountries, error: epCountriesError } = await supabase
+    .from("ep_countries")
+    .select("id, name, cname, abbr")
+    .eq("enabled", true)
+    .order("name", { ascending: true });
+  if (epCountriesError) throw new Error(epCountriesError.message);
+
+  return data ? { ...data, ep_countries: epCountries ?? [] } : data;
 }
 
 function mapDraftRowToWizardState(draft: DraftRow) {

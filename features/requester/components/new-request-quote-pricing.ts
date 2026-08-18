@@ -42,7 +42,16 @@ export function buildEstimateRowsForConfig(
   const translationWords = includeTranslation ? translationWordCount : 0;
   const translationRequirement = resolveTranslationRequirement(config.scopeType);
 
-  return config.jurisdictionCodes.map((jurisdictionCode, index) => {
+  const destinations = config.channelCode === "ep" && config.epCountryIds.length
+    ? config.epCountryIds.map((countryId) => ({
+        label: dictionaries.epCountries.find((country) => country.id === countryId)?.name
+          ?? String(countryId),
+      }))
+    : config.jurisdictionCodes.map((jurisdictionCode) => ({
+        label: labelFor(dictionaries.jurisdictions, jurisdictionCode),
+      }));
+
+  return destinations.map((destination, index) => {
     const filingFee = 320 + index * 90;
     const officialFee = 180 + index * 120;
     const translationUnitPrice = includeTranslation && translationWords
@@ -51,7 +60,7 @@ export function buildEstimateRowsForConfig(
     const translationFee = translationWords * translationUnitPrice;
 
     return {
-      jurisdiction: labelFor(dictionaries.jurisdictions, jurisdictionCode),
+      jurisdiction: destination.label,
       sourceLanguage,
       filingFee,
       officialFee,

@@ -370,26 +370,40 @@ export function ConfigStep({
             required
             onChange={onConfigValueChange(config, onChange, "sourceLanguage")}
           />
-          <MultiSelectField
-            label="Jurisdictions"
-            values={config.jurisdictionCodes}
-            options={dictionaries.jurisdictions.length
-              ? dictionaries.jurisdictions
-              : jurisdictionOptions}
-            placeholder="Choose jurisdictions"
-            error={configFieldErrors.jurisdictionCodes}
-            required
-            onToggle={(targetLanguage, checked) =>
-              onChange({
-                ...config,
-                jurisdictionCodes: checked
-                  ? config.jurisdictionCodes.includes(targetLanguage)
-                    ? config.jurisdictionCodes
-                    : [...config.jurisdictionCodes, targetLanguage]
-                  : config.jurisdictionCodes.filter((item) => item !== targetLanguage),
-              })
-            }
-          />
+          {config.channelCode === "ep" ? (
+            <EpCountryMultiSelectField
+              values={config.epCountryIds}
+              options={dictionaries.epCountries}
+              error={configFieldErrors.epCountryIds}
+              onToggle={(countryId, checked) =>
+                onChange({
+                  ...config,
+                  epCountryIds: checked
+                    ? [...new Set([...config.epCountryIds, countryId])]
+                    : config.epCountryIds.filter((item) => item !== countryId),
+                })
+              }
+            />
+          ) : (
+            <MultiSelectField
+              label="Jurisdictions"
+              values={config.jurisdictionCodes}
+              options={dictionaries.jurisdictions.length
+                ? dictionaries.jurisdictions
+                : jurisdictionOptions}
+              placeholder="Choose jurisdictions"
+              error={configFieldErrors.jurisdictionCodes}
+              required
+              onToggle={(targetLanguage, checked) =>
+                onChange({
+                  ...config,
+                  jurisdictionCodes: checked
+                    ? [...new Set([...config.jurisdictionCodes, targetLanguage])]
+                    : config.jurisdictionCodes.filter((item) => item !== targetLanguage),
+                })
+              }
+            />
+          )}
           {isTranslationOnlyService ? (
             <Field label="Due date">
               <Input
@@ -562,6 +576,87 @@ function SearchableSingleSelectField(props: {
       </DropdownMenu>
       {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
     </Field>
+  );
+}
+
+function EpCountryMultiSelectField(props: {
+  values: number[];
+  options: WizardDictionaries["epCountries"];
+  error?: string;
+  onToggle: (value: number, checked: boolean) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const selectedLabels = props.values.map((id) =>
+    props.options.find((option) => option.id === id)?.name ?? String(id),
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = normalizedQuery
+    ? props.options.filter((option) =>
+        `${option.name} ${option.cname} ${option.abbr} ${option.id}`
+          .toLowerCase()
+          .includes(normalizedQuery),
+      )
+    : props.options;
+
+  return (
+    <Field label="EP countries" required>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            aria-invalid={Boolean(props.error)}
+            aria-required
+            className={getFieldClassName(Boolean(props.error), "h-10 w-full justify-between px-3 font-normal")}
+          >
+            <span className={`truncate ${props.values.length ? "text-foreground" : "text-muted-foreground"}`}>
+              {selectedLabels.length ? selectedLabels.join(", ") : "Choose EP countries"}
+            </span>
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <SearchableDropdownContent query={query} onQueryChange={setQuery}>
+          {filteredOptions.map((option) => (
+            <DropdownMenuCheckboxItem
+              key={option.id}
+              checked={props.values.includes(option.id)}
+              onCheckedChange={(checked) => props.onToggle(option.id, checked === true)}
+              onSelect={(event) => event.preventDefault()}
+            >
+              <EpCountryOptionLabel option={option} />
+            </DropdownMenuCheckboxItem>
+          ))}
+          {!filteredOptions.length ? <EmptySearchResult /> : null}
+        </SearchableDropdownContent>
+      </DropdownMenu>
+      {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
+    </Field>
+  );
+}
+
+function EpCountryOptionLabel({
+  option,
+}: {
+  option: WizardDictionaries["epCountries"][number];
+}) {
+  const flagCode = /^[A-Z]{2}$/.test(option.abbr) && option.abbr !== "UK"
+    ? option.abbr.toLowerCase()
+    : null;
+  return (
+    <span className="flex items-center gap-2">
+      {flagCode ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`https://flagcdn.com/20x15/${flagCode}.png`}
+          srcSet={`https://flagcdn.com/40x30/${flagCode}.png 2x`}
+          width="20"
+          height="15"
+          alt=""
+          className="shrink-0 rounded-[2px] object-cover"
+        />
+      ) : null}
+      <span>{option.name}</span>
+    </span>
   );
 }
 

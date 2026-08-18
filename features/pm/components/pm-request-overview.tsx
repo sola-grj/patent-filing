@@ -19,12 +19,14 @@ import type { ReactNode } from "react";
 
 export function PmRequestOverview({
   config,
+  epCountries,
   deadlineItems,
   deadlinePendingMessage,
   organizationName,
   request,
 }: {
   config: WizardConfig;
+  epCountries: Array<{ id: number; name: string }>;
   deadlineItems: DashboardDeadlineItem[];
   deadlinePendingMessage?: string | null;
   organizationName: string;
@@ -49,8 +51,12 @@ export function PmRequestOverview({
     { label: "Service type", value: labelForMany(serviceTypeOptions, serviceTypes) },
     { label: "Source Language", value: labelFor(sourceLanguageOptions, config.sourceLanguage) },
     {
-      label: "Jurisdictions",
-      value: labelForMany(jurisdictionOptions, config.jurisdictionCodes),
+      label: config.epCountryIds.length ? "EP countries" : "Jurisdictions",
+      value: config.epCountryIds.length
+        ? config.epCountryIds.map((id) =>
+            epCountries.find((country) => country.id === id)?.name ?? `EP country ${id}`,
+          ).join(", ") || "-"
+        : labelForMany(jurisdictionOptions, config.jurisdictionCodes),
     },
     { label: "Delivery option", value: titleCase(config.deliveryOption) },
     ...(showFilingFields

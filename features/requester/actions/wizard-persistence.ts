@@ -299,7 +299,10 @@ async function verifySubmittedPatentPayload(
 
 function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
-  if (!config.jurisdictionCodes.length) {
+  if (config.channelCode === "ep" && !config.epCountryIds.length) {
+    throw new Error("Select at least one EP country.");
+  }
+  if (config.channelCode !== "ep" && !config.jurisdictionCodes.length) {
     throw new Error("Select at least one jurisdiction.");
   }
   if (
@@ -361,6 +364,12 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   payload.config.jurisdictionCodes = Array.isArray(payload.config.jurisdictionCodes)
     ? payload.config.jurisdictionCodes
     : [];
+  payload.config.epCountryIds = normalizeEpCountryIds(payload.config.epCountryIds);
+  if (payload.config.channelCode === "ep") {
+    payload.config.jurisdictionCodes = [];
+  } else {
+    payload.config.epCountryIds = [];
+  }
   payload.config.scopeType = "full_text";
   payload.config.qualityLevel = HUMAN_TRANSLATION_QUALITY_LEVEL;
   return payload;
@@ -374,7 +383,9 @@ async function validateDictionaryValues(
   const expected = [
     ["request_channel", config.channelCode],
     ...config.serviceTypes.map((value) => ["service_type", value]),
-    ...config.jurisdictionCodes.map((value) => ["jurisdiction", value]),
+    ...(config.channelCode === "ep"
+      ? []
+      : config.jurisdictionCodes.map((value) => ["jurisdiction", value])),
     ...(config.filingType ? [["filing_type", config.filingType]] : []),
     ...(config.filingApplicationType ? [["application_type", config.filingApplicationType]] : []),
     ...(config.entityType ? [["entity_type", config.entityType]] : []),
@@ -403,6 +414,27 @@ async function validateDictionaryValues(
     return !activeValues.has(key) && !builtInDictionaryValues.has(key);
   });
   if (invalid) throw new Error(`Invalid ${invalid[0]} value: ${invalid[1]}.`);
+
+  if (config.channelCode === "ep" && config.epCountryIds.length) {
+    const { data: countries, error: countriesError } = await supabase
+      .from("ep_countries")
+      .select("id")
+      .in("id", config.epCountryIds)
+      .eq("enabled", true);
+    if (countriesError) throw new Error(countriesError.message);
+    const activeCountryIds = new Set((countries ?? []).map((country) => country.id));
+    const invalidCountryId = config.epCountryIds.find((id) => !activeCountryIds.has(id));
+    if (invalidCountryId) {
+      throw new Error(`Invalid or disabled EP country id: ${invalidCountryId}.`);
+    }
+  }
+}
+
+function normalizeEpCountryIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .map(Number)
+    .filter((item) => Number.isInteger(item) && item > 0))];
 }
 
 function channelFromLegacyPurpose(purpose?: string) {
@@ -971,7 +1003,8 @@ async function createRequirement(
       && config.serviceTypes.includes("filing")
       ? config.pctChapter || "chapter_i"
       : null,
-    jurisdiction_codes: config.jurisdictionCodes,
+    jurisdiction_codes: config.channelCode === "ep" ? [] : config.jurisdictionCodes,
+    ep_country_ids: config.channelCode === "ep" ? config.epCountryIds : [],
     quality_level: config.qualityLevel,
     delivery_option: DEFAULT_DELIVERY_OPTION,
     due_at: config.dueAt || null,
@@ -1037,6 +1070,7 @@ async function createInitialQuote(
     wordCount,
     channelCode: payload.config.channelCode,
     serviceTypes: payload.config.serviceTypes,
+    epCountryIds: payload.config.epCountryIds,
     jurisdictionCodes: payload.config.jurisdictionCodes,
     qualityLevel: usesTranslationQuality ? payload.config.qualityLevel : null,
     urgent: payload.config.isUrgent,

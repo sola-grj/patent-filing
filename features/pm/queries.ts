@@ -164,7 +164,18 @@ export async function getPmRequestDetail(requestId: string) {
     return { denied: false, request: null, currentUserId: context.userId };
   }
 
-  return { denied: false, request: data, currentUserId: context.userId };
+  const { data: epCountries, error: epCountriesError } = await context.supabase
+    .from("ep_countries")
+    .select("id, name, cname, abbr")
+    .eq("enabled", true)
+    .order("name", { ascending: true });
+  if (epCountriesError) throw new Error(epCountriesError.message);
+
+  return {
+    denied: false,
+    request: data ? { ...data, ep_countries: epCountries ?? [] } : data,
+    currentUserId: context.userId,
+  };
 }
 
 function firstRelation<T>(value?: T | T[] | null) {

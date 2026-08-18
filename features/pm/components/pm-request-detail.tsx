@@ -110,6 +110,7 @@ type Requirement = {
   entity_type_code?: string | null;
   epv_type_code?: string | null;
   pct_chapter_code?: string | null;
+  ep_country_ids?: number[] | null;
   jurisdiction_codes?: string[] | null;
   config_snapshot?: Partial<WizardConfig> | null;
 };
@@ -146,6 +147,7 @@ type Order = {
       storage_path?: string | null;
       created_at?: string | null;
       language?: string | null;
+      ep_country_id?: number | null;
       jurisdiction_code?: string | null;
     }> | null;
   }> | null;
@@ -189,6 +191,12 @@ type PmRequestDetailProps = {
     orders?: Order | Order[] | null;
     request_events?: RequestEvent[] | null;
     filing_signature_requests?: FilingSignatureRequest[] | null;
+    ep_countries?: Array<{
+      id: number;
+      name: string;
+      cname: string;
+      abbr: string;
+    }> | null;
   };
   currentUserId: string | null;
 };
@@ -279,6 +287,8 @@ export function PmRequestDetail({
           status={<RequesterStatusBadge status={request.pm_status} size="compact" />}
           action={
             <PmRequestHeaderAction
+              epCountryIds={config.epCountryIds}
+              epCountries={request.ep_countries ?? []}
               jurisdictionCodes={config.jurisdictionCodes}
               requestId={request.id}
               status={request.pm_status}
@@ -291,6 +301,7 @@ export function PmRequestDetail({
         <div className="flex flex-col gap-6 pr-1">
             <PmRequestOverview
               config={config}
+              epCountries={request.ep_countries ?? []}
               deadlineItems={deadlineItems}
               deadlinePendingMessage={deadlinePendingMessage}
               organizationName={organization?.name ?? "-"}
@@ -328,6 +339,7 @@ export function PmRequestDetail({
             <PmQuoteSheet
               config={config}
               translationWordCount={translationWordCount}
+              epCountries={request.ep_countries ?? []}
             />
             {SHOW_NEGOTIATION_HISTORY ? (
               negotiationHistory.length ? (
@@ -702,6 +714,7 @@ function resolveRequestConfig(
   return {
     channelCode: snapshot.channelCode ?? request.channel_code ?? "",
     sourceLanguage: snapshot.sourceLanguage ?? requirement?.source_language ?? "",
+    epCountryIds: snapshot.epCountryIds ?? requirement?.ep_country_ids ?? [],
     jurisdictionCodes:
       snapshot.jurisdictionCodes ?? requirement?.jurisdiction_codes ?? [],
     scopeType: snapshot.scopeType ?? requirement?.scope_type ?? "",
