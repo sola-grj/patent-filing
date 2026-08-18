@@ -1,13 +1,16 @@
 import { Suspense } from "react";
 
 import { AppTopNav, AppTopNavFallback } from "@/components/app-top-nav";
+import { requesterOrganizationAccessEnabled } from "@/features/organizations/availability";
 import { RequestWizardControllerProvider } from "@/features/requester/components/requester-create-request-controller";
 
 const requesterNavLinks = [
   { href: "/requester", label: "Home", exact: true },
   { href: "/requester/requests", label: "Requests" },
   { href: "/requester/drafts", label: "Drafts" },
-  { href: "/requester/organization", label: "Organization" },
+  ...(requesterOrganizationAccessEnabled
+    ? [{ href: "/requester/organization", label: "Organization" }]
+    : []),
 ];
 
 export default function RequesterLayout({

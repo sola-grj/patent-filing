@@ -1,10 +1,16 @@
 import { Badge } from "@/components/ui/badge";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { InviteOrganizationMemberForm } from "@/features/organizations/components/organization-admin-forms";
 import { OrganizationMembers } from "@/features/organizations/components/organization-members";
+import { requesterOrganizationAccessEnabled } from "@/features/organizations/availability";
 import { getRequesterOrganizationManagement } from "@/features/organizations/queries";
 
 export default function RequesterOrganizationPage() {
+  if (!requesterOrganizationAccessEnabled) {
+    redirect("/requester");
+  }
+
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Loading organization...</p>}>
       <RequesterOrganizationContent />
