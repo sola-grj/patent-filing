@@ -31,13 +31,17 @@ import type { FilingSignatureRequest } from "@/features/filing-signatures/types"
 import {
   channelOptions,
   entityTypeOptions,
-  epvTypeOptions,
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
   serviceTypeOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
+import {
+  isTraditionalValidation,
+  requiresEpCountries,
+  resolveServiceTypeSelection,
+} from "@/features/requester/request-paths";
 import type {
   WizardConfig,
   WizardPatentCandidate,
@@ -231,7 +235,14 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const dueAt = config.dueAt;
   const showFilingFields = serviceTypes.includes("filing");
   const isReadOnly = request.viewer_is_owner === false;
-  const showEpvType = serviceTypes.includes("epv");
+  const showOptType = isTraditionalValidation(config.epvType);
+  const showDestinations = config.channelCode !== "ep"
+    || requiresEpCountries(serviceTypes);
+  const serviceTypeLabel = resolveServiceTypeSelection(
+    config.channelCode,
+    serviceTypes,
+    config.epvType,
+  )?.label ?? formatConfigLabels(serviceTypeOptions, serviceTypes);
   const showDueDate = serviceTypes.includes("translation") && Boolean(dueAt);
   const deadlineItems = buildRequestDeadlineItems({
     id: request.id,
@@ -266,7 +277,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     },
     {
       label: "Service type",
-      value: formatConfigLabels(serviceTypeOptions, serviceTypes),
+      value: serviceTypeLabel,
     },
     ...(showFilingFields
       ? [
@@ -290,28 +301,25 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           },
         ]
       : []),
-    ...(showEpvType
+    ...(showOptType
       ? [{
-          label: "EPV type",
-          value: formatConfigLabel(
-            epvTypeOptions,
-            config.epvType,
-          ),
+          label: "Opt Type",
+          value: titleCase(config.optType),
         }]
       : []),
   ];
   const rightColumnItems: DetailItem[] = [
     { label: "Submitted", value: formatDate(request.submitted_at) },
     {
-      label: "Channel",
+      label: "Route",
       value: channelLabel(config.channelCode),
     },
-    {
+    ...(showDestinations ? [{
       label: config.epCountryIds.length ? "EP countries" : "Jurisdictions",
       value: config.epCountryIds.length
         ? epCountryNames.join(", ") || "-"
         : formatConfigLabels(jurisdictionOptions, jurisdictionCodes),
-    },
+    }] : []),
     {
       label: "Delivery option",
       value: titleCase(config.deliveryOption),
@@ -482,6 +490,7 @@ function resolveRequestConfig(
       ?? requirement?.entity_type
       ?? undefined,
     epvType: snapshot.epvType ?? requirement?.epv_type_code ?? undefined,
+    optType: snapshot.optType ?? "",
     qualityLevel: snapshot.qualityLevel ?? requirement?.quality_level ?? "",
     deliveryOption: snapshot.deliveryOption ?? requirement?.delivery_option ?? "",
     dueAt: snapshot.dueAt ?? requirement?.due_at ?? undefined,

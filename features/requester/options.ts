@@ -126,6 +126,11 @@ export const epvTypeOptions = [
   { value: "unitary_effect", label: "Unitary Effect" },
 ];
 
+export const optTypeOptions = [
+  { value: "in", label: "In" },
+  { value: "out", label: "Out" },
+];
+
 export const HUMAN_TRANSLATION_QUALITY_LEVEL = "patent_translator";
 
 export const qualityOptions = [

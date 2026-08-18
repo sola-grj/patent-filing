@@ -729,6 +729,7 @@ function resolveRequestConfig(
       requirement?.entity_type ??
       undefined,
     epvType: snapshot.epvType ?? requirement?.epv_type_code ?? undefined,
+    optType: snapshot.optType ?? "",
     qualityLevel: snapshot.qualityLevel ?? requirement?.quality_level ?? "",
     deliveryOption: snapshot.deliveryOption ?? requirement?.delivery_option ?? "",
     dueAt: snapshot.dueAt ?? requirement?.due_at ?? undefined,

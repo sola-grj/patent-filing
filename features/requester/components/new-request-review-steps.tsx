@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getTomorrowDateInputValue } from "@/lib/validators/requester";
 import {
   Select,
   SelectContent,
@@ -27,12 +26,15 @@ import {
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
+  optTypeOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
 import {
   getServiceTypeSelection,
   getServiceTypeSelections,
+  isTraditionalValidation,
   requestPathLabels,
+  requiresEpCountries,
   resolveServiceTypeSelection,
   type ServiceTypeSelectionValue,
 } from "@/features/requester/request-paths";
@@ -182,26 +184,13 @@ export function ConfigStep({
   onChange: (config: WizardConfig) => void;
   dictionaries: WizardDictionaries;
 }) {
-  const dueDateRef = useRef<HTMLInputElement | null>(null);
   const channelLabel = requestPathLabels[config.channelCode]
     ?? labelForOption(dictionaries.channels, config.channelCode);
   const isChannelLocked = sourceMode === "patent_search";
-  const isTranslationOnlyService = config.serviceTypes.length === 1
-    && config.serviceTypes[0] === "translation";
   const hasFilingService = config.serviceTypes.includes("filing");
-  const hasEpvService = config.serviceTypes.includes("epv");
-
-  function openDueDatePicker() {
-    const input = dueDateRef.current;
-    if (!input) return;
-
-    input.focus();
-    (
-      input as HTMLInputElement & {
-        showPicker?: () => void;
-      }
-    ).showPicker?.();
-  }
+  const showOptType = isTraditionalValidation(config.epvType);
+  const showEpCountries = config.channelCode === "ep"
+    && requiresEpCountries(config.serviceTypes);
 
   function handleServiceTypeChange(serviceType: ServiceTypeSelectionValue) {
     const selection = getServiceTypeSelection(serviceType);
@@ -210,13 +199,17 @@ export function ConfigStep({
     onChange({
       ...config,
       serviceTypes: [...nextServiceTypes],
-      dueAt: selection.value === "translation" ? config.dueAt : "",
+      dueAt: "",
       filingType: nextServiceTypes.includes("filing") ? config.filingType : "",
       filingApplicationType: nextServiceTypes.includes("filing")
         ? config.filingApplicationType
         : "",
       entityType: config.entityType,
       epvType: selection.epvType,
+      optType: isTraditionalValidation(selection.epvType) ? config.optType : "",
+      epCountryIds: requiresEpCountries(nextServiceTypes)
+        ? config.epCountryIds
+        : [],
       pctChapter: config.channelCode === "pct" && nextServiceTypes.includes("filing")
         ? config.pctChapter || "chapter_i"
         : "",
@@ -255,7 +248,7 @@ export function ConfigStep({
             <div className="space-y-2 md:col-span-2">
               <Label>
                 <span className="text-destructive" aria-hidden="true">*</span>{" "}
-                Path
+                Route
               </Label>
               <div className={getFieldClassName(Boolean(configFieldErrors.channelCode), "flex min-h-10 items-center bg-muted/20 px-3 text-sm font-medium")}>
                 {channelLabel}
@@ -267,10 +260,10 @@ export function ConfigStep({
           ) : (
             <div className="md:col-span-2">
               <SelectField
-                label="Path"
+                label="Route"
                 value={config.channelCode}
                 options={channelOptions}
-                placeholder="Choose a path"
+                placeholder="Choose a route"
                 disabled={isChannelLocked}
                 error={configFieldErrors.channelCode}
                 required
@@ -324,15 +317,15 @@ export function ConfigStep({
               />
             </div>
           ) : null}
-          {hasEpvService ? (
+          {showOptType ? (
             <SelectField
-              label="EPV Type"
-              value={config.epvType ?? ""}
-              options={dictionaries.epvTypes}
-              placeholder="Choose an EPV type"
-              error={configFieldErrors.epvType}
+              label="Opt Type"
+              value={config.optType ?? ""}
+              options={optTypeOptions}
+              placeholder="Choose an Opt Type"
+              error={configFieldErrors.optType}
               required
-              onChange={onConfigValueChange(config, onChange, "epvType")}
+              onChange={onConfigValueChange(config, onChange, "optType")}
             />
           ) : null}
           {hasFilingService && config.channelCode === "pct" ? (
@@ -370,7 +363,7 @@ export function ConfigStep({
             required
             onChange={onConfigValueChange(config, onChange, "sourceLanguage")}
           />
-          {config.channelCode === "ep" ? (
+          {showEpCountries ? (
             <EpCountryMultiSelectField
               values={config.epCountryIds}
               options={dictionaries.epCountries}
@@ -384,7 +377,7 @@ export function ConfigStep({
                 })
               }
             />
-          ) : (
+          ) : config.channelCode !== "ep" ? (
             <MultiSelectField
               label="Jurisdictions"
               values={config.jurisdictionCodes}
@@ -403,25 +396,6 @@ export function ConfigStep({
                 })
               }
             />
-          )}
-          {isTranslationOnlyService ? (
-            <Field label="Due date">
-              <Input
-                aria-invalid={Boolean(configFieldErrors.dueAt)}
-                className={getFieldClassName(Boolean(configFieldErrors.dueAt))}
-                ref={dueDateRef}
-                value={config.dueAt}
-                type="date"
-                min={getTomorrowDateInputValue()}
-                onClick={openDueDatePicker}
-                onChange={(event) =>
-                  onChange({ ...config, dueAt: event.target.value })
-                }
-              />
-              {configFieldErrors.dueAt ? (
-                <p className="text-sm text-destructive">{configFieldErrors.dueAt}</p>
-              ) : null}
-            </Field>
           ) : null}
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="customScope">
@@ -466,7 +440,7 @@ function ServiceTypeField(props: {
   )?.value;
 
   return (
-    <Field label="Service type" required>
+    <Field label="Service Type" required>
       <Select
         value={selectedValue}
         onValueChange={(value) => props.onChange(value as ServiceTypeSelectionValue)}

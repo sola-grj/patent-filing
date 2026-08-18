@@ -9,8 +9,10 @@ import type {
 } from "@/features/requester/wizard-types";
 import { HUMAN_TRANSLATION_QUALITY_LEVEL } from "@/features/requester/options";
 import {
+  isTraditionalValidation,
   isAllowedServiceTypeConfig,
   normalizeServiceTypeConfig,
+  requiresEpCountries,
 } from "@/features/requester/request-paths";
 import { validateFutureDateString } from "@/lib/validators/requester";
 
@@ -32,6 +34,7 @@ export const defaultWizardConfig: WizardConfig = {
   filingApplicationType: "",
   entityType: "",
   epvType: "",
+  optType: "",
   pctChapter: "",
   qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
   deliveryOption: "standard",
@@ -47,6 +50,7 @@ export type WizardConfigFieldErrors = Partial<Record<
   | "filingApplicationType"
   | "entityType"
   | "epvType"
+  | "optType"
   | "pctChapter"
   | "sourceLanguage"
   | "epCountryIds"
@@ -189,6 +193,7 @@ export function updateWizardChannel(
     filingType: "",
     filingApplicationType: "",
     epvType: "",
+    optType: "",
     pctChapter: channelCode === "pct" ? "chapter_i" : "",
     dueAt: "",
     epCountryIds: [],
@@ -228,6 +233,10 @@ export function normalizeWizardConfig(
     && serviceTypes[0] === "translation";
   const hasPctFilingService = channelCode === "pct"
     && serviceTypes.includes("filing");
+  const optType = isTraditionalValidation(serviceConfig.epvType)
+    && ["in", "out"].includes(merged.optType ?? "")
+    ? merged.optType as "in" | "out"
+    : "";
 
   return {
     ...merged,
@@ -235,6 +244,7 @@ export function normalizeWizardConfig(
     serviceTypes,
     dueAt: isTranslationOnlyService ? merged.dueAt : "",
     epvType: serviceConfig.epvType,
+    optType,
     pctChapter: hasPctFilingService && merged.pctChapter === "chapter_ii"
       ? "chapter_ii"
       : hasPctFilingService
@@ -243,7 +253,9 @@ export function normalizeWizardConfig(
     jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
-    epCountryIds: normalizeEpCountryIds(config?.epCountryIds),
+    epCountryIds: requiresEpCountries(serviceTypes)
+      ? normalizeEpCountryIds(config?.epCountryIds)
+      : [],
     scopeType: "full_text",
     qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
   };
@@ -297,6 +309,10 @@ export function validateWizardConfigFields(
     errors.epvType = "Select an EPV type before continuing.";
   }
 
+  if (isTraditionalValidation(config.epvType) && !config.optType) {
+    errors.optType = "Select an Opt Type before continuing.";
+  }
+
   if (
     hasPctFilingService
     && !["chapter_i", "chapter_ii"].includes(config.pctChapter ?? "")
@@ -308,7 +324,11 @@ export function validateWizardConfigFields(
     errors.sourceLanguage = "Select a source language before continuing.";
   }
 
-  if (config.channelCode === "ep" && !config.epCountryIds.length) {
+  if (
+    config.channelCode === "ep"
+    && requiresEpCountries(config.serviceTypes)
+    && !config.epCountryIds.length
+  ) {
     errors.epCountryIds = "Select at least one EP country before continuing.";
   }
 

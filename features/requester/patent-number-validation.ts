@@ -1,5 +1,5 @@
 export const EPV_PATENT_NUMBER_ERROR =
-  "For EPV, enter an EPO patent publication number or application number. For patents from other countries, select FIling-Pairs Convention.";
+  "For EP, enter an EPO patent publication number or application number. For patents from other countries, select FIling-Pairs Convention.";
 
 export function patentNumberErrorForPath(
   channelCode: string,

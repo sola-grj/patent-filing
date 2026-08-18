@@ -1,4 +1,5 @@
 import { sourceLanguageOptions } from "@/features/requester/options";
+import { requiresEpCountries } from "@/features/requester/request-paths";
 import type {
   WizardConfig,
   WizardDictionaries,
@@ -42,11 +43,15 @@ export function buildEstimateRowsForConfig(
   const translationWords = includeTranslation ? translationWordCount : 0;
   const translationRequirement = resolveTranslationRequirement(config.scopeType);
 
-  const destinations = config.channelCode === "ep" && config.epCountryIds.length
-    ? config.epCountryIds.map((countryId) => ({
+  const destinations = config.channelCode === "ep"
+    ? config.epCountryIds.length
+      ? config.epCountryIds.map((countryId) => ({
         label: dictionaries.epCountries.find((country) => country.id === countryId)?.name
           ?? String(countryId),
       }))
+      : requiresEpCountries(config.serviceTypes)
+        ? []
+        : [{ label: "EPO" }]
     : config.jurisdictionCodes.map((jurisdictionCode) => ({
         label: labelFor(dictionaries.jurisdictions, jurisdictionCode),
       }));
@@ -74,7 +79,7 @@ export function buildEstimateRowsForConfig(
 }
 
 export function hasTranslationPricingForServiceTypes(serviceTypes: string[]) {
-  return serviceTypes.includes("translation") || serviceTypes.includes("epv");
+  return serviceTypes.includes("translation");
 }
 
 export function labelFor(

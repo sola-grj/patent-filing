@@ -70,7 +70,7 @@ export function SourceStep(props: {
   return (
     <StepShell
       title="Create a request"
-      description="Choose the intake path first. FIling-Pairs Convention, Filing-PCT, and EPV use patent number search. Upload switches the intake area to file staging."
+      description="Choose the intake route first. FIling-Pairs Convention, Filing-PCT, and EP use patent number search. Upload switches the intake area to file staging."
     >
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-6 overflow-hidden">
         <div className="grid shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -7,13 +7,17 @@ import { formatDate } from "@/features/requester/format";
 import {
   channelOptions,
   entityTypeOptions,
-  epvTypeOptions,
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
   serviceTypeOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
+import {
+  isTraditionalValidation,
+  requiresEpCountries,
+  resolveServiceTypeSelection,
+} from "@/features/requester/request-paths";
 import type { WizardConfig } from "@/features/requester/wizard-types";
 import type { ReactNode } from "react";
 
@@ -38,26 +42,33 @@ export function PmRequestOverview({
 }) {
   const serviceTypes = config.serviceTypes ?? [];
   const showFilingFields = serviceTypes.includes("filing");
-  const showEpvType = serviceTypes.includes("epv");
+  const showOptType = isTraditionalValidation(config.epvType);
+  const showDestinations = config.channelCode !== "ep"
+    || requiresEpCountries(serviceTypes);
+  const serviceTypeLabel = resolveServiceTypeSelection(
+    config.channelCode,
+    serviceTypes,
+    config.epvType,
+  )?.label ?? labelForMany(serviceTypeOptions, serviceTypes);
   const showDueDate = serviceTypes.includes("translation") && Boolean(config.dueAt);
   const items: Array<{ label: string; value: ReactNode; wide?: boolean }> = [
     { label: "Organization", value: organizationName },
     { label: "Submitted", value: formatDate(request.submitted_at) },
     { label: "Updated", value: formatDate(request.updated_at) },
     {
-      label: "Channel",
+      label: "Route",
       value: channelLabel(config.channelCode || request.channel_code),
     },
-    { label: "Service type", value: labelForMany(serviceTypeOptions, serviceTypes) },
+    { label: "Service type", value: serviceTypeLabel },
     { label: "Source Language", value: labelFor(sourceLanguageOptions, config.sourceLanguage) },
-    {
+    ...(showDestinations ? [{
       label: config.epCountryIds.length ? "EP countries" : "Jurisdictions",
       value: config.epCountryIds.length
         ? config.epCountryIds.map((id) =>
             epCountries.find((country) => country.id === id)?.name ?? `EP country ${id}`,
           ).join(", ") || "-"
         : labelForMany(jurisdictionOptions, config.jurisdictionCodes),
-    },
+    }] : []),
     { label: "Delivery option", value: titleCase(config.deliveryOption) },
     ...(showFilingFields
       ? [
@@ -69,8 +80,8 @@ export function PmRequestOverview({
           { label: "Entity type", value: labelFor(entityTypeOptions, config.entityType) },
         ]
       : []),
-    ...(showEpvType
-      ? [{ label: "EPV type", value: labelFor(epvTypeOptions, config.epvType) }]
+    ...(showOptType
+      ? [{ label: "Opt Type", value: titleCase(config.optType) }]
       : []),
     ...(showDueDate
       ? [{ label: "Due date", value: formatDate(config.dueAt) }]

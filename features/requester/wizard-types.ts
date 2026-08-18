@@ -91,6 +91,7 @@ export type WizardConfig = {
   filingApplicationType?: string;
   entityType?: string;
   epvType?: string;
+  optType?: "in" | "out" | "";
   pctChapter?: "chapter_i" | "chapter_ii" | "";
   qualityLevel: string;
   deliveryOption: string;

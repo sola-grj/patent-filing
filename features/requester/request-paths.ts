@@ -1,27 +1,20 @@
 export const requestPathLabels: Record<string, string> = {
-  ep: "EPV",
+  ep: "EP",
   pct: "Filing-PCT",
   paris_convention: "FIling-Pairs Convention",
 };
 
 export const serviceTypeSelections = [
   {
-    value: "translation",
-    label: "Translation",
-    channelCode: "all",
-    serviceTypes: ["translation"],
-    epvType: "",
-  },
-  {
     value: "ep_granting",
-    label: "European Patent Granting",
+    label: "EP Granting",
     channelCode: "ep",
     serviceTypes: ["european_patent_grant_registration"],
     epvType: "",
   },
   {
     value: "ep_validation",
-    label: "European Patent Validation",
+    label: "Traditional Validation",
     channelCode: "ep",
     serviceTypes: ["epv"],
     epvType: "traditional_validation",
@@ -35,14 +28,14 @@ export const serviceTypeSelections = [
   },
   {
     value: "ep_granting_translation",
-    label: "European Patent Granting + Translation",
+    label: "EP Granting + Translation",
     channelCode: "ep",
     serviceTypes: ["european_patent_grant_registration", "translation"],
     epvType: "",
   },
   {
     value: "ep_validation_translation",
-    label: "European Patent Validation + Translation",
+    label: "Traditional Validation + Translation",
     channelCode: "ep",
     serviceTypes: ["epv", "translation"],
     epvType: "traditional_validation",
@@ -89,7 +82,7 @@ export type ServiceTypeSelectionValue = ServiceTypeSelection["value"];
 
 export function getServiceTypeSelections(channelCode: string) {
   return serviceTypeSelections.filter((option) =>
-    option.channelCode === "all" || option.channelCode === channelCode
+    option.channelCode === channelCode
   );
 }
 
@@ -128,6 +121,14 @@ export function isAllowedServiceTypeConfig(
   epvType?: string,
 ) {
   return Boolean(resolveServiceTypeSelection(channelCode, serviceTypes, epvType));
+}
+
+export function requiresEpCountries(serviceTypes: readonly string[]) {
+  return !serviceTypes.includes("european_patent_grant_registration");
+}
+
+export function isTraditionalValidation(epvType?: string) {
+  return epvType === "traditional_validation";
 }
 
 function resolveLegacyEpvSelection(

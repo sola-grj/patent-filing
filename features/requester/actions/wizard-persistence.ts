@@ -12,7 +12,11 @@ import {
   HUMAN_TRANSLATION_QUALITY_LEVEL,
   jurisdictionOptions,
 } from "@/features/requester/options";
-import { isAllowedServiceTypeConfig } from "@/features/requester/request-paths";
+import {
+  isAllowedServiceTypeConfig,
+  isTraditionalValidation,
+  requiresEpCountries,
+} from "@/features/requester/request-paths";
 import {
   getAuthenticatedUser,
   getRequesterOrganization,
@@ -299,7 +303,11 @@ async function verifySubmittedPatentPayload(
 
 function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
-  if (config.channelCode === "ep" && !config.epCountryIds.length) {
+  if (
+    config.channelCode === "ep"
+    && requiresEpCountries(config.serviceTypes)
+    && !config.epCountryIds.length
+  ) {
     throw new Error("Select at least one EP country.");
   }
   if (config.channelCode !== "ep" && !config.jurisdictionCodes.length) {
@@ -321,6 +329,12 @@ function validateCommercialFields(payload: WizardPayload) {
   }
   if (config.serviceTypes.includes("epv") && !config.epvType) {
     throw new Error("EPV type is required for EPV.");
+  }
+  if (
+    isTraditionalValidation(config.epvType)
+    && !["in", "out"].includes(config.optType ?? "")
+  ) {
+    throw new Error("Opt Type must be In or Out for Traditional Validation.");
   }
   if (
     config.channelCode === "pct"
@@ -367,9 +381,16 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   payload.config.epCountryIds = normalizeEpCountryIds(payload.config.epCountryIds);
   if (payload.config.channelCode === "ep") {
     payload.config.jurisdictionCodes = [];
+    if (!requiresEpCountries(payload.config.serviceTypes)) {
+      payload.config.epCountryIds = [];
+    }
   } else {
     payload.config.epCountryIds = [];
   }
+  payload.config.optType = isTraditionalValidation(payload.config.epvType)
+    && ["in", "out"].includes(payload.config.optType ?? "")
+    ? payload.config.optType
+    : "";
   payload.config.scopeType = "full_text";
   payload.config.qualityLevel = HUMAN_TRANSLATION_QUALITY_LEVEL;
   return payload;
@@ -1080,6 +1101,7 @@ async function createInitialQuote(
     applicationType: payload.config.filingApplicationType || null,
     entityType: payload.config.entityType || null,
     epvType: payload.config.epvType || null,
+    optType: payload.config.optType || null,
     pctChapter: payload.config.pctChapter || null,
   };
 
