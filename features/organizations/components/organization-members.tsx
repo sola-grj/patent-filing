@@ -31,7 +31,7 @@ export function OrganizationMembers({
             <div key={member.user_id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
               <div>
                 <p className="text-sm font-medium">{member.profile?.display_name || member.profile?.email || "Member"}</p>
-                {member.profile?.display_name && member.profile.email ? <p className="text-xs text-muted-foreground">{member.profile.email}</p> : null}
+                {member.profile?.display_name && visibleEmail(member.profile.email) ? <p className="text-xs text-muted-foreground">{member.profile.email}</p> : null}
               </div>
               <Badge variant="outline">{member.is_org_admin ? "Customer admin" : "Member"}</Badge>
             </div>
@@ -56,4 +56,8 @@ export function OrganizationMembers({
       </section>
     </div>
   );
+}
+
+function visibleEmail(email?: string | null) {
+  return email && !email.toLowerCase().endsWith("@login.invalid");
 }

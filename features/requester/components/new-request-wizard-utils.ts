@@ -15,11 +15,12 @@ import {
   requiresEpCountries,
 } from "@/features/requester/request-paths";
 import { validateFutureDateString } from "@/lib/validators/requester";
+import type { ErpQuoteCurrencyCode } from "@/lib/eci-erp/types";
 
 export const wizardSteps = [
   { title: "Source", description: "Search by patent number or upload source files." },
   { title: "Configure", description: "Set languages, scope, and timing." },
-  { title: "Quote", description: "Review the mock quote before submission." },
+  { title: "Quote", description: "Review the live ERP quote before submission." },
 ];
 
 export const defaultWizardConfig: WizardConfig = {
@@ -68,6 +69,7 @@ export function buildWizardPayload(input: {
   uploadedFiles: File[];
   uploadedFileSnapshots?: WizardUploadedFile[];
   analysis?: WizardPatentAnalysisResult;
+  quoteCurrency: ErpQuoteCurrencyCode;
   config: WizardConfig;
   lastStep: string;
 }): WizardPayload {
@@ -81,6 +83,7 @@ export function buildWizardPayload(input: {
       ? input.uploadedFiles.map(fileToUploadedFile)
       : input.uploadedFileSnapshots ?? [],
     analysis: input.analysis,
+    quoteCurrency: input.quoteCurrency,
     config: {
       ...input.config,
       scopeType: "full_text",

@@ -59,13 +59,3 @@ export function sumParseMetric(files: Array<Record<string, unknown>>, metric: st
     return total + Number(result?.[metric] ?? 0);
   }, 0);
 }
-
-export function calculateQuote(wordCount: number, qualityLevel: string, urgent: boolean) {
-  const qualityFactor = qualityLevel.includes("review")
-    ? 1.65
-    : qualityLevel.includes("patent")
-      ? 1.35
-      : 1;
-  const urgentFactor = urgent ? 1.25 : 1;
-  return Math.round(wordCount * 0.12 * qualityFactor * urgentFactor);
-}

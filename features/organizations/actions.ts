@@ -41,6 +41,50 @@ export async function createCustomerOrganization(
   }
 }
 
+export async function resetErpCustomerPassword(
+  _previous: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  try {
+    const context = await requirePmContext();
+    if (context.denied || !context.isSupplierAdmin) {
+      throw new Error("Only a supplier administrator can reset customer passwords.");
+    }
+    const organizationId = requiredText(formData, "organizationId", "Organization");
+    const clientId = requiredText(formData, "clientId", "ERP client");
+    const service = createServiceClient();
+    const { data: account, error: accountError } = await service
+      .from("eci_erp_customers")
+      .select("auth_user_id, client_name, is_black")
+      .eq("client_id", clientId)
+      .eq("organization_id", organizationId)
+      .single();
+    if (accountError || !account.auth_user_id) throw new Error("ERP customer account not found.");
+    if (account.is_black) throw new Error("A blacklisted customer account cannot be reset.");
+    const initialPassword = process.env.ECI_ERP_INITIAL_PASSWORD ?? "password";
+    const { error: authError } = await service.auth.admin.updateUserById(
+      account.auth_user_id,
+      { password: initialPassword },
+    );
+    if (authError) throw new Error("Unable to reset the customer password.");
+    const { error: profileError } = await service
+      .from("profiles")
+      .update({ password_setup_required: true })
+      .eq("user_id", account.auth_user_id);
+    if (profileError) throw new Error("Unable to require a new customer password.");
+    await service.from("organization_audit_events").insert({
+      organization_id: organizationId,
+      actor_id: context.userId,
+      event_type: "eci_erp_customer.password_reset",
+      payload: { clientId, clientName: account.client_name },
+    });
+    revalidatePath(`/pm/customers/${organizationId}`);
+    return { success: true, message: "Password reset to the initial value; change is required at next login." };
+  } catch (error) {
+    return { success: false, message: errorMessage(error) };
+  }
+}
+
 export async function inviteOrganizationMember(
   _previous: OrganizationActionState,
   formData: FormData,

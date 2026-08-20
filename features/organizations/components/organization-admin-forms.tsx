@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import {
   createCustomerOrganization,
   inviteOrganizationMember,
+  resetErpCustomerPassword,
 } from "@/features/organizations/actions";
 import { initialOrganizationActionState } from "@/features/organizations/types";
 
@@ -89,6 +90,39 @@ export function InviteOrganizationMemberForm({
       <Button type="submit" disabled={pending}>
         {pending ? "Sending..." : "Send invitation"}
       </Button>
+    </form>
+  );
+}
+
+export function ResetErpCustomerPasswordForm({
+  organizationId,
+  clientId,
+  clientName,
+  disabled,
+}: {
+  organizationId: string;
+  clientId: number;
+  clientName: string;
+  disabled?: boolean;
+}) {
+  const [state, action, pending] = useActionState(
+    resetErpCustomerPassword,
+    initialOrganizationActionState,
+  );
+  return (
+    <form action={action} className="rounded-xl border bg-card p-5">
+      <input type="hidden" name="organizationId" value={organizationId} />
+      <input type="hidden" name="clientId" value={clientId} />
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="font-medium">{clientName}</p>
+          <p className="text-xs text-muted-foreground">ERP client ID {clientId}</p>
+        </div>
+        <Button type="submit" variant="outline" disabled={pending || disabled}>
+          {pending ? "Resetting..." : "Reset to initial password"}
+        </Button>
+      </div>
+      {state.message ? <div className="mt-3"><ActionMessage state={state} /></div> : null}
     </form>
   );
 }

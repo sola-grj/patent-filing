@@ -4,17 +4,26 @@ import { ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { Table } from "@radix-ui/themes";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 import type {
-  WizardDictionaries,
   WizardPatentAnalysisFile,
   WizardPatentAnalysisStatus,
   WizardPayload,
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import {
-  buildEstimateRows,
-  hasTranslationPricing,
-} from "./new-request-quote-pricing";
+  ERP_QUOTE_CURRENCIES,
+  isErpQuoteCurrencyCode,
+  type ErpQuoteCurrencyCode,
+  type ErpQuotePreview,
+} from "@/lib/eci-erp/types";
 import { StepShell } from "./new-request-wizard-shared";
 import { PatentProcessingNotice } from "./patent-processing-notice";
 import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
@@ -22,22 +31,23 @@ import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
 export function QuoteStepContent({
   payload,
   action,
-  dictionaries,
   analysisStatus = payload.analysis ? "complete" : "idle",
   analysisError,
   onAnalysisRetry,
+  estimate,
+  currency,
+  onCurrencyChange,
 }: {
   payload: WizardPayload;
   action?: ReactNode;
-  dictionaries: WizardDictionaries;
   analysisStatus?: WizardPatentAnalysisStatus;
   analysisError?: string;
   onAnalysisRetry?: () => void;
+  estimate: ErpQuotePreview | null;
+  currency: ErpQuoteCurrencyCode;
+  onCurrencyChange: (currency: ErpQuoteCurrencyCode) => void;
 }) {
   const analysisReady = hasUsablePatentAnalysis(payload);
-  const estimateRows = buildEstimateRows(payload, dictionaries);
-  const includeTranslation = hasTranslationPricing(payload);
-  const total = estimateRows.reduce((sum, row) => sum + row.total, 0);
 
   return (
     <StepShell
@@ -67,75 +77,76 @@ export function QuoteStepContent({
                 Estimate
               </p>
               <h3 className="mt-2 text-2xl font-semibold tracking-tight">
-                {analysisReady ? formatCurrency(total) : "Pending"}
+                {estimate ? formatCurrency(estimate.total, estimate.currency) : "Pending"}
               </h3>
               <p className="mt-2 text-sm text-muted-foreground">
                 {analysisReady
-                  ? "Calculated from the current request configuration and analyzed patent data."
+                  ? "Live estimate returned by ECI ERP for the current request configuration."
                   : "Word counts and estimate details will appear when patent processing completes."}
               </p>
             </div>
-            {action ? <div className="shrink-0">{action}</div> : null}
+            <div className="flex shrink-0 items-center gap-2">
+              <Select
+                value={currency}
+                onValueChange={(value) => {
+                  if (isErpQuoteCurrencyCode(value)) onCurrencyChange(value);
+                }}
+              >
+                <SelectTrigger className="w-[180px]" aria-label="Quote currency">
+                  <SelectValue placeholder="Currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ERP_QUOTE_CURRENCIES.map((option) => (
+                    <SelectItem key={option.code} value={option.code}>
+                      {option.code} · {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {action}
+            </div>
           </div>
           <div className="overflow-hidden">
-            {analysisReady && estimateRows.length ? (
+            {analysisReady && estimate?.rows.length ? (
               <Table.Root
                 size="2"
                 variant="ghost"
                 layout="fixed"
-                className={includeTranslation
-                  ? "w-full table-fixed text-xs [&_td]:!px-2 [&_th]:!px-2"
-                  : "w-full"}
+                className="w-full table-fixed text-xs [&_td]:!px-3 [&_th]:!px-3"
               >
                 <Table.Header>
                   <Table.Row className="hover:bg-transparent">
-                    <Table.ColumnHeaderCell className={includeTranslation ? "w-[10%]" : undefined}>Jurisdiction</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell className={includeTranslation ? "w-[10%]" : undefined}>Source Language</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell className={includeTranslation ? "w-[8%]" : undefined} justify="end">Filing Fee</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell className={includeTranslation ? "w-[8%]" : undefined} justify="end">Official Fee</Table.ColumnHeaderCell>
-                    {includeTranslation ? (
-                      <>
-                        <Table.ColumnHeaderCell className="w-[16%] leading-tight" justify="center">Translation Requirement</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell className="w-[12%] leading-tight" justify="center">Translation Words</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell className="w-[11%]" justify="end">Unit Price</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell className="w-[13%] leading-tight" justify="end">Translation Fee</Table.ColumnHeaderCell>
-                      </>
-                    ) : null}
-                    <Table.ColumnHeaderCell className={includeTranslation ? "w-[12%]" : undefined} justify="end">Total</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Country</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Official Fee</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Service Fee</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Translation Fee</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
-                  {estimateRows.map((row) => (
-                    <Table.Row key={row.jurisdiction}>
+                  {estimate.rows.map((row) => (
+                    <Table.Row key={row.countryId}>
                       <Table.RowHeaderCell className="font-medium">
-                        {row.jurisdiction}
+                        {row.countryName}
                       </Table.RowHeaderCell>
-                      <Table.Cell>{row.sourceLanguage}</Table.Cell>
-                      <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.filingFee)}</Table.Cell>
-                      <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.officialFee)}</Table.Cell>
-                      {includeTranslation ? (
-                        <>
-                          <Table.Cell justify="center">{row.translationRequirement}</Table.Cell>
-                          <Table.Cell className="whitespace-nowrap" justify="center">{row.translationWords.toLocaleString()}</Table.Cell>
-                          <Table.Cell className="whitespace-nowrap" justify="end">{formatUnitPrice(row.translationUnitPrice)}</Table.Cell>
-                          <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.translationFee)}</Table.Cell>
-                        </>
-                      ) : null}
+                      <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.officialFee, estimate.currency)}</Table.Cell>
+                      <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.serviceFee, estimate.currency)}</Table.Cell>
+                      <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.translationFee, estimate.currency)}</Table.Cell>
                       <Table.Cell justify="end" className="whitespace-nowrap font-semibold">
-                        {formatCurrency(row.total)}
+                        {formatCurrency(row.total, estimate.currency)}
                       </Table.Cell>
                     </Table.Row>
                   ))}
                   <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
                     <Table.Cell
-                      colSpan={includeTranslation ? 8 : 4}
+                      colSpan={4}
                       justify="end"
                       className="text-sm font-semibold"
                     >
                       Estimated Total
                     </Table.Cell>
                     <Table.Cell justify="end" className="text-base font-semibold">
-                      {formatCurrency(total)}
+                      {formatCurrency(estimate.total, estimate.currency)}
                     </Table.Cell>
                   </Table.Row>
                 </Table.Body>
@@ -143,7 +154,7 @@ export function QuoteStepContent({
             ) : (
               <div className="px-6 py-10 text-sm text-muted-foreground">
                 {analysisReady
-                  ? "Estimate rows will appear after at least one jurisdiction is selected."
+                  ? "No live ERP estimate is available for this configuration."
                   : "No provisional or mock word counts are shown while patent processing is incomplete."}
               </div>
             )}
@@ -219,15 +230,11 @@ function findAnalysisFile(
   );
 }
 
-function formatCurrency(value: number) {
+function formatCurrency(value: number, currency = "EUR") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "EUR",
+    currency,
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(value);
-}
-
-function formatUnitPrice(value: number) {
-  return `${formatCurrency(value)} / word`;
 }

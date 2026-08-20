@@ -1,5 +1,6 @@
 import { requirePmContext } from "@/features/pm/server-utils";
 import { getRequesterOrganization } from "@/features/requester/server-utils";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export async function getSupplierCustomers() {
   const context = await requirePmContext();
@@ -47,9 +48,18 @@ export async function getSupplierCustomer(organizationId: string) {
   if (relationshipError) throw new Error(relationshipError.message);
   if (!relationship) return { denied: true as const, customer: null };
 
+  const service = createServiceClient();
+  const { data: erpAccounts, error: erpAccountsError } = await service
+    .from("eci_erp_customers")
+    .select("client_id, client_name, is_black, auth_user_id, sync_error, last_synced_at")
+    .eq("organization_id", organizationId)
+    .order("client_name");
+  if (erpAccountsError) throw new Error(erpAccountsError.message);
+
   return {
     denied: false as const,
     customer: await loadOrganization(context.supabase, organizationId),
+    erpAccounts: erpAccounts ?? [],
   };
 }
 

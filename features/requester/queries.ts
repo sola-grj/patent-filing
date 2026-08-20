@@ -172,11 +172,17 @@ type OrderAssignmentContacts = {
 
 export async function getRequesterDashboard() {
   const { supabase, userId, email, organization } = await getRequesterOrganization();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const accountLabel = profile?.display_name || email;
 
   if (!organization) {
     return {
       organization: null,
-      email,
+      email: accountLabel,
       stats: null,
       recentRequests: [],
       recentDrafts: [],
@@ -219,7 +225,7 @@ export async function getRequesterDashboard() {
 
   return {
     organization,
-    email,
+    email: accountLabel,
     stats: {
       responding: activeRequests.filter((request) => request.requester_status === "responding").length,
       negotiating: activeRequests.filter((request) => request.requester_status === "negotiation").length,

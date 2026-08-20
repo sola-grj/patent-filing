@@ -113,7 +113,9 @@ type Quote = {
   version_no: number;
   total_amount?: number | string | null;
   currency?: string | null;
-  pricing_snapshot?: { wordCount?: number | null } | null;
+  pricing_snapshot?: unknown;
+  breakdown_json?: unknown;
+  quote_items?: Array<{ label: string; amount: number | string }> | null;
 };
 
 type QuoteNegotiationMessage = {
@@ -213,12 +215,6 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const patentCandidate = isPatentSearch && patent ? toPatentCandidate(patent) : null;
   const patentFile = files.find((file) => file.source === "patent_search");
   const patentFileStatus = patentFile?.status;
-  const translationWordCount = resolveTranslationWordCount(
-    config,
-    latestQuote,
-    patent,
-    uploadedFiles,
-  );
   const entityType = requirement?.entity_type_code
     ?? requirement?.entity_type
     ?? config.entityType;
@@ -447,9 +443,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             />
           )}
           <RequestQuoteSheet
-            config={config}
-            translationWordCount={translationWordCount}
-            epCountries={epCountries}
+            quote={latestQuote}
           />
         </div>
       </div>
@@ -500,36 +494,6 @@ function resolveRequestConfig(
       ?? requirement?.scope_details?.customScope
       ?? undefined,
   };
-}
-
-function resolveTranslationWordCount(
-  config: WizardConfig,
-  quote: Quote | null | undefined,
-  patent: RequestPatent | null,
-  files: RequestInformationFile[],
-) {
-  if (config.scopeType === "no_translation") {
-    return 0;
-  }
-
-  if (config.scopeType === "claims_only") {
-    return patent?.claims_word_count ?? 0;
-  }
-
-  const patentWordCount = patent
-    ? Number(patent.abstract_word_count ?? 0)
-      + Number(patent.description_word_count ?? 0)
-      + Number(patent.claims_word_count ?? 0)
-    : 0;
-  const uploadedFileWordCount = files.reduce((total, file) => {
-    const parseResult = firstRelation(file.file_parse_results);
-    return total + Number(parseResult?.word_count ?? 0);
-  }, 0);
-
-  return quote?.pricing_snapshot?.wordCount
-    || patentWordCount
-    || uploadedFileWordCount
-    || 0;
 }
 
 function toPatentCandidate(patent: RequestPatent): WizardPatentCandidate {

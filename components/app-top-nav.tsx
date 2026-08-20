@@ -14,6 +14,14 @@ export async function AppTopNav({
   links?: AppTopNavLink[];
 }) {
   const user = await getOptionalAuthenticatedUser();
+  const { data: profile } = user
+    ? await user.supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("user_id", user.userId)
+        .maybeSingle()
+    : { data: null };
+  const accountLabel = profile?.display_name || user?.email || null;
 
   return (
     <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -38,7 +46,7 @@ export async function AppTopNav({
           ) : null}
         </div>
         <div className="min-w-0 shrink-0">
-          <UserAccountMenu email={user?.email ?? null} />
+          <UserAccountMenu email={accountLabel} />
         </div>
       </nav>
     </div>

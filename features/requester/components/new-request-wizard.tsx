@@ -38,9 +38,15 @@ import { sourceLanguageOptions } from "@/features/requester/options";
 import { validateUploadFiles } from "@/lib/validators/requester";
 import {
   saveRequestDraft,
+  generateErpEstimate,
   submitNegotiationFromWizard,
   submitRequestFromWizard,
 } from "@/features/requester/actions";
+import {
+  isErpQuoteCurrencyCode,
+  type ErpQuoteCurrencyCode,
+  type ErpQuotePreview,
+} from "@/lib/eci-erp/types";
 import type {
   WizardConfig,
   WizardDraftSession,
@@ -108,6 +114,12 @@ export function NewRequestWizard({
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploadedFileSnapshots, setUploadedFileSnapshots] = useState<WizardUploadedFile[]>(initialPayload?.uploadedFiles ?? []);
   const [config, setConfig] = useState<WizardConfig>(initialConfig);
+  const [quoteCurrency, setQuoteCurrency] = useState<ErpQuoteCurrencyCode>(
+    isErpQuoteCurrencyCode(initialPayload?.quoteCurrency)
+      ? initialPayload.quoteCurrency
+      : "EUR",
+  );
+  const [quotePreview, setQuotePreview] = useState<ErpQuotePreview | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [negotiationOpen, setNegotiationOpen] = useState(false);
   const [negotiationDraft, setNegotiationDraft] = useState<WizardNegotiationDraft>({
@@ -247,6 +259,7 @@ export function NewRequestWizard({
       uploadedFiles,
       uploadedFileSnapshots,
       analysis: analysis.result,
+      quoteCurrency,
       config,
       lastStep: wizardSteps[step].title,
     });
@@ -265,10 +278,31 @@ export function NewRequestWizard({
   }
 
   function handleConfigChange(nextConfig: WizardConfig) {
+    setQuotePreview(null);
     setConfig(nextConfig);
   }
 
-  function goNext() {
+  async function handleQuoteCurrencyChange(nextCurrency: ErpQuoteCurrencyCode) {
+    if (nextCurrency === quoteCurrency || !quotePreview) return;
+    setStepLoadingMessage(`Recalculating estimate in ${nextCurrency}`);
+    setError(null);
+    try {
+      const result = await generateErpEstimate({
+        ...payload,
+        quoteCurrency: nextCurrency,
+      });
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setQuoteCurrency(nextCurrency);
+      setQuotePreview(result.data);
+    } finally {
+      setStepLoadingMessage(null);
+    }
+  }
+
+  async function goNext() {
     if (step === 0 && sourceMode === "patent_search") {
       if (!selectedPatent) {
         setError("Search for a patent before continuing.");
@@ -307,24 +341,22 @@ export function NewRequestWizard({
         return;
       }
 
-      void runStepTransition("Parsing quote details", () => {
+      setStepLoadingMessage("Requesting live estimate from ECI ERP");
+      try {
+        const result = await generateErpEstimate(payload);
+        if (!result.success) {
+          setError(result.error);
+          return;
+        }
+        setQuotePreview(result.data);
         setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
-      });
+      } finally {
+        setStepLoadingMessage(null);
+      }
       return;
     }
 
     setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
-  }
-
-  async function runStepTransition(message: string, action: () => void) {
-    setStepLoadingMessage(message);
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 900));
-      action();
-    } finally {
-      setStepLoadingMessage(null);
-    }
   }
 
   function buildNegotiationFormData() {
@@ -383,6 +415,8 @@ export function NewRequestWizard({
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
     setConfig(defaultWizardConfig);
+    setQuoteCurrency("EUR");
+    setQuotePreview(null);
     setShowConfigValidation(false);
     setCancelOpen(false);
     setNegotiationOpen(false);
@@ -496,6 +530,8 @@ export function NewRequestWizard({
                 config={config}
                 configFieldErrors={configFieldErrors}
                 payload={payload}
+                quotePreview={quotePreview}
+                quoteCurrency={quoteCurrency}
                 analysisStatus={analysis.status}
                 analysisResult={analysis.result}
                 analysisError={analysis.error}
@@ -533,6 +569,9 @@ export function NewRequestWizard({
                   );
                 }}
                 setConfig={handleConfigChange}
+                onQuoteCurrencyChange={(currency) => {
+                  void handleQuoteCurrencyChange(currency);
+                }}
                 dictionaries={dictionaries}
                 quoteAction={
                   <DropdownMenu>
@@ -610,7 +649,7 @@ export function NewRequestWizard({
                 }
                 onCancel={handleCancel}
                 onPrevious={() => setStep((current) => current - 1)}
-                onNext={goNext}
+                onNext={() => { void goNext(); }}
                 onSubmit={() => {
                   void persist(submitRequestFromWizard);
                 }}
@@ -706,6 +745,8 @@ function StepContent(props: {
   dictionaries: WizardDictionaries;
   configFieldErrors: WizardConfigFieldErrors;
   payload: WizardPayload;
+  quotePreview: ErpQuotePreview | null;
+  quoteCurrency: ErpQuoteCurrencyCode;
   analysisStatus: WizardPatentAnalysisStatus;
   analysisResult?: WizardPayload["analysis"];
   analysisError?: string;
@@ -722,6 +763,7 @@ function StepContent(props: {
   setUploadedFiles: (value: File[]) => void;
   removeUploadedFile: (index: number) => void;
   setConfig: (value: WizardConfig) => void;
+  onQuoteCurrencyChange: (value: ErpQuoteCurrencyCode) => void;
 }) {
   if (props.step === 0) {
     return (
@@ -778,8 +820,10 @@ function StepContent(props: {
   return (
     <QuoteStepContent
       payload={props.payload}
+      estimate={props.quotePreview}
+      currency={props.quoteCurrency}
+      onCurrencyChange={props.onQuoteCurrencyChange}
       action={props.quoteAction}
-      dictionaries={props.dictionaries}
       analysisStatus={props.analysisStatus}
       analysisError={props.analysisError}
       onAnalysisRetry={props.onAnalysisRetry}

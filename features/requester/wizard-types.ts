@@ -1,3 +1,5 @@
+import type { ErpQuoteCurrencyCode } from "@/lib/eci-erp/types";
+
 export type WizardSourceMode = "patent_search" | "upload";
 
 export type WizardPatentFile = {
@@ -218,6 +220,7 @@ export type WizardPayload = {
   selectedPatentFileIds: string[];
   uploadedFiles: WizardUploadedFile[];
   analysis?: WizardPatentAnalysisResult;
+  quoteCurrency?: ErpQuoteCurrencyCode;
   config: WizardConfig;
   lastStep: string;
 };

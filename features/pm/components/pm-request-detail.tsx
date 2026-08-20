@@ -55,7 +55,8 @@ type Quote = {
   currency?: string | null;
   estimated_delivery_at?: string | null;
   valid_until?: string | null;
-  pricing_snapshot?: { wordCount?: number | null } | null;
+  pricing_snapshot?: unknown;
+  breakdown_json?: unknown;
   quote_items?: QuoteItem[] | null;
 };
 
@@ -214,12 +215,6 @@ export function PmRequestDetail({
   )?.metadata ?? null;
   const isPatentSearch = request.source_mode === "patent_search";
   const config = resolveRequestConfig(request, requirement);
-  const translationWordCount = resolveTranslationWordCount(
-    config,
-    latestQuote,
-    patent,
-    patentCandidate,
-  );
   const order = firstRelation(request.orders);
   const files = request.request_files ?? [];
   const uploadedFiles = files.filter((file) => file.source === "upload");
@@ -337,9 +332,7 @@ export function PmRequestDetail({
               />
             )}
             <PmQuoteSheet
-              config={config}
-              translationWordCount={translationWordCount}
-              epCountries={request.ep_countries ?? []}
+              quote={latestQuote}
             />
             {SHOW_NEGOTIATION_HISTORY ? (
               negotiationHistory.length ? (
@@ -737,28 +730,6 @@ function resolveRequestConfig(
     customScope:
       snapshot.customScope ?? requirement?.scope_details?.customScope ?? undefined,
   };
-}
-
-function resolveTranslationWordCount(
-  config: WizardConfig,
-  quote?: Quote | null,
-  patent?: PmRequestPatent | null,
-  patentCandidate?: WizardPatentCandidate | null,
-) {
-  if (config.scopeType === "no_translation") return 0;
-  if (config.scopeType === "claims_only") {
-    return patent?.claims_word_count ?? patentCandidate?.claimsWordCount ?? 3324;
-  }
-
-  const storedWordCount = quote?.pricing_snapshot?.wordCount
-    ?? (patent
-      ? Number(patent.abstract_word_count ?? 0)
-        + Number(patent.description_word_count ?? 0)
-        + Number(patent.claims_word_count ?? 0)
-      : Number(patentCandidate?.abstractWordCount ?? 0)
-        + Number(patentCandidate?.descriptionWordCount ?? 0)
-        + Number(patentCandidate?.claimsWordCount ?? 0));
-  return storedWordCount || 23705;
 }
 
 function formatEventDateTime(value?: string | null) {

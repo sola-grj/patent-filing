@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
+import { loginWithEmailOrClientName } from "@/features/auth/login";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,7 +25,7 @@ export function LoginForm({
   nextPath?: string;
   notice?: string;
 }) {
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,16 +33,12 @@ export function LoginForm({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const supabase = createClient();
     setIsLoading(true);
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) throw error;
+      const result = await loginWithEmailOrClientName({ login, password });
+      if (!result.success) throw new Error(result.error);
       router.replace(safeNextPath(nextPath));
       router.refresh();
     } catch (error: unknown) {
@@ -58,7 +54,7 @@ export function LoginForm({
         <CardHeader>
           <CardTitle className="text-2xl">Login</CardTitle>
           <CardDescription>
-            Enter your email below to login to your account
+            Enter your email or ECI client name to login
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -70,14 +66,15 @@ export function LoginForm({
           <form onSubmit={handleLogin}>
             <div className="flex flex-col gap-6">
               <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="login">Email or client name</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
+                  id="login"
+                  type="text"
+                  autoComplete="username"
+                  placeholder="m@example.com or client name"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={login}
+                  onChange={(e) => setLogin(e.target.value)}
                 />
               </div>
               <div className="grid gap-2">

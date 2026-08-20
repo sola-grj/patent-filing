@@ -3,11 +3,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils";
 
 const REQUESTER_HOME_PATH = "/requester";
+const ERP_CUSTOMER_SYNC_PATH = "/api/cron/sync-erp-clients";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
+
+  // This server-to-server route authenticates with CRON_SECRET in its own
+  // handler. Requiring a Portal session here would redirect Vercel Cron to the
+  // login page before the Bearer secret can be checked.
+  if (request.nextUrl.pathname === ERP_CUSTOMER_SYNC_PATH) {
+    return supabaseResponse;
+  }
 
   // If the env vars are not set, skip proxy check. You can remove this
   // once you setup the project.

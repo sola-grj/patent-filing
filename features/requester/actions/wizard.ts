@@ -93,7 +93,7 @@ export async function submitNegotiationFromWizard(
     }
 
     if (!quote) {
-      throw new Error("The preview quote could not be created for negotiation.");
+      throw new Error("The ECI ERP quote could not be created for negotiation.");
     }
 
     await startQuoteNegotiation(
@@ -102,7 +102,7 @@ export async function submitNegotiationFromWizard(
       quote.id,
       userId,
       negotiationInput,
-      { source: "requester_wizard_preview", quoteId: quote.id },
+      { source: "eci_erp", quoteId: quote.id },
     );
     const submittedAt = new Date().toISOString();
     const { error: finalizeError } = await supabase

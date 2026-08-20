@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,6 +29,7 @@ import {
   optTypeOptions,
   sourceLanguageOptions,
 } from "@/features/requester/options";
+import { loadErpCountriesForWizard } from "@/features/requester/actions";
 import {
   getServiceTypeSelection,
   getServiceTypeSelections,
@@ -191,6 +192,43 @@ export function ConfigStep({
   const showOptType = isTraditionalValidation(config.epvType);
   const showEpCountries = config.channelCode === "ep"
     && requiresEpCountries(config.serviceTypes);
+  const [erpCountryOptions, setErpCountryOptions] = useState<WizardDictionaries["epCountries"]>([]);
+  const [countryLoadError, setCountryLoadError] = useState<string | null>(null);
+  const [countriesLoading, setCountriesLoading] = useState(false);
+  const [countryReloadKey, setCountryReloadKey] = useState(0);
+  const serviceTypesKey = [...config.serviceTypes].sort().join("|");
+
+  useEffect(() => {
+    if (!showEpCountries) {
+      setErpCountryOptions([]);
+      setCountryLoadError(null);
+      return;
+    }
+    let active = true;
+    setCountriesLoading(true);
+    setCountryLoadError(null);
+    void loadErpCountriesForWizard({
+      channelCode: config.channelCode,
+      serviceTypes: serviceTypesKey ? serviceTypesKey.split("|") : [],
+      epvType: config.epvType,
+    }).then((result) => {
+      if (!active) return;
+      if (!result.success) {
+        setErpCountryOptions([]);
+        setCountryLoadError(result.error);
+        return;
+      }
+      const availableIds = new Set(result.data.map((country) => country.id));
+      setErpCountryOptions(
+        dictionaries.epCountries.filter((country) => availableIds.has(country.id)),
+      );
+    }).catch(() => {
+      if (active) setCountryLoadError("Unable to load countries from ECI ERP.");
+    }).finally(() => {
+      if (active) setCountriesLoading(false);
+    });
+    return () => { active = false; };
+  }, [config.channelCode, config.epvType, dictionaries.epCountries, serviceTypesKey, showEpCountries, countryReloadKey]);
 
   function handleServiceTypeChange(serviceType: ServiceTypeSelectionValue) {
     const selection = getServiceTypeSelection(serviceType);
@@ -207,9 +245,7 @@ export function ConfigStep({
       entityType: config.entityType,
       epvType: selection.epvType,
       optType: isTraditionalValidation(selection.epvType) ? config.optType : "",
-      epCountryIds: requiresEpCountries(nextServiceTypes)
-        ? config.epCountryIds
-        : [],
+      epCountryIds: [],
       pctChapter: config.channelCode === "pct" && nextServiceTypes.includes("filing")
         ? config.pctChapter || "chapter_i"
         : "",
@@ -364,19 +400,31 @@ export function ConfigStep({
             onChange={onConfigValueChange(config, onChange, "sourceLanguage")}
           />
           {showEpCountries ? (
-            <EpCountryMultiSelectField
-              values={config.epCountryIds}
-              options={dictionaries.epCountries}
-              error={configFieldErrors.epCountryIds}
-              onToggle={(countryId, checked) =>
-                onChange({
-                  ...config,
-                  epCountryIds: checked
-                    ? [...new Set([...config.epCountryIds, countryId])]
-                    : config.epCountryIds.filter((item) => item !== countryId),
-                })
-              }
-            />
+            <div className="space-y-2">
+              <EpCountryMultiSelectField
+                values={config.epCountryIds}
+                options={erpCountryOptions}
+                error={configFieldErrors.epCountryIds}
+                disabled={countriesLoading || Boolean(countryLoadError)}
+                placeholder={countriesLoading ? "Loading ERP countries..." : "Choose EP countries"}
+                onToggle={(countryId, checked) =>
+                  onChange({
+                    ...config,
+                    epCountryIds: checked
+                      ? [...new Set([...config.epCountryIds, countryId])]
+                      : config.epCountryIds.filter((item) => item !== countryId),
+                  })
+                }
+              />
+              {countryLoadError ? (
+                <div className="flex items-center gap-3 text-sm text-destructive">
+                  <span>{countryLoadError}</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setCountryReloadKey((value) => value + 1)}>
+                    Retry
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           ) : config.channelCode !== "ep" ? (
             <MultiSelectField
               label="Jurisdictions"
@@ -557,6 +605,8 @@ function EpCountryMultiSelectField(props: {
   values: number[];
   options: WizardDictionaries["epCountries"];
   error?: string;
+  disabled?: boolean;
+  placeholder?: string;
   onToggle: (value: number, checked: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -581,10 +631,11 @@ function EpCountryMultiSelectField(props: {
             variant="outline"
             aria-invalid={Boolean(props.error)}
             aria-required
+            disabled={props.disabled}
             className={getFieldClassName(Boolean(props.error), "h-10 w-full justify-between px-3 font-normal")}
           >
             <span className={`truncate ${props.values.length ? "text-foreground" : "text-muted-foreground"}`}>
-              {selectedLabels.length ? selectedLabels.join(", ") : "Choose EP countries"}
+              {selectedLabels.length ? selectedLabels.join(", ") : props.placeholder ?? "Choose EP countries"}
             </span>
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
           </Button>

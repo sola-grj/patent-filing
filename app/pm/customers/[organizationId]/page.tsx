@@ -2,7 +2,10 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { InviteOrganizationMemberForm } from "@/features/organizations/components/organization-admin-forms";
+import {
+  InviteOrganizationMemberForm,
+  ResetErpCustomerPasswordForm,
+} from "@/features/organizations/components/organization-admin-forms";
 import { OrganizationMembers } from "@/features/organizations/components/organization-members";
 import { getSupplierCustomer } from "@/features/organizations/queries";
 import { PmAccessDenied } from "@/features/pm/components/pm-access-denied";
@@ -44,6 +47,25 @@ async function CustomerContent({
           <OrganizationMembers members={result.customer.members} invitations={result.customer.invitations} />
           <InviteOrganizationMemberForm organizationId={result.customer.id} organizationName={result.customer.name} />
         </div>
+        {result.erpAccounts?.length ? (
+          <section className="grid gap-3">
+            <div>
+              <h2 className="font-semibold">ECI ERP login accounts</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                CRM accounts do not use email recovery. A reset forces a password change on next login.
+              </p>
+            </div>
+            {result.erpAccounts.map((account) => (
+              <ResetErpCustomerPasswordForm
+                key={account.client_id}
+                organizationId={organizationId}
+                clientId={account.client_id}
+                clientName={account.client_name}
+                disabled={account.is_black || Boolean(account.sync_error)}
+              />
+            ))}
+          </section>
+        ) : null}
       </div>
     </div>
   );
