@@ -2,6 +2,18 @@ import type { ErpQuoteCurrencyCode } from "@/lib/eci-erp/types";
 
 export type WizardSourceMode = "patent_search" | "upload";
 
+export type EpServiceTypeCode =
+  | "ep_granting"
+  | "traditional_validation"
+  | "unitary_patent"
+  | "traditional_validation_unitary_patent";
+
+export type TraditionalServiceItemCode =
+  | "traditional_validation"
+  | "traditional_validation_opt_out"
+  | "opt_out_only"
+  | "opt_in_only";
+
 export type WizardPatentFile = {
   id: string;
   label: string;
@@ -53,6 +65,7 @@ export type WizardPatentCandidate = {
   internationalFilingDate?: string;
   grantPublicationDate?: string;
   rule713CommunicationDate?: string;
+  hasB1Publication?: boolean;
   filingDeadline30Months?: string;
   filingDeadline31Months?: string;
   totalPages?: number;
@@ -67,6 +80,7 @@ export type WizardPatentCandidate = {
   source?: string;
   publicationLanguage?: string;
   filingLanguage?: string;
+  proceduralLanguage?: string;
   ipcCodes?: string[];
   cpcCodes?: string[];
   designatedStates?: WizardPatentDesignatedStates;
@@ -84,7 +98,14 @@ export type WizardPatentCandidate = {
 export type WizardConfig = {
   channelCode: string;
   sourceLanguage: string;
+  targetLanguages: string[];
+  translationRequired: boolean;
+  epServiceType: EpServiceTypeCode | "";
   epCountryIds: number[];
+  optOutCountryIds: number[];
+  epCountriesConfirmed: boolean;
+  optOutCountriesConfirmed: boolean;
+  serviceItem: TraditionalServiceItemCode | "";
   jurisdictionCodes: string[];
   scopeType: string;
   purpose: string;
@@ -136,7 +157,7 @@ export type WizardUploadedFile = {
 
 export type WizardPatentAnalysisPart = {
   word_count: number;
-  status: "found" | "missing" | "unclassified" | "error";
+  status: "parsed" | "not_present" | "parse_failed";
   method: string;
   confidence: string;
 };
@@ -157,6 +178,7 @@ export type WizardPatentAnalysisFile = {
   document_text_words: number;
   drawing_ocr_words: number;
   total_words: number;
+  claims_count: number;
   warnings: string[];
 };
 
@@ -191,9 +213,20 @@ export type WizardPatentAnalysisResult = {
     source: "epo" | "wipo";
     normalized_number: string;
     kind_code?: string | null;
+    document_kind?: string | null;
     filename: string;
     mime_type: string;
     upstream_url?: string | null;
+    source_url?: string | null;
+    retrieval_mode?: "automatic" | "customer_upload";
+    language?: string | null;
+    publication_date?: string | null;
+    document_date?: string | null;
+    sha256?: string | null;
+    epo_document_id?: string | null;
+    is_pre_grant?: boolean;
+    is_legacy_pre_grant?: boolean;
+    strategy_version?: string;
   } | null;
   counting_standard: string;
   excluded_content: string[];
@@ -204,6 +237,7 @@ export type WizardPatentAnalysisResult = {
     description_words: number;
     description_drawings_words: number;
     claims_words: number;
+    claims_count: number;
     unclassified_words: number;
     total_words: number;
   };

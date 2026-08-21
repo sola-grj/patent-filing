@@ -13,9 +13,30 @@ export type DashboardDeadlineItem = {
   jurisdictionCodes: string[];
 };
 
+export type EpoServiceAvailability = {
+  available: boolean;
+  deadline?: string;
+  reason?: string;
+};
+
+type EpoAvailabilityPatent = {
+  grantPublicationDate?: string | null;
+  rule713CommunicationDate?: string | null;
+  hasB1Publication?: boolean;
+  dataOrigin?: "official" | "cache_fallback";
+};
+
+type EpoAvailabilityAnalysis = {
+  source_document?: {
+    kind_code?: string | null;
+    document_kind?: string | null;
+  } | null;
+};
+
 type DeadlineRequirement = {
   service_types?: string[] | null;
   epv_type_code?: string | null;
+  ep_service_type_code?: string | null;
   jurisdiction_codes?: string[] | null;
   pct_chapter_code?: string | null;
 };
@@ -56,6 +77,10 @@ const EP_ONLY_JURISDICTIONS = [
   "BE", "CY", "FR", "GR", "IE", "LT", "LV", "MC", "ME", "MT", "NL",
   "SI", "SM",
 ] as const;
+
+const EP_GRANTING_DEADLINE_MONTHS = 4;
+const TRADITIONAL_VALIDATION_DEADLINE_MONTHS = 3;
+const UNITARY_PATENT_DEADLINE_MONTHS = 1;
 
 const pctOfficeRules: Record<string, PctOfficeRule> = {
   AL: officeRule("AL", 31),
@@ -179,6 +204,69 @@ export function addCalendarMonths(dateValue: string, months: number) {
   return formatDateOnly(targetYear, targetMonth + 1, Math.min(day, lastDay));
 }
 
+export function getEpoServiceAvailability(
+  epServiceType: string,
+  patent?: EpoAvailabilityPatent | null,
+  analysis?: EpoAvailabilityAnalysis | null,
+  today = new Date().toISOString().slice(0, 10),
+): EpoServiceAvailability {
+  if (![
+    "ep_granting",
+    "traditional_validation",
+    "unitary_patent",
+    "traditional_validation_unitary_patent",
+  ].includes(epServiceType)) {
+    return { available: true };
+  }
+  if (!patent) {
+    return unavailable("Search and select an EP patent before choosing this service.");
+  }
+  if (patent.dataOrigin === "cache_fallback") {
+    return unavailable("Current EPO grant status could not be confirmed from the official source.");
+  }
+
+  const documentKind = (
+    analysis?.source_document?.document_kind
+    ?? analysis?.source_document?.kind_code
+    ?? ""
+  ).toUpperCase();
+  const hasB1Publication = patent.hasB1Publication === true
+    || Boolean(patent.grantPublicationDate)
+    || documentKind === "B1";
+
+  if (epServiceType === "ep_granting") {
+    if (hasB1Publication) {
+      return unavailable("An EPO B1 grant publication already exists, so EP Granting is no longer available.");
+    }
+    return availabilityUntil({
+      basisDate: patent.rule713CommunicationDate,
+      months: EP_GRANTING_DEADLINE_MONTHS,
+      today,
+      missingReason: "A Rule 71(3) communication is required before EP Granting can be selected.",
+      expiredLabel: "EP Granting",
+    });
+  }
+
+  if (!hasB1Publication || !patent.grantPublicationDate) {
+    return unavailable("An EPO B1 grant publication date is required before this service can be selected.");
+  }
+  const isUnitary = epServiceType === "unitary_patent"
+    || epServiceType === "traditional_validation_unitary_patent";
+  return availabilityUntil({
+    basisDate: patent.grantPublicationDate,
+    months: isUnitary
+      ? UNITARY_PATENT_DEADLINE_MONTHS
+      : TRADITIONAL_VALIDATION_DEADLINE_MONTHS,
+    today,
+    missingReason: "A valid EPO B1 grant publication date is required.",
+    expiredLabel: epServiceType === "traditional_validation"
+      ? "Traditional Validation"
+      : epServiceType === "unitary_patent"
+        ? "Unitary Patent"
+        : "Traditional Validation + Unitary Patent",
+  });
+}
+
 export function resolvePctOfficeRule(jurisdictionCode: string) {
   return pctOfficeRules[jurisdictionCode.toUpperCase()] ?? null;
 }
@@ -200,7 +288,7 @@ function buildRequestDeadlines(
   if (services.includes("european_patent_grant_registration")) {
     return singleDeadline(request, {
       basisDate: patent.rule_71_3_communication_date,
-      months: 4,
+      months: EP_GRANTING_DEADLINE_MONTHS,
       today,
       title: "European Patent Granting deadline",
       detail,
@@ -210,10 +298,34 @@ function buildRequestDeadlines(
   }
 
   if (services.includes("epv")) {
+    if (requirement.ep_service_type_code === "traditional_validation_unitary_patent") {
+      return [
+        ...singleDeadline(request, {
+          basisDate: patent.grant_publication_date,
+          months: TRADITIONAL_VALIDATION_DEADLINE_MONTHS,
+          today,
+          title: "EP validation deadline",
+          detail,
+          service: "EP Validation",
+          type: "ep_validation",
+        }),
+        ...singleDeadline(request, {
+          basisDate: patent.grant_publication_date,
+          months: UNITARY_PATENT_DEADLINE_MONTHS,
+          today,
+          title: "Unitary Patent deadline",
+          detail,
+          service: "Unitary Patent",
+          type: "unitary_patent",
+        }),
+      ];
+    }
     const unitary = requirement.epv_type_code === "unitary_effect";
     return singleDeadline(request, {
       basisDate: patent.grant_publication_date,
-      months: unitary ? 1 : 3,
+      months: unitary
+        ? UNITARY_PATENT_DEADLINE_MONTHS
+        : TRADITIONAL_VALIDATION_DEADLINE_MONTHS,
       today,
       title: unitary ? "Unitary Patent deadline" : "EP validation deadline",
       detail,
@@ -280,6 +392,28 @@ function singleDeadline(
   const dueOn = addCalendarMonths(input.basisDate, input.months);
   if (!dueOn) return [];
   return [makeDeadlineItem(request, { ...input, dueOn, jurisdictionCodes: [] })];
+}
+
+function availabilityUntil(input: {
+  basisDate?: string | null;
+  months: number;
+  today: string;
+  missingReason: string;
+  expiredLabel: string;
+}): EpoServiceAvailability {
+  if (!input.basisDate) return unavailable(input.missingReason);
+  const deadline = addCalendarMonths(input.basisDate, input.months);
+  if (!deadline || !addCalendarMonths(input.today, 0)) {
+    return unavailable(input.missingReason);
+  }
+  if (deadline < input.today) {
+    return unavailable(`${input.expiredLabel} deadline passed on ${deadline}.`, deadline);
+  }
+  return { available: true, deadline };
+}
+
+function unavailable(reason: string, deadline?: string): EpoServiceAvailability {
+  return { available: false, reason, ...(deadline ? { deadline } : {}) };
 }
 
 function makeDeadlineItem(

@@ -10,8 +10,10 @@ import {
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
+  mockUnitaryTargetLanguageOptions,
   serviceTypeOptions,
   sourceLanguageOptions,
+  traditionalServiceItemOptions,
 } from "@/features/requester/options";
 import {
   isTraditionalValidation,
@@ -42,13 +44,14 @@ export function PmRequestOverview({
 }) {
   const serviceTypes = config.serviceTypes ?? [];
   const showFilingFields = serviceTypes.includes("filing");
-  const showOptType = isTraditionalValidation(config.epvType);
+  const showServiceItem = isTraditionalValidation(config.epServiceType);
   const showDestinations = config.channelCode !== "ep"
-    || requiresEpCountries(serviceTypes);
+    || requiresEpCountries(config.epServiceType);
   const serviceTypeLabel = resolveServiceTypeSelection(
     config.channelCode,
     serviceTypes,
     config.epvType,
+    config.epServiceType,
   )?.label ?? labelForMany(serviceTypeOptions, serviceTypes);
   const showDueDate = serviceTypes.includes("translation") && Boolean(config.dueAt);
   const items: Array<{ label: string; value: ReactNode; wide?: boolean }> = [
@@ -60,7 +63,15 @@ export function PmRequestOverview({
       value: channelLabel(config.channelCode || request.channel_code),
     },
     { label: "Service type", value: serviceTypeLabel },
+    { label: "Translation", value: config.translationRequired ? "Required" : "Not required" },
     { label: "Source Language", value: labelFor(sourceLanguageOptions, config.sourceLanguage) },
+    ...(config.targetLanguages.length ? [{
+      label: "Target language(s)",
+      value: labelForMany(
+        [...sourceLanguageOptions, ...mockUnitaryTargetLanguageOptions],
+        config.targetLanguages,
+      ),
+    }] : []),
     ...(showDestinations ? [{
       label: config.epCountryIds.length ? "EP countries" : "Jurisdictions",
       value: config.epCountryIds.length
@@ -68,6 +79,12 @@ export function PmRequestOverview({
             epCountries.find((country) => country.id === id)?.name ?? `EP country ${id}`,
           ).join(", ") || "-"
         : labelForMany(jurisdictionOptions, config.jurisdictionCodes),
+    }] : []),
+    ...(config.optOutCountryIds.length ? [{
+      label: "Opt Out countries",
+      value: config.optOutCountryIds.map((id) =>
+        epCountries.find((country) => country.id === id)?.name ?? `EP country ${id}`,
+      ).join(", "),
     }] : []),
     { label: "Delivery option", value: titleCase(config.deliveryOption) },
     ...(showFilingFields
@@ -80,8 +97,11 @@ export function PmRequestOverview({
           { label: "Entity type", value: labelFor(entityTypeOptions, config.entityType) },
         ]
       : []),
-    ...(showOptType
-      ? [{ label: "Opt Type", value: titleCase(config.optType) }]
+    ...(showServiceItem
+      ? [{
+          label: "Service Item",
+          value: labelFor(traditionalServiceItemOptions, config.serviceItem),
+        }]
       : []),
     ...(showDueDate
       ? [{ label: "Due date", value: formatDate(config.dueAt) }]
@@ -131,7 +151,7 @@ export function PmRequestOverview({
 }
 
 function labelFor(
-  options: Array<{ value: string; label: string }>,
+  options: readonly { value: string; label: string }[],
   value?: string | null,
 ) {
   if (!value) return "-";
@@ -143,7 +163,7 @@ function channelLabel(value?: string | null) {
 }
 
 function labelForMany(
-  options: Array<{ value: string; label: string }>,
+  options: readonly { value: string; label: string }[],
   values?: string[] | null,
 ) {
   if (!values?.length) return "-";

@@ -29,6 +29,7 @@ export type PatentLookupResponse = {
   priority_data?: PatentPriority[];
   publication_language?: string | null;
   filing_language?: string | null;
+  procedural_language?: string | null;
   designated_states?: {
     regions?: string[];
     countries?: string[];
@@ -94,6 +95,9 @@ type PatentRawSourceRefs = {
   ops_images?: { page_count?: number | null };
   generated_pdf?: { page_count?: number | null };
   document_pages?: string[];
+  ops_deadline_register?: {
+    publication_references?: Array<{ kind?: string | null }>;
+  };
 };
 
 type PatentLookupError = {
@@ -222,6 +226,7 @@ export function mapPatentLookupResponse(
     rule713CommunicationDate: formatPatentDate(
       response.rule_71_3_communication_date,
     ),
+    hasB1Publication: hasB1Publication(response),
     filingDeadline30Months: formatPatentDate(response.filing_deadline_30_months),
     filingDeadline31Months: formatPatentDate(response.filing_deadline_31_months),
     totalPages,
@@ -243,6 +248,7 @@ export function mapPatentLookupResponse(
     source: response.source,
     publicationLanguage: formatLanguage(response.publication_language),
     filingLanguage: formatLanguage(response.filing_language),
+    proceduralLanguage: formatLanguage(response.procedural_language),
     ipcCodes: response.ipc || basicInfo?.ipc || [],
     cpcCodes: response.cpc || basicInfo?.cpc || [],
     designatedStates: {
@@ -364,6 +370,15 @@ function resolveJurisdiction(
   const match = publicationNumber.trim().toUpperCase().match(/^[A-Z]{2}/);
   if (match) return match[0];
   return response.source === "wipo" ? "WO" : "";
+}
+
+function hasB1Publication(response: PatentLookupResponse) {
+  const publicationReferences = response.raw_source_refs
+    ?.ops_deadline_register
+    ?.publication_references ?? [];
+  return publicationReferences.some((reference) =>
+    reference.kind?.trim().toUpperCase() === "B1"
+  ) || Boolean(response.grant_publication_date);
 }
 
 function resolveFileType(originalFile: PatentLookupResponse["original_file"]) {

@@ -8,6 +8,7 @@ import {
   validateUploadFiles,
 } from "@/lib/validators/requester";
 import type { WizardPayload, WizardPersistResult } from "@/features/requester/wizard-types";
+import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 import {
   HUMAN_TRANSLATION_QUALITY_LEVEL,
   jurisdictionOptions,
@@ -17,6 +18,11 @@ import {
   isTraditionalValidation,
   requiresEpCountries,
 } from "@/features/requester/request-paths";
+import {
+  normalizeEpoTargetLanguages,
+  normalizeWizardConfig,
+  requiresSourceLanguage,
+} from "@/features/requester/components/new-request-wizard-utils";
 import {
   getAuthenticatedUser,
   getRequesterOrganization,
@@ -63,6 +69,7 @@ export async function persistWizardRequest(
         verifySubmittedPatentPayload(payload),
       ]);
       payload = verifiedPayload;
+      validateEpoServiceAvailability(payload);
     } else {
       await dictionaryValidation;
     }
@@ -157,7 +164,10 @@ export async function persistWizardRequest(
         requestFileIds,
         !options?.deferFormalSubmission,
       );
-      if (!options?.deferFormalSubmission) {
+      if (
+        !options?.deferFormalSubmission
+        && payload.config.epServiceType !== "traditional_validation_unitary_patent"
+      ) {
         await writeRequestEvent(
           supabase,
           requestId,
@@ -289,6 +299,11 @@ async function verifySubmittedPatentPayload(
   if (
     !["success", "partial"].includes(verified.analysis.status)
     || verified.analysis.aggregate.total_words <= 0
+    || !verified.analysis.files.length
+    || verified.analysis.files.some((file) =>
+      file.status === "failed"
+      || Object.values(file.parts).some((part) => part.status === "parse_failed")
+    )
   ) {
     throw new Error(
       "Patent data processing has not produced usable word counts. Retry before submitting.",
@@ -305,8 +320,8 @@ function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
   if (
     config.channelCode === "ep"
-    && requiresEpCountries(config.serviceTypes)
-    && !config.epCountryIds.length
+    && requiresEpCountries(config.epServiceType)
+    && (!config.epCountryIds.length || !config.epCountriesConfirmed)
   ) {
     throw new Error("Select at least one EP country.");
   }
@@ -318,6 +333,7 @@ function validateCommercialFields(payload: WizardPayload) {
       config.channelCode,
       config.serviceTypes,
       config.epvType,
+      config.epServiceType,
     )
   ) {
     throw new Error("Select a service type available for the chosen path.");
@@ -330,11 +346,34 @@ function validateCommercialFields(payload: WizardPayload) {
   if (config.serviceTypes.includes("epv") && !config.epvType) {
     throw new Error("EPV type is required for EPV.");
   }
+  if (isTraditionalValidation(config.epServiceType) && !config.serviceItem) {
+    throw new Error("Service Item is required for Traditional Validation.");
+  }
   if (
-    isTraditionalValidation(config.epvType)
-    && !["in", "out"].includes(config.optType ?? "")
+    config.serviceItem === "traditional_validation_opt_out"
+    && (!config.optOutCountryIds.length || !config.optOutCountriesConfirmed)
   ) {
-    throw new Error("Opt Type must be In or Out for Traditional Validation.");
+    throw new Error("Select and confirm at least one Opt Out country.");
+  }
+  if (config.optOutCountryIds.some((id) => !config.epCountryIds.includes(id))) {
+    throw new Error("Opt Out countries must be a subset of the selected EP countries.");
+  }
+  if (requiresSourceLanguage(config) && !config.sourceLanguage) {
+    throw new Error("Source language is required for this EPO service.");
+  }
+  if (config.channelCode === "ep") {
+    const normalizedTargets = normalizeEpoTargetLanguages(
+      config.epServiceType,
+      config.translationRequired,
+      config.sourceLanguage,
+      config.targetLanguages,
+    );
+    if (normalizedTargets.join("|") !== config.targetLanguages.join("|")) {
+      throw new Error("Target languages do not match the selected EPO service rule.");
+    }
+    if (config.translationRequired !== config.serviceTypes.includes("translation")) {
+      throw new Error("Translation configuration is inconsistent.");
+    }
   }
   if (
     config.channelCode === "pct"
@@ -350,11 +389,11 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   if (!["patent_search", "upload"].includes(payload.sourceMode)) {
     throw new Error("Choose a valid file source.");
   }
-  payload.config.channelCode = payload.config.channelCode
-    || channelFromLegacyPurpose(payload.config.purpose);
-  payload.config.serviceTypes = Array.isArray(payload.config.serviceTypes)
-    ? payload.config.serviceTypes
-    : [];
+  payload.config = normalizeWizardConfig({
+    ...payload.config,
+    channelCode: payload.config.channelCode
+      || channelFromLegacyPurpose(payload.config.purpose),
+  });
   const hasPctFilingService = payload.config.channelCode === "pct"
     && payload.config.serviceTypes.includes("filing");
   if (
@@ -375,25 +414,29 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   payload.config.dueAt = isTranslationOnlyService
     ? payload.config.dueAt?.trim() ?? ""
     : "";
-  payload.config.jurisdictionCodes = Array.isArray(payload.config.jurisdictionCodes)
-    ? payload.config.jurisdictionCodes
-    : [];
-  payload.config.epCountryIds = normalizeEpCountryIds(payload.config.epCountryIds);
   if (payload.config.channelCode === "ep") {
     payload.config.jurisdictionCodes = [];
-    if (!requiresEpCountries(payload.config.serviceTypes)) {
-      payload.config.epCountryIds = [];
-    }
   } else {
     payload.config.epCountryIds = [];
+    payload.config.optOutCountryIds = [];
   }
-  payload.config.optType = isTraditionalValidation(payload.config.epvType)
-    && ["in", "out"].includes(payload.config.optType ?? "")
-    ? payload.config.optType
-    : "";
   payload.config.scopeType = "full_text";
   payload.config.qualityLevel = HUMAN_TRANSLATION_QUALITY_LEVEL;
   return payload;
+}
+
+function validateEpoServiceAvailability(payload: WizardPayload) {
+  if (payload.config.channelCode !== "ep" || !payload.config.epServiceType) return;
+  const availability = getEpoServiceAvailability(
+    payload.config.epServiceType,
+    payload.selectedPatent,
+    payload.analysis,
+  );
+  if (!availability.available) {
+    throw new Error(
+      availability.reason ?? "The selected EPO service is not currently available.",
+    );
+  }
 }
 
 async function validateDictionaryValues(
@@ -449,13 +492,6 @@ async function validateDictionaryValues(
       throw new Error(`Invalid or disabled EP country id: ${invalidCountryId}.`);
     }
   }
-}
-
-function normalizeEpCountryIds(value: unknown): number[] {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value
-    .map(Number)
-    .filter((item) => Number.isInteger(item) && item > 0))];
 }
 
 function channelFromLegacyPurpose(purpose?: string) {
@@ -770,7 +806,8 @@ async function persistPatentSelection(
       claims_word_count: analysis?.aggregate.claims_words
         ?? patent.claimsWordCount
         ?? 0,
-      claims_count: selectedFiles.reduce((sum, file) => sum + file.claimCount, 0),
+      claims_count: analysis?.aggregate.claims_count
+        ?? selectedFiles.reduce((sum, file) => sum + file.claimCount, 0),
       drawing_count: selectedFiles.reduce((sum, file) => sum + file.drawingCount, 0),
       source_snapshot: stripPatentReceipts(patent.sourceSnapshot ?? patent),
     }, { onConflict: "request_id" }),
@@ -921,16 +958,24 @@ async function createParseResults(
   requestFileIds: string[],
   payload: WizardPayload,
 ) {
+  const { data: requestFiles, error: requestFilesError } = await supabase
+    .from("request_files")
+    .select("id, storage_bucket, storage_path")
+    .in("id", requestFileIds);
+  if (requestFilesError) throw new Error(requestFilesError.message);
+  const requestFileById = new Map((requestFiles ?? []).map((file) => [file.id, file]));
   const selectedPatentFiles = resolvePatentFiles(payload);
   const analysisFiles = payload.analysis?.files ?? [];
+  const sourceDocument = payload.analysis?.source_document;
   const rows = requestFileIds.map((fileId, index) => {
     const patentFile = selectedPatentFiles[index];
-    const analysisFile = payload.sourceMode === "patent_search"
-      ? analysisFiles[index] ?? analysisFiles[0]
-      : undefined;
+    const analysisFile = analysisFiles[index] ?? analysisFiles[0];
     const analysisStatus = payload.analysis?.status ?? analysisFile?.status;
-    const hasRealPatentAnalysis = payload.sourceMode === "patent_search"
-      && Boolean(analysisFile);
+    const hasRealPatentAnalysis = Boolean(analysisFile);
+    const requestFile = requestFileById.get(fileId);
+    const customerUploadUrl = requestFile?.storage_bucket && requestFile.storage_path
+      ? `storage://${requestFile.storage_bucket}/${requestFile.storage_path}`
+      : null;
     const timestamp = new Date().toISOString();
     return {
       job: {
@@ -941,7 +986,7 @@ async function createParseResults(
         finished_at: timestamp,
         payload: hasRealPatentAnalysis
           ? {
-              input_mode: "patent_number",
+              input_mode: payload.analysis?.input_mode,
               status: analysisStatus,
               warnings: payload.analysis?.warnings ?? [],
             }
@@ -952,7 +997,10 @@ async function createParseResults(
         parse_status: analysisStatus === "partial" ? "needs_review" : "completed",
         word_count: analysisFile?.total_words ?? patentFile?.wordCount ?? 12000,
         page_count: patentFile?.pageCount ?? 0,
-        claim_count: patentFile?.claimCount ?? 0,
+        claim_count: analysisFile?.claims_count
+          ?? payload.analysis?.aggregate.claims_count
+          ?? patentFile?.claimCount
+          ?? 0,
         technical_fields: [payload.selectedPatent?.technicalField ?? "patent"],
         structure_json: analysisFile
           ? {
@@ -961,10 +1009,33 @@ async function createParseResults(
               drawing_ocr_words: analysisFile.drawing_ocr_words,
               aggregate: payload.analysis?.aggregate,
               warnings: analysisFile.warnings,
+              counting_standard: payload.analysis?.counting_standard,
+              excluded_content: payload.analysis?.excluded_content,
             }
           : { sections: ["abstract", "description", "claims"] },
-        ocr_required: false,
-        manual_review_required: false,
+        ocr_required: analysisFile
+          ? Object.values(analysisFile.parts).some((part) => part.method.includes("ocr"))
+          : false,
+        manual_review_required: analysisStatus === "partial"
+          || Boolean(sourceDocument?.is_pre_grant),
+        document_kind: sourceDocument?.document_kind ?? sourceDocument?.kind_code ?? null,
+        source_url: sourceDocument?.retrieval_mode === "customer_upload"
+          ? customerUploadUrl
+          : sourceDocument?.source_url
+            ?? sourceDocument?.upstream_url
+            ?? patentFile?.sourceUrl
+            ?? null,
+        retrieval_mode: sourceDocument?.retrieval_mode
+          ?? (payload.analysis?.input_mode === "upload" ? "customer_upload" : "automatic"),
+        document_language: sourceDocument?.language ?? null,
+        publication_date: sourceDocument?.publication_date ?? null,
+        document_date: sourceDocument?.document_date ?? null,
+        document_sha256: sourceDocument?.sha256 ?? analysisFile?.sha256 ?? null,
+        epo_document_id: sourceDocument?.epo_document_id
+          ?? sourceDocument?.normalized_number
+          ?? null,
+        is_pre_grant: sourceDocument?.is_pre_grant ?? false,
+        is_legacy_pre_grant: sourceDocument?.is_legacy_pre_grant ?? false,
       },
     };
   });
@@ -1009,13 +1080,21 @@ async function createRequirement(
   await supabase.from("translation_requirements").insert({
     id: requirementId,
     request_id: requestId,
-    source_language: config.sourceLanguage,
-    target_language: config.sourceLanguage,
-    target_languages: [config.sourceLanguage],
+    source_language: config.sourceLanguage || null,
+    target_language: config.targetLanguages[0] ?? null,
+    target_languages: config.targetLanguages,
     scope_type: "full_text",
     scope_details: { customScope: config.customScope },
     purpose: purposeFromChannel(config.channelCode),
     service_types: config.serviceTypes,
+    ep_service_type_code: config.channelCode === "ep" ? config.epServiceType || null : null,
+    translation_required: config.channelCode === "ep"
+      ? config.translationRequired
+      : config.serviceTypes.includes("translation"),
+    service_item_code: isTraditionalValidation(config.epServiceType)
+      ? config.serviceItem || null
+      : null,
+    opt_out_country_ids: config.channelCode === "ep" ? config.optOutCountryIds : [],
     entity_type: config.entityType || null,
     filing_type_code: config.filingType || null,
     application_type_code: config.filingApplicationType || null,
@@ -1068,6 +1147,30 @@ async function createInitialQuote(
   payload: WizardPayload,
   finalizeSubmission: boolean,
 ) {
+  if (payload.config.epServiceType === "traditional_validation_unitary_patent") {
+    const { error: requestError } = await supabase
+      .from("translation_requests")
+      .update({
+        workflow_stage: finalizeSubmission ? "submitted" : "draft",
+        requester_status: "responding",
+        pm_status: "responding",
+        submitted_at: finalizeSubmission ? new Date().toISOString() : null,
+      })
+      .eq("id", requestId);
+    if (requestError) throw new Error(requestError.message);
+    if (finalizeSubmission) {
+      await writeRequestEvent(
+        supabase,
+        requestId,
+        userId,
+        "request.submitted.awaiting_manual_quote",
+        "configured",
+        "submitted",
+        { reason: "eci_erp_category_not_mapped" },
+      );
+    }
+    return;
+  }
   const [erpQuote, versionNo] = await Promise.all([
     quoteForOrganization(payload, organizationId, userId),
     nextVersion(supabase, "quotes", requestId),

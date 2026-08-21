@@ -16,6 +16,52 @@ export const sourceLanguageOptions = [
   { value: "fr", label: "French" },
 ];
 
+export const epoSourceLanguageOptions = [
+  { value: "en", label: "English" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+];
+
+// Product mock only. Replace this pool when the authoritative language API is available.
+export const mockUnitaryTargetLanguageOptions = [
+  { value: "bg", label: "Bulgarian" },
+  { value: "hr", label: "Croatian" },
+  { value: "cs", label: "Czech" },
+  { value: "da", label: "Danish" },
+  { value: "nl", label: "Dutch" },
+  { value: "en", label: "English" },
+  { value: "et", label: "Estonian" },
+  { value: "fi", label: "Finnish" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+  { value: "el", label: "Greek" },
+  { value: "hu", label: "Hungarian" },
+  { value: "ga", label: "Irish" },
+  { value: "it", label: "Italian" },
+  { value: "lv", label: "Latvian" },
+  { value: "lt", label: "Lithuanian" },
+  { value: "mt", label: "Maltese" },
+  { value: "pl", label: "Polish" },
+  { value: "pt", label: "Portuguese" },
+  { value: "ro", label: "Romanian" },
+  { value: "sk", label: "Slovak" },
+  { value: "sl", label: "Slovenian" },
+  { value: "es", label: "Spanish" },
+  { value: "sv", label: "Swedish" },
+  { value: "lb", label: "Luxembourgish" },
+  { value: "tr", label: "Turkish" },
+] as const;
+
+export const traditionalServiceItemOptions = [
+  { value: "traditional_validation", label: "Traditional Validation" },
+  {
+    value: "traditional_validation_opt_out",
+    label: "Traditional Validation + Opt Out",
+  },
+  { value: "opt_out_only", label: "Opt Out Only" },
+  { value: "opt_in_only", label: "Opt In Only" },
+] as const;
+
 export const targetLanguageOptions = [
   { value: "en", label: "English" },
   { value: "zh-CN", label: "Chinese" },
@@ -145,4 +191,4 @@ export const rejectReasonOptions = [
   "Request is no longer needed",
 ];
 
-export const allowedUploadExtensions = [".pdf", ".doc", ".docx", ".xml", ".txt"];
+export const allowedUploadExtensions = [".pdf", ".doc", ".docx", ".xml", ".txt", ".zip"];

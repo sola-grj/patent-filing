@@ -1,4 +1,6 @@
 import type {
+  EpServiceTypeCode,
+  TraditionalServiceItemCode,
   WizardConfig,
   WizardPatentCandidate,
   WizardPatentAnalysisResult,
@@ -7,15 +9,20 @@ import type {
   WizardSourceMode,
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
-import { HUMAN_TRANSLATION_QUALITY_LEVEL } from "@/features/requester/options";
+import {
+  HUMAN_TRANSLATION_QUALITY_LEVEL,
+  mockUnitaryTargetLanguageOptions,
+} from "@/features/requester/options";
 import {
   isTraditionalValidation,
   isAllowedServiceTypeConfig,
   normalizeServiceTypeConfig,
   requiresEpCountries,
+  usesEpoTargetLanguages,
 } from "@/features/requester/request-paths";
 import { validateFutureDateString } from "@/lib/validators/requester";
 import type { ErpQuoteCurrencyCode } from "@/lib/eci-erp/types";
+import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 
 export const wizardSteps = [
   { title: "Source", description: "Search by patent number or upload source files." },
@@ -26,7 +33,14 @@ export const wizardSteps = [
 export const defaultWizardConfig: WizardConfig = {
   channelCode: "ep",
   sourceLanguage: "",
+  targetLanguages: [],
+  translationRequired: false,
+  epServiceType: "",
   epCountryIds: [],
+  optOutCountryIds: [],
+  epCountriesConfirmed: false,
+  optOutCountriesConfirmed: false,
+  serviceItem: "",
   jurisdictionCodes: [],
   scopeType: "full_text",
   purpose: "european_validation",
@@ -51,10 +65,12 @@ export type WizardConfigFieldErrors = Partial<Record<
   | "filingApplicationType"
   | "entityType"
   | "epvType"
-  | "optType"
+  | "serviceItem"
+  | "targetLanguages"
   | "pctChapter"
   | "sourceLanguage"
   | "epCountryIds"
+  | "optOutCountryIds"
   | "jurisdictionCodes"
   | "dueAt",
   string
@@ -101,7 +117,11 @@ export function validateWizardStep(step: number, payload: WizardPayload) {
     return "Upload at least one file before continuing.";
   }
   if (step === 1) {
-    const fieldErrors = validateWizardConfigFields(payload.config);
+    const fieldErrors = validateWizardConfigFields(
+      payload.config,
+      payload.selectedPatent,
+      payload.analysis,
+    );
     const firstError = Object.values(fieldErrors)[0];
     if (firstError) {
       return firstError;
@@ -131,6 +151,10 @@ export function validateWizardPayload(payload: WizardPayload) {
 export function hasUsablePatentAnalysis(payload: WizardPayload) {
   const analysis = payload.analysis;
   if (!analysis || !["success", "partial"].includes(analysis.status)) return false;
+  if (!analysis.files.length || analysis.files.some((file) =>
+    file.status === "failed"
+    || Object.values(file.parts).some((part) => part.status === "parse_failed")
+  )) return false;
   if (payload.config.scopeType === "no_translation") return true;
   if (payload.config.scopeType === "claims_only") {
     return analysis.aggregate.claims_words > 0;
@@ -196,6 +220,13 @@ export function updateWizardChannel(
     filingType: "",
     filingApplicationType: "",
     epvType: "",
+    epServiceType: "",
+    translationRequired: false,
+    targetLanguages: [],
+    serviceItem: "",
+    optOutCountryIds: [],
+    epCountriesConfirmed: false,
+    optOutCountriesConfirmed: false,
     optType: "",
     pctChapter: channelCode === "pct" ? "chapter_i" : "",
     dueAt: "",
@@ -230,24 +261,65 @@ export function normalizeWizardConfig(
     channelCode,
     configuredServiceTypes,
     merged.epvType,
+    merged.epServiceType,
   );
-  const serviceTypes = serviceConfig.serviceTypes;
+  const translationRequired = channelCode === "ep"
+    ? Boolean(config?.translationRequired ?? configuredServiceTypes.includes("translation"))
+    : configuredServiceTypes.includes("translation");
+  const serviceTypes = channelCode === "ep" && translationRequired
+    ? [...serviceConfig.serviceTypes, "translation"]
+    : serviceConfig.serviceTypes;
   const isTranslationOnlyService = serviceTypes.length === 1
     && serviceTypes[0] === "translation";
   const hasPctFilingService = channelCode === "pct"
     && serviceTypes.includes("filing");
-  const optType = isTraditionalValidation(serviceConfig.epvType)
-    && ["in", "out"].includes(merged.optType ?? "")
-    ? merged.optType as "in" | "out"
-    : "";
+  const hasTraditionalItems = isTraditionalValidation(serviceConfig.epServiceType);
+  const serviceItem = normalizeServiceItem(
+    hasTraditionalItems,
+    merged.serviceItem,
+    merged.optType,
+  );
+  const sourceLanguage = channelCode === "ep"
+    && !["en", "fr", "de"].includes(merged.sourceLanguage)
+    ? ""
+    : merged.sourceLanguage;
+  const targetLanguages = channelCode === "ep"
+    ? normalizeEpoTargetLanguages(
+        serviceConfig.epServiceType,
+        translationRequired,
+        sourceLanguage,
+        config?.targetLanguages ?? (config?.targetLanguage ? [config.targetLanguage] : []),
+      )
+    : normalizeTextValues(
+        config?.targetLanguages ?? (config?.targetLanguage ? [config.targetLanguage] : []),
+      );
+  const epCountryIds = requiresEpCountries(serviceConfig.epServiceType)
+    ? normalizeEpCountryIds(config?.epCountryIds)
+    : [];
+  const optOutCountryIds = serviceItem === "traditional_validation_opt_out"
+    ? normalizeEpCountryIds(config?.optOutCountryIds)
+        .filter((id) => epCountryIds.includes(id))
+    : [];
 
   return {
     ...merged,
     channelCode,
     serviceTypes,
+    sourceLanguage,
+    targetLanguages,
+    translationRequired,
     dueAt: isTranslationOnlyService ? merged.dueAt : "",
     epvType: serviceConfig.epvType,
-    optType,
+    epServiceType: serviceConfig.epServiceType as EpServiceTypeCode | "",
+    serviceItem,
+    optOutCountryIds,
+    epCountriesConfirmed: Boolean(config?.epCountriesConfirmed && epCountryIds.length),
+    optOutCountriesConfirmed: Boolean(
+      config?.optOutCountriesConfirmed
+      && serviceItem === "traditional_validation_opt_out"
+      && optOutCountryIds.length,
+    ),
+    optType: "",
     pctChapter: hasPctFilingService && merged.pctChapter === "chapter_ii"
       ? "chapter_ii"
       : hasPctFilingService
@@ -256,9 +328,7 @@ export function normalizeWizardConfig(
     jurisdictionCodes: Array.isArray(config?.jurisdictionCodes)
       ? config.jurisdictionCodes.filter(Boolean)
       : [],
-    epCountryIds: requiresEpCountries(serviceTypes)
-      ? normalizeEpCountryIds(config?.epCountryIds)
-      : [],
+    epCountryIds,
     scopeType: "full_text",
     qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
   };
@@ -266,6 +336,8 @@ export function normalizeWizardConfig(
 
 export function validateWizardConfigFields(
   config: WizardConfig,
+  patent?: WizardPatentCandidate,
+  analysis?: WizardPatentAnalysisResult,
 ): WizardConfigFieldErrors {
   const errors: WizardConfigFieldErrors = {};
   const hasTranslationService = config.serviceTypes.includes("translation");
@@ -289,9 +361,22 @@ export function validateWizardConfigFields(
       config.channelCode,
       config.serviceTypes,
       config.epvType,
+      config.epServiceType,
     )
   ) {
     errors.serviceTypes = "Select a service type available for the chosen path.";
+  }
+
+  if (config.channelCode === "ep" && config.epServiceType) {
+    const availability = getEpoServiceAvailability(
+      config.epServiceType,
+      patent,
+      analysis,
+    );
+    if (!availability.available) {
+      errors.serviceTypes = availability.reason
+        ?? "The selected EPO service is not currently available.";
+    }
   }
 
   if (hasFilingService) {
@@ -312,8 +397,8 @@ export function validateWizardConfigFields(
     errors.epvType = "Select an EPV type before continuing.";
   }
 
-  if (isTraditionalValidation(config.epvType) && !config.optType) {
-    errors.optType = "Select an Opt Type before continuing.";
+  if (isTraditionalValidation(config.epServiceType) && !config.serviceItem) {
+    errors.serviceItem = "Select a Service Item before continuing.";
   }
 
   if (
@@ -323,16 +408,41 @@ export function validateWizardConfigFields(
     errors.pctChapter = "Choose whether a PCT Chapter II Demand was filed.";
   }
 
-  if (!config.sourceLanguage) {
+  if (requiresSourceLanguage(config) && !config.sourceLanguage) {
     errors.sourceLanguage = "Select a source language before continuing.";
   }
 
   if (
     config.channelCode === "ep"
-    && requiresEpCountries(config.serviceTypes)
+    && config.translationRequired
+    && usesEpoTargetLanguages(config.epServiceType)
+    && !config.targetLanguages.length
+  ) {
+    errors.targetLanguages = "Select a target language before continuing.";
+  }
+
+  if (
+    config.channelCode === "ep"
+    && requiresEpCountries(config.epServiceType)
     && !config.epCountryIds.length
   ) {
     errors.epCountryIds = "Select at least one EP country before continuing.";
+  }
+
+  if (
+    config.channelCode === "ep"
+    && requiresEpCountries(config.epServiceType)
+    && config.epCountryIds.length
+    && !config.epCountriesConfirmed
+  ) {
+    errors.epCountryIds = "Confirm the selected EP countries before continuing.";
+  }
+
+  if (
+    config.serviceItem === "traditional_validation_opt_out"
+    && (!config.optOutCountryIds.length || !config.optOutCountriesConfirmed)
+  ) {
+    errors.optOutCountryIds = "Select and confirm at least one Opt Out country.";
   }
 
   if (config.channelCode !== "ep" && !config.jurisdictionCodes.length) {
@@ -355,4 +465,51 @@ export function normalizeEpCountryIds(value: unknown): number[] {
   return [...new Set(value
     .map(Number)
     .filter((item) => Number.isInteger(item) && item > 0))];
+}
+
+export function requiresSourceLanguage(config: WizardConfig) {
+  if (config.channelCode !== "ep") return true;
+  return isTraditionalValidation(config.epServiceType) || config.translationRequired;
+}
+
+export function normalizeEpoTargetLanguages(
+  epServiceType: string,
+  translationRequired: boolean,
+  sourceLanguage: string,
+  targetLanguages: unknown,
+) {
+  if (!translationRequired || !usesEpoTargetLanguages(epServiceType)) return [];
+  if (epServiceType === "ep_granting") return ["en", "fr", "de"];
+  if (["fr", "de"].includes(sourceLanguage)) return ["en"];
+  if (sourceLanguage !== "en") return [];
+  const allowed = new Set<string>(mockUnitaryTargetLanguageOptions
+    .map((option) => option.value)
+    .filter((value) => value !== "en"));
+  return normalizeTextValues(targetLanguages)
+    .filter((value) => allowed.has(value))
+    .slice(0, 1);
+}
+
+function normalizeServiceItem(
+  enabled: boolean,
+  value?: string,
+  legacyOptType?: string,
+): TraditionalServiceItemCode | "" {
+  if (!enabled) return "";
+  if ([
+    "traditional_validation",
+    "traditional_validation_opt_out",
+    "opt_out_only",
+    "opt_in_only",
+  ].includes(value ?? "")) {
+    return value as TraditionalServiceItemCode;
+  }
+  if (legacyOptType === "out") return "opt_out_only";
+  if (legacyOptType === "in") return "opt_in_only";
+  return "traditional_validation";
+}
+
+function normalizeTextValues(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(String).map((item) => item.trim()).filter(Boolean))];
 }

@@ -136,7 +136,9 @@ export function NewRequestWizard({
   const payload = buildPayload();
   const hasUsableAnalysis = hasUsablePatentAnalysis(payload);
   const configFieldErrors =
-    step === 1 && showConfigValidation ? validateWizardConfigFields(config) : {};
+    step === 1 && showConfigValidation
+      ? validateWizardConfigFields(config, selectedPatent, analysis.result)
+      : {};
   const isDirty = step > 0
     || patentQuery.trim().length > 0
     || selectedPatent !== undefined
@@ -190,9 +192,13 @@ export function NewRequestWizard({
     const sourceLanguage = resolvePatentSourceLanguage(candidate);
     setUploadReference(undefined);
     setSelectedPatent(candidate);
+    setUploadedFiles([]);
+    setUploadedFileSnapshots([]);
     setSelectedPatentFileIds(candidate.downloadableFiles.map((file) => file.id));
     if (sourceLanguage) {
-      setConfig((current) => ({ ...current, sourceLanguage }));
+      setConfig((current) => current.sourceLanguage
+        ? current
+        : { ...current, sourceLanguage });
     }
     setStep(1);
   }
@@ -223,6 +229,8 @@ export function NewRequestWizard({
     analysis.reset();
     setSelectedPatent(undefined);
     setSelectedPatentFileIds([]);
+    setUploadedFiles([]);
+    setUploadedFileSnapshots([]);
     analysis.start({
       sourceMode: "patent_search",
       patentNumber: patentQuery,
@@ -333,11 +341,17 @@ export function NewRequestWizard({
     }
 
     if (step === 1) {
-      if (sourceMode === "upload" && !hasUsableAnalysis) {
+      if (!hasUsableAnalysis) {
         setError(
           analysis.error
-            ?? "Uploaded files must finish processing before the estimate can be generated.",
+            ?? "The effective patent document must parse successfully before the estimate can be generated.",
         );
+        return;
+      }
+
+      if (config.epServiceType === "traditional_validation_unitary_patent") {
+        setQuotePreview(null);
+        setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
         return;
       }
 
@@ -641,7 +655,6 @@ export function NewRequestWizard({
                 isPending={isBusy}
                 nextDisabled={
                   step === 1
-                  && sourceMode === "upload"
                   && !hasUsableAnalysis
                 }
                 submitDisabled={
@@ -716,8 +729,14 @@ function resolveInitialStep(lastStep?: string) {
 }
 
 function resolvePatentSourceLanguage(candidate: WizardPatentCandidate) {
+  const rawProceduralLanguage = candidate.sourceSnapshot?.procedural_language;
   const rawPublicationLanguage = candidate.sourceSnapshot?.publication_language;
-  const languageValues = [rawPublicationLanguage, candidate.publicationLanguage]
+  const languageValues = [
+    rawProceduralLanguage,
+    candidate.proceduralLanguage,
+    rawPublicationLanguage,
+    candidate.publicationLanguage,
+  ]
     .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
 
   for (const language of languageValues) {
@@ -806,12 +825,12 @@ function StepContent(props: {
       <ConfigStep
         config={props.config}
         configFieldErrors={props.configFieldErrors}
-        sourceMode={props.sourceMode}
         patent={
           props.sourceMode === "patent_search"
             ? props.selectedPatent
             : undefined
         }
+        analysis={props.analysisResult}
         onChange={props.setConfig}
         dictionaries={props.dictionaries}
       />

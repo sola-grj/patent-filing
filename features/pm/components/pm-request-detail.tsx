@@ -110,6 +110,10 @@ type Requirement = {
   application_type_code?: string | null;
   entity_type_code?: string | null;
   epv_type_code?: string | null;
+  ep_service_type_code?: string | null;
+  translation_required?: boolean | null;
+  service_item_code?: string | null;
+  opt_out_country_ids?: number[] | null;
   pct_chapter_code?: string | null;
   ep_country_ids?: number[] | null;
   jurisdiction_codes?: string[] | null;
@@ -311,16 +315,19 @@ export function PmRequestDetail({
               />
             ) : null}
             {isPatentSearch ? (
-              <PmPatentInfo
-                patent={patent}
-                candidate={patentCandidate}
-                action={
-                  <PatentFileDownloadButton
-                    requestId={request.id}
-                    status={patentFileStatus}
-                  />
-                }
-              />
+              <>
+                <PmPatentInfo
+                  patent={patent}
+                  candidate={patentCandidate}
+                  action={
+                    <PatentFileDownloadButton
+                      requestId={request.id}
+                      status={patentFileStatus}
+                    />
+                  }
+                />
+                <RequestFileInformation files={files} />
+              </>
             ) : (
               <RequestFileInformation
                 files={uploadedFiles}
@@ -707,7 +714,24 @@ function resolveRequestConfig(
   return {
     channelCode: snapshot.channelCode ?? request.channel_code ?? "",
     sourceLanguage: snapshot.sourceLanguage ?? requirement?.source_language ?? "",
+    targetLanguages: snapshot.targetLanguages ?? requirement?.target_languages ?? [],
+    translationRequired: snapshot.translationRequired
+      ?? requirement?.translation_required
+      ?? (requirement?.service_types ?? []).includes("translation"),
+    epServiceType: snapshot.epServiceType
+      ?? requirement?.ep_service_type_code as WizardConfig["epServiceType"]
+      ?? "",
     epCountryIds: snapshot.epCountryIds ?? requirement?.ep_country_ids ?? [],
+    optOutCountryIds: snapshot.optOutCountryIds
+      ?? requirement?.opt_out_country_ids
+      ?? [],
+    epCountriesConfirmed: snapshot.epCountriesConfirmed
+      ?? Boolean((requirement?.ep_country_ids ?? []).length),
+    optOutCountriesConfirmed: snapshot.optOutCountriesConfirmed
+      ?? Boolean((requirement?.opt_out_country_ids ?? []).length),
+    serviceItem: snapshot.serviceItem
+      ?? requirement?.service_item_code as WizardConfig["serviceItem"]
+      ?? "",
     jurisdictionCodes:
       snapshot.jurisdictionCodes ?? requirement?.jurisdiction_codes ?? [],
     scopeType: snapshot.scopeType ?? requirement?.scope_type ?? "",

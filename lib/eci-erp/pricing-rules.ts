@@ -6,10 +6,12 @@ type ServiceConfig = {
   channelCode: string;
   serviceTypes: string[];
   epvType?: string;
+  epServiceType?: string;
 };
 
 export function categoryForConfig(config: ServiceConfig): number | null {
   if (config.channelCode === "ep") {
+    if (config.epServiceType === "traditional_validation_unitary_patent") return null;
     if (config.epvType === "traditional_validation") return 82;
     if (config.epvType === "unitary_effect") return 83;
     return null;
@@ -20,6 +22,9 @@ export function categoryForConfig(config: ServiceConfig): number | null {
 }
 
 export function quoteAvailabilityError(config: ServiceConfig) {
+  if (config.epServiceType === "traditional_validation_unitary_patent") {
+    return "Online quote is not available for Traditional Validation + Unitary Patent because no ECI ERP category is mapped.";
+  }
   if (config.serviceTypes.includes("european_patent_grant_registration")) {
     return "Online quote is not available for this service.";
   }

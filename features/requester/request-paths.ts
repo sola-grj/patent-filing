@@ -11,6 +11,7 @@ export const serviceTypeSelections = [
     channelCode: "ep",
     serviceTypes: ["european_patent_grant_registration"],
     epvType: "",
+    epServiceType: "ep_granting",
   },
   {
     value: "ep_validation",
@@ -18,6 +19,7 @@ export const serviceTypeSelections = [
     channelCode: "ep",
     serviceTypes: ["epv"],
     epvType: "traditional_validation",
+    epServiceType: "traditional_validation",
   },
   {
     value: "unitary_patent",
@@ -25,27 +27,15 @@ export const serviceTypeSelections = [
     channelCode: "ep",
     serviceTypes: ["epv"],
     epvType: "unitary_effect",
+    epServiceType: "unitary_patent",
   },
   {
-    value: "ep_granting_translation",
-    label: "EP Granting + Translation",
+    value: "traditional_validation_unitary_patent",
+    label: "Traditional Validation + Unitary Patent",
     channelCode: "ep",
-    serviceTypes: ["european_patent_grant_registration", "translation"],
-    epvType: "",
-  },
-  {
-    value: "ep_validation_translation",
-    label: "Traditional Validation + Translation",
-    channelCode: "ep",
-    serviceTypes: ["epv", "translation"],
+    serviceTypes: ["epv"],
     epvType: "traditional_validation",
-  },
-  {
-    value: "unitary_patent_translation",
-    label: "Unitary Patent + Translation",
-    channelCode: "ep",
-    serviceTypes: ["epv", "translation"],
-    epvType: "unitary_effect",
+    epServiceType: "traditional_validation_unitary_patent",
   },
   {
     value: "pct_national_phase",
@@ -53,6 +43,7 @@ export const serviceTypeSelections = [
     channelCode: "pct",
     serviceTypes: ["filing"],
     epvType: "",
+    epServiceType: "",
   },
   {
     value: "pct_national_phase_translation",
@@ -60,6 +51,7 @@ export const serviceTypeSelections = [
     channelCode: "pct",
     serviceTypes: ["filing", "translation"],
     epvType: "",
+    epServiceType: "",
   },
   {
     value: "paris_direct_filing",
@@ -67,6 +59,7 @@ export const serviceTypeSelections = [
     channelCode: "paris_convention",
     serviceTypes: ["filing"],
     epvType: "",
+    epServiceType: "",
   },
   {
     value: "paris_direct_filing_translation",
@@ -74,6 +67,7 @@ export const serviceTypeSelections = [
     channelCode: "paris_convention",
     serviceTypes: ["filing", "translation"],
     epvType: "",
+    epServiceType: "",
   },
 ] as const;
 
@@ -94,11 +88,21 @@ export function resolveServiceTypeSelection(
   channelCode: string,
   serviceTypes: string[],
   epvType?: string,
+  epServiceType?: string,
 ) {
-  const normalizedTypes = normalizeValues(serviceTypes);
+  const normalizedTypes = normalizeValues(
+    channelCode === "ep"
+      ? serviceTypes.filter((value) => value !== "translation")
+      : serviceTypes,
+  );
   return getServiceTypeSelections(channelCode).find((option) =>
     normalizeValues(option.serviceTypes) === normalizedTypes
     && option.epvType === (epvType ?? "")
+    && (
+      channelCode !== "ep"
+      || !epServiceType
+      || option.epServiceType === epServiceType
+    )
   );
 }
 
@@ -106,29 +110,51 @@ export function normalizeServiceTypeConfig(
   channelCode: string,
   serviceTypes: string[],
   epvType?: string,
-): { serviceTypes: string[]; epvType: string } {
-  const resolved = resolveServiceTypeSelection(channelCode, serviceTypes, epvType)
+  epServiceType?: string,
+): { serviceTypes: string[]; epvType: string; epServiceType: string } {
+  const resolved = resolveServiceTypeSelection(
+    channelCode,
+    serviceTypes,
+    epvType,
+    epServiceType,
+  )
     ?? resolveLegacyEpvSelection(channelCode, serviceTypes, epvType);
 
   return resolved
-    ? { serviceTypes: [...resolved.serviceTypes], epvType: resolved.epvType }
-    : { serviceTypes: [], epvType: "" };
+    ? {
+        serviceTypes: [...resolved.serviceTypes],
+        epvType: resolved.epvType,
+        epServiceType: resolved.epServiceType,
+      }
+    : { serviceTypes: [], epvType: "", epServiceType: "" };
 }
 
 export function isAllowedServiceTypeConfig(
   channelCode: string,
   serviceTypes: string[],
   epvType?: string,
+  epServiceType?: string,
 ) {
-  return Boolean(resolveServiceTypeSelection(channelCode, serviceTypes, epvType));
+  return Boolean(resolveServiceTypeSelection(
+    channelCode,
+    serviceTypes,
+    epvType,
+    epServiceType,
+  ));
 }
 
-export function requiresEpCountries(serviceTypes: readonly string[]) {
-  return !serviceTypes.includes("european_patent_grant_registration");
+export function isTraditionalValidation(epServiceType?: string) {
+  return epServiceType === "traditional_validation"
+    || epServiceType === "traditional_validation_unitary_patent";
 }
 
-export function isTraditionalValidation(epvType?: string) {
-  return epvType === "traditional_validation";
+export function requiresEpCountries(epServiceType?: string) {
+  return isTraditionalValidation(epServiceType);
+}
+
+export function usesEpoTargetLanguages(epServiceType?: string) {
+  return epServiceType === "ep_granting"
+    || epServiceType === "unitary_patent";
 }
 
 function resolveLegacyEpvSelection(

@@ -5,6 +5,7 @@ import {
   addCalendarMonths,
   buildDashboardDeadlineItems,
   buildRequestDeadlineItems,
+  getEpoServiceAvailability,
   getRequestDeadlinePendingMessage,
   resolvePctOfficeRule,
   type RequestDeadlineSource,
@@ -45,6 +46,127 @@ test("builds EP granting, validation and unitary deadlines from separate dates",
     ["European Patent Granting deadline", "2026-05-31"],
     ["Unitary Patent deadline", "2026-04-30"],
   ].sort((left, right) => left[1].localeCompare(right[1])));
+});
+
+test("builds both deadlines for Traditional Validation + Unitary Patent", () => {
+  const request = epRequest("combined", ["epv"], "traditional_validation", {
+    grant_publication_date: "2026-03-31",
+  });
+  const requirement = Array.isArray(request.translation_requirements)
+    ? request.translation_requirements[0]
+    : request.translation_requirements;
+  if (requirement) {
+    requirement.ep_service_type_code = "traditional_validation_unitary_patent";
+  }
+
+  assert.deepEqual(
+    buildRequestDeadlineItems(request, "2026-01-01").map((item) => [item.title, item.dueOn]),
+    [
+      ["Unitary Patent deadline", "2026-04-30"],
+      ["EP validation deadline", "2026-06-30"],
+    ],
+  );
+});
+
+test("allows EP Granting only after Rule 71(3), before its deadline, and without B1", () => {
+  assert.deepEqual(
+    getEpoServiceAvailability("ep_granting", {
+      rule713CommunicationDate: "2025-12-23",
+      hasB1Publication: false,
+      dataOrigin: "official",
+    }, null, "2026-04-23"),
+    { available: true, deadline: "2026-04-23" },
+  );
+
+  const alreadyGranted = getEpoServiceAvailability("ep_granting", {
+    rule713CommunicationDate: "2025-12-23",
+    grantPublicationDate: "2026-03-01",
+    hasB1Publication: true,
+    dataOrigin: "official",
+  }, null, "2026-03-02");
+  assert.equal(alreadyGranted.available, false);
+  assert.match(alreadyGranted.reason ?? "", /B1 grant publication already exists/);
+
+  const missingCommunication = getEpoServiceAvailability("ep_granting", {
+    hasB1Publication: false,
+    dataOrigin: "official",
+  }, null, "2026-01-01");
+  assert.equal(missingCommunication.available, false);
+  assert.match(missingCommunication.reason ?? "", /Rule 71\(3\)/);
+
+  const expired = getEpoServiceAvailability("ep_granting", {
+    rule713CommunicationDate: "2025-12-23",
+    hasB1Publication: false,
+    dataOrigin: "official",
+  }, null, "2026-04-24");
+  assert.equal(expired.available, false);
+  assert.equal(expired.deadline, "2026-04-23");
+});
+
+test("uses the B1 grant date for Traditional, Unitary, and combined availability", () => {
+  const patent = {
+    grantPublicationDate: "2026-01-31",
+    hasB1Publication: true,
+    dataOrigin: "official" as const,
+  };
+
+  assert.deepEqual(
+    getEpoServiceAvailability("traditional_validation", patent, null, "2026-04-30"),
+    { available: true, deadline: "2026-04-30" },
+  );
+  assert.deepEqual(
+    getEpoServiceAvailability("unitary_patent", patent, null, "2026-02-28"),
+    { available: true, deadline: "2026-02-28" },
+  );
+  assert.deepEqual(
+    getEpoServiceAvailability(
+      "traditional_validation_unitary_patent",
+      patent,
+      null,
+      "2026-02-28",
+    ),
+    { available: true, deadline: "2026-02-28" },
+  );
+  assert.equal(
+    getEpoServiceAvailability("unitary_patent", patent, null, "2026-03-01").available,
+    false,
+  );
+  assert.equal(
+    getEpoServiceAvailability(
+      "traditional_validation_unitary_patent",
+      patent,
+      null,
+      "2026-03-01",
+    ).available,
+    false,
+  );
+});
+
+test("B1 analysis blocks Granting even when the Register grant date is missing", () => {
+  const availability = getEpoServiceAvailability(
+    "ep_granting",
+    {
+      rule713CommunicationDate: "2026-01-01",
+      hasB1Publication: false,
+      dataOrigin: "official",
+    },
+    { source_document: { document_kind: "B1" } },
+    "2026-02-01",
+  );
+
+  assert.equal(availability.available, false);
+  assert.match(availability.reason ?? "", /B1 grant publication already exists/);
+});
+
+test("does not offer EPO services from stale cache-fallback status", () => {
+  const availability = getEpoServiceAvailability("traditional_validation", {
+    grantPublicationDate: "2026-01-01",
+    hasB1Publication: true,
+    dataOrigin: "cache_fallback",
+  }, null, "2026-02-01");
+
+  assert.equal(availability.available, false);
+  assert.match(availability.reason ?? "", /official source/);
 });
 
 test("builds Paris deadline but excludes translation-only and missing priority", () => {

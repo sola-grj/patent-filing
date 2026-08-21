@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/server";
 import type { WizardConfig, WizardPayload } from "@/features/requester/wizard-types";
+import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 
 import { getErpCountries, getErpPrice } from "./client";
 import { erpQuoteCurrency } from "./types";
@@ -79,6 +80,17 @@ export async function quoteForOrganization(
   organizationId: string,
   authUserId: string,
 ): Promise<ErpQuoteResult> {
+  const serviceAvailability = getEpoServiceAvailability(
+    payload.config.epServiceType,
+    payload.selectedPatent,
+    payload.analysis,
+  );
+  if (!serviceAvailability.available) {
+    throw new Error(
+      serviceAvailability.reason
+      ?? "The selected EPO service is not currently available.",
+    );
+  }
   const availabilityError = quoteAvailabilityError(payload.config);
   if (availabilityError) throw new Error(availabilityError);
   if (!payload.config.epCountryIds.length) {

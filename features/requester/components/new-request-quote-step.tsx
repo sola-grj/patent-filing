@@ -19,6 +19,12 @@ import type {
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import {
+  mockUnitaryTargetLanguageOptions,
+  sourceLanguageOptions,
+  traditionalServiceItemOptions,
+} from "@/features/requester/options";
+import { resolveServiceTypeSelection } from "@/features/requester/request-paths";
+import {
   ERP_QUOTE_CURRENCIES,
   isErpQuoteCurrencyCode,
   type ErpQuoteCurrencyCode,
@@ -48,6 +54,8 @@ export function QuoteStepContent({
   onCurrencyChange: (currency: ErpQuoteCurrencyCode) => void;
 }) {
   const analysisReady = hasUsablePatentAnalysis(payload);
+  const onlineQuoteUnavailable = payload.config.epServiceType
+    === "traditional_validation_unitary_patent";
 
   return (
     <StepShell
@@ -69,6 +77,7 @@ export function QuoteStepContent({
             analysisFiles={payload.analysis?.files ?? []}
           />
         ) : null}
+        <RequestAuditCard payload={payload} />
 
         <section className="rounded-2xl border bg-card">
           <div className="flex flex-wrap items-start justify-between gap-4 border-b px-6 py-5">
@@ -80,7 +89,9 @@ export function QuoteStepContent({
                 {estimate ? formatCurrency(estimate.total, estimate.currency) : "Pending"}
               </h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                {analysisReady
+                {onlineQuoteUnavailable
+                  ? "Online quote is unavailable because this combined service has no ECI ERP category. The request will be sent for manual pricing."
+                  : analysisReady
                   ? "Live estimate returned by ECI ERP for the current request configuration."
                   : "Word counts and estimate details will appear when patent processing completes."}
               </p>
@@ -153,7 +164,9 @@ export function QuoteStepContent({
               </Table.Root>
             ) : (
               <div className="px-6 py-10 text-sm text-muted-foreground">
-                {analysisReady
+                {onlineQuoteUnavailable
+                  ? "Online quote unavailable · manual pricing required."
+                  : analysisReady
                   ? "No live ERP estimate is available for this configuration."
                   : "No provisional or mock word counts are shown while patent processing is incomplete."}
               </div>
@@ -163,6 +176,83 @@ export function QuoteStepContent({
       </div>
     </StepShell>
   );
+}
+
+function RequestAuditCard({ payload }: { payload: WizardPayload }) {
+  const { config, analysis } = payload;
+  const source = analysis?.source_document;
+  const serviceLabel = resolveServiceTypeSelection(
+    config.channelCode,
+    config.serviceTypes,
+    config.epvType,
+    config.epServiceType,
+  )?.label ?? config.epServiceType ?? "-";
+  const languageOptions = [...sourceLanguageOptions, ...mockUnitaryTargetLanguageOptions];
+  const partLabels: Record<string, string> = {
+    abstract: "Abstract",
+    abstract_drawing: "Abstract drawing",
+    description: "Description",
+    description_drawings: "Description drawings",
+    claims: "Claims",
+  };
+  const analysisFile = analysis?.files[0];
+
+  return (
+    <section className="space-y-4 rounded-2xl border bg-card p-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Request audit</p>
+        <h3 className="mt-2 text-lg font-semibold">{serviceLabel}</h3>
+      </div>
+      <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <AuditField label="Translation" value={config.translationRequired ? "Required" : "Not required"} />
+        <AuditField label="Service Item" value={labelFor(traditionalServiceItemOptions, config.serviceItem)} />
+        <AuditField label="Source Language" value={labelFor(languageOptions, config.sourceLanguage)} />
+        <AuditField label="Target Language(s)" value={config.targetLanguages.map((value) => labelFor(languageOptions, value)).join(", ") || "-"} />
+        <AuditField label="EP countries" value={config.epCountryIds.join(", ") || "-"} />
+        <AuditField label="Opt Out subset" value={config.optOutCountryIds.join(", ") || "-"} />
+        <AuditField label="Document" value={source?.document_kind ?? source?.kind_code ?? "-"} />
+        <AuditField label="Retrieval" value={source?.retrieval_mode ?? "-"} />
+        <AuditField label="Publication date" value={source?.publication_date ?? "-"} />
+        <AuditField label="Document date" value={source?.document_date ?? "-"} />
+        <AuditField label="Document language" value={source?.language?.toUpperCase() ?? "-"} />
+        <AuditField label="Pre-grant" value={source?.is_pre_grant ? source.is_legacy_pre_grant ? "Yes · legacy" : "Yes" : "No"} />
+      </dl>
+      {source?.source_url || source?.upstream_url ? (
+        <p className="break-all text-xs"><span className="text-muted-foreground">Source URL: </span>{source.source_url ?? source.upstream_url}</p>
+      ) : null}
+      {source?.sha256 || analysisFile?.sha256 ? (
+        <p className="break-all font-mono text-[11px]"><span className="font-sans text-muted-foreground">SHA-256: </span>{source?.sha256 ?? analysisFile?.sha256}</p>
+      ) : null}
+      {analysisFile ? (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {Object.entries(partLabels).map(([key, label]) => {
+            const part = analysisFile.parts[key as keyof typeof analysisFile.parts];
+            return (
+              <div key={key} className="rounded-md border bg-muted/10 px-3 py-2 text-xs">
+                <p className="font-medium">{label}</p>
+                <p className="mt-1 text-muted-foreground">{part.status} · {part.word_count.toLocaleString()} words</p>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        Claims: {(analysis?.aggregate.claims_words ?? 0).toLocaleString()} words · {(analysis?.aggregate.claims_count ?? 0).toLocaleString()} items
+      </p>
+    </section>
+  );
+}
+
+function AuditField({ label, value }: { label: string; value: string }) {
+  return <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{value || "-"}</dd></div>;
+}
+
+function labelFor(
+  options: readonly { value: string; label: string }[],
+  value?: string | null,
+) {
+  if (!value) return "-";
+  return options.find((option) => option.value === value)?.label ?? value;
 }
 
 function UploadOverviewCard({

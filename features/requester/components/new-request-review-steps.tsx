@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,39 +21,48 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   entityTypeOptions,
+  epoSourceLanguageOptions,
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
-  optTypeOptions,
+  mockUnitaryTargetLanguageOptions,
   sourceLanguageOptions,
+  traditionalServiceItemOptions,
 } from "@/features/requester/options";
-import { loadErpCountriesForWizard } from "@/features/requester/actions";
+import {
+  getEpoServiceAvailability,
+  type EpoServiceAvailability,
+} from "@/features/requester/deadlines";
 import {
   getServiceTypeSelection,
   getServiceTypeSelections,
   isTraditionalValidation,
   requestPathLabels,
   requiresEpCountries,
-  resolveServiceTypeSelection,
+  usesEpoTargetLanguages,
   type ServiceTypeSelectionValue,
 } from "@/features/requester/request-paths";
 import type {
   WizardConfig,
   WizardDictionaries,
+  WizardPatentAnalysisResult,
   WizardPatentCandidate,
   WizardPayload,
-  WizardSourceMode,
 } from "@/features/requester/wizard-types";
 import {
   onConfigValueChange,
+  normalizeEpoTargetLanguages,
   parsePreviewFiles,
+  requiresSourceLanguage,
   type WizardConfigFieldErrors,
-  updateWizardChannel,
 } from "./new-request-wizard-utils";
 import { Field, Metric } from "./new-request-wizard-shared";
+import { EpCountrySelector } from "./ep-country-selector";
 import { PatentBasicInfo } from "./patent-basic-info";
+import { ServiceTypeCards } from "./service-type-cards";
 
 export { QuoteStepContent } from "./new-request-quote-step";
 
@@ -173,70 +182,46 @@ export function ParsePreviewPanel({
 export function ConfigStep({
   config,
   configFieldErrors,
-  sourceMode,
   patent,
+  analysis,
   onChange,
   dictionaries,
 }: {
   config: WizardConfig;
   configFieldErrors: WizardConfigFieldErrors;
-  sourceMode: WizardSourceMode;
   patent?: WizardPatentCandidate;
+  analysis?: WizardPatentAnalysisResult;
   onChange: (config: WizardConfig) => void;
   dictionaries: WizardDictionaries;
 }) {
   const channelLabel = requestPathLabels[config.channelCode]
     ?? labelForOption(dictionaries.channels, config.channelCode);
-  const isChannelLocked = sourceMode === "patent_search";
   const hasFilingService = config.serviceTypes.includes("filing");
-  const showOptType = isTraditionalValidation(config.epvType);
+  const showTraditionalItems = isTraditionalValidation(config.epServiceType);
+  const showSourceLanguage = requiresSourceLanguage(config);
   const showEpCountries = config.channelCode === "ep"
-    && requiresEpCountries(config.serviceTypes);
-  const [erpCountryOptions, setErpCountryOptions] = useState<WizardDictionaries["epCountries"]>([]);
-  const [countryLoadError, setCountryLoadError] = useState<string | null>(null);
-  const [countriesLoading, setCountriesLoading] = useState(false);
-  const [countryReloadKey, setCountryReloadKey] = useState(0);
-  const serviceTypesKey = [...config.serviceTypes].sort().join("|");
-
-  useEffect(() => {
-    if (!showEpCountries) {
-      setErpCountryOptions([]);
-      setCountryLoadError(null);
-      return;
-    }
-    let active = true;
-    setCountriesLoading(true);
-    setCountryLoadError(null);
-    void loadErpCountriesForWizard({
-      channelCode: config.channelCode,
-      serviceTypes: serviceTypesKey ? serviceTypesKey.split("|") : [],
-      epvType: config.epvType,
-    }).then((result) => {
-      if (!active) return;
-      if (!result.success) {
-        setErpCountryOptions([]);
-        setCountryLoadError(result.error);
-        return;
-      }
-      const availableIds = new Set(result.data.map((country) => country.id));
-      setErpCountryOptions(
-        dictionaries.epCountries.filter((country) => availableIds.has(country.id)),
-      );
-    }).catch(() => {
-      if (active) setCountryLoadError("Unable to load countries from ECI ERP.");
-    }).finally(() => {
-      if (active) setCountriesLoading(false);
-    });
-    return () => { active = false; };
-  }, [config.channelCode, config.epvType, dictionaries.epCountries, serviceTypesKey, showEpCountries, countryReloadKey]);
+    && requiresEpCountries(config.epServiceType);
+  const serviceAvailability = Object.fromEntries(
+    getServiceTypeSelections(config.channelCode).map((option) => [
+      option.value,
+      getEpoServiceAvailability(option.epServiceType, patent, analysis),
+    ]),
+  ) as Partial<Record<ServiceTypeSelectionValue, EpoServiceAvailability>>;
 
   function handleServiceTypeChange(serviceType: ServiceTypeSelectionValue) {
     const selection = getServiceTypeSelection(serviceType);
     if (!selection) return;
-    const nextServiceTypes: readonly string[] = selection.serviceTypes;
+    if (serviceAvailability[serviceType]?.available === false) return;
+    const nextServiceTypes = config.channelCode === "ep" && config.translationRequired
+      ? [...selection.serviceTypes, "translation"]
+      : [...selection.serviceTypes];
+    const nextServiceItem = isTraditionalValidation(selection.epServiceType)
+      ? config.serviceItem || "traditional_validation"
+      : "";
+    const nextRequiresCountries = requiresEpCountries(selection.epServiceType);
     onChange({
       ...config,
-      serviceTypes: [...nextServiceTypes],
+      serviceTypes: nextServiceTypes,
       dueAt: "",
       filingType: nextServiceTypes.includes("filing") ? config.filingType : "",
       filingApplicationType: nextServiceTypes.includes("filing")
@@ -244,24 +229,27 @@ export function ConfigStep({
         : "",
       entityType: config.entityType,
       epvType: selection.epvType,
-      optType: isTraditionalValidation(selection.epvType) ? config.optType : "",
-      epCountryIds: [],
+      epServiceType: selection.epServiceType,
+      serviceItem: nextServiceItem,
+      epCountryIds: nextRequiresCountries ? config.epCountryIds : [],
+      epCountriesConfirmed: nextRequiresCountries
+        ? config.epCountriesConfirmed
+        : false,
+      optOutCountryIds: nextServiceItem === "traditional_validation_opt_out"
+        ? config.optOutCountryIds.filter((id) => config.epCountryIds.includes(id))
+        : [],
+      optOutCountriesConfirmed: false,
+      targetLanguages: normalizeEpoTargetLanguages(
+        selection.epServiceType,
+        config.translationRequired,
+        config.sourceLanguage,
+        config.targetLanguages,
+      ),
       pctChapter: config.channelCode === "pct" && nextServiceTypes.includes("filing")
         ? config.pctChapter || "chapter_i"
         : "",
     });
   }
-
-  function handleChannelChange(channelCode: string) {
-    onChange(updateWizardChannel(config, channelCode));
-  }
-
-  const channelOptions = dictionaries.channels
-    .filter((option) => ["ep", "paris_convention", "pct"].includes(option.value))
-    .map((option) => ({
-      ...option,
-      label: requestPathLabels[option.value] ?? option.label,
-    }));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -280,42 +268,42 @@ export function ConfigStep({
       <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {patent ? <PatentBasicInfo patent={patent} /> : null}
         <div className={`grid gap-4 md:grid-cols-2 ${patent ? "mt-5" : ""}`}>
-          {isChannelLocked ? (
-            <div className="space-y-2 md:col-span-2">
-              <Label>
-                <span className="text-destructive" aria-hidden="true">*</span>{" "}
-                Route
-              </Label>
-              <div className={getFieldClassName(Boolean(configFieldErrors.channelCode), "flex min-h-10 items-center bg-muted/20 px-3 text-sm font-medium")}>
-                {channelLabel}
-              </div>
-              {configFieldErrors.channelCode ? (
-                <p className="text-sm text-destructive">{configFieldErrors.channelCode}</p>
-              ) : null}
-            </div>
-          ) : (
-            <div className="md:col-span-2">
-              <SelectField
-                label="Route"
-                value={config.channelCode}
-                options={channelOptions}
-                placeholder="Choose a route"
-                disabled={isChannelLocked}
-                error={configFieldErrors.channelCode}
-                required
-                onChange={handleChannelChange}
-              />
-            </div>
-          )}
           <div className="md:col-span-2">
-            <ServiceTypeField
+            <ServiceTypeCards
               channelCode={config.channelCode}
               epvType={config.epvType}
+              epServiceType={config.epServiceType}
               error={configFieldErrors.serviceTypes}
               value={config.serviceTypes}
+              availability={serviceAvailability}
               onChange={handleServiceTypeChange}
             />
           </div>
+          {config.channelCode === "ep" ? (
+            <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border bg-background px-4 py-3.5 text-sm shadow-sm transition-colors hover:bg-muted/30 md:col-span-2">
+              <span className="font-medium">Translation Service</span>
+              <Checkbox
+                aria-label="Translation Service"
+                checked={config.translationRequired}
+                onCheckedChange={(checked) => {
+                  const translationRequired = checked === true;
+                  onChange({
+                    ...config,
+                    translationRequired,
+                    serviceTypes: translationRequired
+                      ? [...new Set([...config.serviceTypes, "translation"])]
+                      : config.serviceTypes.filter((value) => value !== "translation"),
+                    targetLanguages: normalizeEpoTargetLanguages(
+                      config.epServiceType,
+                      translationRequired,
+                      config.sourceLanguage,
+                      config.targetLanguages,
+                    ),
+                  });
+                }}
+              />
+            </label>
+          ) : null}
           {hasFilingService ? (
             <div className="grid gap-4 md:contents">
               <SelectField
@@ -353,16 +341,37 @@ export function ConfigStep({
               />
             </div>
           ) : null}
-          {showOptType ? (
-            <SelectField
-              label="Opt Type"
-              value={config.optType ?? ""}
-              options={optTypeOptions}
-              placeholder="Choose an Opt Type"
-              error={configFieldErrors.optType}
-              required
-              onChange={onConfigValueChange(config, onChange, "optType")}
-            />
+          {showTraditionalItems ? (
+            <fieldset className="space-y-3 rounded-lg border p-4 md:col-span-2">
+              <legend className="px-1 text-sm font-medium">
+                <span className="text-destructive" aria-hidden="true">*</span>{" "}
+                Service Items
+              </legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {traditionalServiceItemOptions.map((option) => (
+                  <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2.5 text-sm">
+                    <input
+                      type="radio"
+                      name="traditional-service-item"
+                      value={option.value}
+                      checked={config.serviceItem === option.value}
+                      onChange={() => onChange({
+                        ...config,
+                        serviceItem: option.value,
+                        optOutCountryIds: option.value === "traditional_validation_opt_out"
+                          ? config.optOutCountryIds.filter((id) => config.epCountryIds.includes(id))
+                          : [],
+                        optOutCountriesConfirmed: false,
+                      })}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+              {configFieldErrors.serviceItem ? (
+                <p className="text-sm text-destructive">{configFieldErrors.serviceItem}</p>
+              ) : null}
+            </fieldset>
           ) : null}
           {hasFilingService && config.channelCode === "pct" ? (
             <label className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3 text-sm md:col-span-2">
@@ -390,41 +399,93 @@ export function ConfigStep({
               </span>
             </label>
           ) : null}
-          <SearchableSingleSelectField
-            label="Source Language"
-            value={config.sourceLanguage}
-            placeholder="Choose a source language"
-            options={sourceLanguageOptions}
-            error={configFieldErrors.sourceLanguage}
-            required
-            onChange={onConfigValueChange(config, onChange, "sourceLanguage")}
-          />
+          {showSourceLanguage ? (
+            <SearchableSingleSelectField
+              label="Source Language"
+              value={config.sourceLanguage}
+              placeholder="Choose a source language"
+              options={config.channelCode === "ep" ? epoSourceLanguageOptions : sourceLanguageOptions}
+              error={configFieldErrors.sourceLanguage}
+              required
+              onChange={(sourceLanguage) => onChange({
+                ...config,
+                sourceLanguage,
+                targetLanguages: config.channelCode === "ep"
+                  ? normalizeEpoTargetLanguages(
+                      config.epServiceType,
+                      config.translationRequired,
+                      sourceLanguage,
+                      config.targetLanguages,
+                    )
+                  : config.targetLanguages,
+              })}
+            />
+          ) : null}
+          {config.channelCode === "ep"
+            && config.translationRequired
+            && usesEpoTargetLanguages(config.epServiceType) ? (
+              config.epServiceType === "unitary_patent" ? (
+                  config.sourceLanguage === "en" ? (
+                    <SearchableSingleSelectField
+                      label="Target Language"
+                      value={config.targetLanguages[0] ?? ""}
+                      placeholder="Choose one target language"
+                      options={mockUnitaryTargetLanguageOptions.filter((option) => option.value !== "en")}
+                      error={configFieldErrors.targetLanguages}
+                      required
+                      onChange={(value) => onChange({ ...config, targetLanguages: [value] })}
+                    />
+                  ) : (
+                    <ReadonlyLanguageList
+                      label="Target Language"
+                      values={config.targetLanguages}
+                      error={configFieldErrors.targetLanguages}
+                    />
+                  )
+                ) : (
+                  <ReadonlyLanguageList
+                    label="Target Languages"
+                    values={config.targetLanguages}
+                    error={configFieldErrors.targetLanguages}
+                  />
+                )
+            ) : null}
           {showEpCountries ? (
-            <div className="space-y-2">
-              <EpCountryMultiSelectField
+            <>
+              <EpCountrySelector
+                title="EP countries"
+                description="Select the countries covered by this service, then confirm the selection."
                 values={config.epCountryIds}
-                options={erpCountryOptions}
+                options={dictionaries.epCountries}
+                confirmed={config.epCountriesConfirmed}
                 error={configFieldErrors.epCountryIds}
-                disabled={countriesLoading || Boolean(countryLoadError)}
-                placeholder={countriesLoading ? "Loading ERP countries..." : "Choose EP countries"}
-                onToggle={(countryId, checked) =>
-                  onChange({
-                    ...config,
-                    epCountryIds: checked
-                      ? [...new Set([...config.epCountryIds, countryId])]
-                      : config.epCountryIds.filter((item) => item !== countryId),
-                  })
-                }
+                onChange={(epCountryIds) => onChange({
+                  ...config,
+                  epCountryIds,
+                  epCountriesConfirmed: false,
+                  optOutCountryIds: config.optOutCountryIds.filter((id) => epCountryIds.includes(id)),
+                  optOutCountriesConfirmed: false,
+                })}
+                onConfirm={() => onChange({ ...config, epCountriesConfirmed: true })}
               />
-              {countryLoadError ? (
-                <div className="flex items-center gap-3 text-sm text-destructive">
-                  <span>{countryLoadError}</span>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setCountryReloadKey((value) => value + 1)}>
-                    Retry
-                  </Button>
-                </div>
-              ) : null}
-            </div>
+              {config.serviceItem === "traditional_validation_opt_out"
+                && config.epCountriesConfirmed ? (
+                  <EpCountrySelector
+                    title="Opt Out countries"
+                    description="Choose the Opt Out subset from the confirmed business countries."
+                    values={config.optOutCountryIds}
+                    options={dictionaries.epCountries.filter((country) => config.epCountryIds.includes(country.id))}
+                    confirmed={config.optOutCountriesConfirmed}
+                    error={configFieldErrors.optOutCountryIds}
+                    onChange={(optOutCountryIds) => onChange({
+                      ...config,
+                      optOutCountryIds,
+                      optOutCountriesConfirmed: false,
+                    })}
+                    onConfirm={() => onChange({ ...config, optOutCountriesConfirmed: true })}
+                  />
+                ) : null}
+            </>
           ) : config.channelCode !== "ep" ? (
             <MultiSelectField
               label="Jurisdictions"
@@ -449,14 +510,14 @@ export function ConfigStep({
             <Label htmlFor="customScope">
               Custom pages / paragraphs or special requirements
             </Label>
-            <Input
-              className={requesterFieldClassName}
+            <Textarea
+              className={`${requesterFieldClassName} min-h-28 resize-y`}
               id="customScope"
               value={config.customScope}
               onChange={(event) =>
                 onChange({ ...config, customScope: event.target.value })
               }
-              placeholder="Pages 1-20, claim set A..."
+              placeholder="Pages 1-20, claim set A, paragraph-specific instructions..."
             />
           </div>
           <label className="flex items-center gap-2 text-sm md:col-span-2">
@@ -474,41 +535,35 @@ export function ConfigStep({
   );
 }
 
-function ServiceTypeField(props: {
-  channelCode: string;
+function ReadonlyLanguageList({
+  label,
+  values,
+  error,
+}: {
+  label: string;
+  values: string[];
   error?: string;
-  value: string[];
-  onChange: (serviceType: ServiceTypeSelectionValue) => void;
-  epvType?: string;
 }) {
-  const selectedValue = resolveServiceTypeSelection(
-    props.channelCode,
-    props.value,
-    props.epvType,
-  )?.value;
-
+  const options = [...sourceLanguageOptions, ...mockUnitaryTargetLanguageOptions];
   return (
-    <Field label="Service Type" required>
-      <Select
-        value={selectedValue}
-        onValueChange={(value) => props.onChange(value as ServiceTypeSelectionValue)}
+    <Field label={label} required>
+      <div
+        aria-invalid={Boolean(error)}
+        className={getFieldClassName(
+          Boolean(error),
+          "flex min-h-10 flex-wrap items-center gap-2 bg-muted/30 px-3 py-2",
+        )}
       >
-        <SelectTrigger
-          aria-invalid={Boolean(props.error)}
-          aria-required="true"
-          className={getFieldClassName(Boolean(props.error), "h-10")}
-        >
-          <SelectValue placeholder="Choose a service type" />
-        </SelectTrigger>
-        <SelectContent>
-          {getServiceTypeSelections(props.channelCode).map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
+        {values.length ? values.map((value) => (
+          <span key={value} className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium">
+            {labelForOption(options, value) ?? value}
+          </span>
+        )) : (
+          <span className="text-sm text-muted-foreground">Select a source language first.</span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">Target selection is locked by the service rule.</p>
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </Field>
   );
 }
@@ -598,90 +653,6 @@ function SearchableSingleSelectField(props: {
       </DropdownMenu>
       {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
     </Field>
-  );
-}
-
-function EpCountryMultiSelectField(props: {
-  values: number[];
-  options: WizardDictionaries["epCountries"];
-  error?: string;
-  disabled?: boolean;
-  placeholder?: string;
-  onToggle: (value: number, checked: boolean) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const selectedLabels = props.values.map((id) =>
-    props.options.find((option) => option.id === id)?.name ?? String(id),
-  );
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredOptions = normalizedQuery
-    ? props.options.filter((option) =>
-        `${option.name} ${option.cname} ${option.abbr} ${option.id}`
-          .toLowerCase()
-          .includes(normalizedQuery),
-      )
-    : props.options;
-
-  return (
-    <Field label="EP countries" required>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            aria-invalid={Boolean(props.error)}
-            aria-required
-            disabled={props.disabled}
-            className={getFieldClassName(Boolean(props.error), "h-10 w-full justify-between px-3 font-normal")}
-          >
-            <span className={`truncate ${props.values.length ? "text-foreground" : "text-muted-foreground"}`}>
-              {selectedLabels.length ? selectedLabels.join(", ") : props.placeholder ?? "Choose EP countries"}
-            </span>
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          </Button>
-        </DropdownMenuTrigger>
-        <SearchableDropdownContent query={query} onQueryChange={setQuery}>
-          {filteredOptions.map((option) => (
-            <DropdownMenuCheckboxItem
-              key={option.id}
-              checked={props.values.includes(option.id)}
-              onCheckedChange={(checked) => props.onToggle(option.id, checked === true)}
-              onSelect={(event) => event.preventDefault()}
-            >
-              <EpCountryOptionLabel option={option} />
-            </DropdownMenuCheckboxItem>
-          ))}
-          {!filteredOptions.length ? <EmptySearchResult /> : null}
-        </SearchableDropdownContent>
-      </DropdownMenu>
-      {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
-    </Field>
-  );
-}
-
-function EpCountryOptionLabel({
-  option,
-}: {
-  option: WizardDictionaries["epCountries"][number];
-}) {
-  const flagCode = /^[A-Z]{2}$/.test(option.abbr) && option.abbr !== "UK"
-    ? option.abbr.toLowerCase()
-    : null;
-  return (
-    <span className="flex items-center gap-2">
-      {flagCode ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`https://flagcdn.com/20x15/${flagCode}.png`}
-          srcSet={`https://flagcdn.com/40x30/${flagCode}.png 2x`}
-          width="20"
-          height="15"
-          alt=""
-          className="shrink-0 rounded-[2px] object-cover"
-        />
-      ) : null}
-      <span>{option.name}</span>
-    </span>
   );
 }
 

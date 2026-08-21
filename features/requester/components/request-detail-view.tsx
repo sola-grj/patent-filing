@@ -34,8 +34,10 @@ import {
   filingApplicationTypeOptions,
   filingTypeOptions,
   jurisdictionOptions,
+  mockUnitaryTargetLanguageOptions,
   serviceTypeOptions,
   sourceLanguageOptions,
+  traditionalServiceItemOptions,
 } from "@/features/requester/options";
 import {
   isTraditionalValidation,
@@ -61,6 +63,10 @@ type TranslationRequirement = {
   filing_type_code?: string | null;
   application_type_code?: string | null;
   epv_type_code?: string | null;
+  ep_service_type_code?: string | null;
+  translation_required?: boolean | null;
+  service_item_code?: string | null;
+  opt_out_country_ids?: number[] | null;
   pct_chapter_code?: string | null;
   ep_country_ids?: number[] | null;
   jurisdiction_codes?: string[] | null;
@@ -231,13 +237,14 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const dueAt = config.dueAt;
   const showFilingFields = serviceTypes.includes("filing");
   const isReadOnly = request.viewer_is_owner === false;
-  const showOptType = isTraditionalValidation(config.epvType);
+  const showServiceItem = isTraditionalValidation(config.epServiceType);
   const showDestinations = config.channelCode !== "ep"
-    || requiresEpCountries(serviceTypes);
+    || requiresEpCountries(config.epServiceType);
   const serviceTypeLabel = resolveServiceTypeSelection(
     config.channelCode,
     serviceTypes,
     config.epvType,
+    config.epServiceType,
   )?.label ?? formatConfigLabels(serviceTypeOptions, serviceTypes);
   const showDueDate = serviceTypes.includes("translation") && Boolean(dueAt);
   const deadlineItems = buildRequestDeadlineItems({
@@ -275,6 +282,19 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       label: "Service type",
       value: serviceTypeLabel,
     },
+    {
+      label: "Translation",
+      value: config.translationRequired ? "Required" : "Not required",
+    },
+    ...(config.targetLanguages.length
+      ? [{
+          label: "Target language(s)",
+          value: formatConfigLabels(
+            [...sourceLanguageOptions, ...mockUnitaryTargetLanguageOptions],
+            config.targetLanguages,
+          ),
+        }]
+      : []),
     ...(showFilingFields
       ? [
           {
@@ -297,10 +317,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           },
         ]
       : []),
-    ...(showOptType
+    ...(showServiceItem
       ? [{
-          label: "Opt Type",
-          value: titleCase(config.optType),
+          label: "Service Item",
+          value: formatConfigLabel([...traditionalServiceItemOptions], config.serviceItem),
         }]
       : []),
   ];
@@ -315,6 +335,12 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       value: config.epCountryIds.length
         ? epCountryNames.join(", ") || "-"
         : formatConfigLabels(jurisdictionOptions, jurisdictionCodes),
+    }] : []),
+    ...(config.optOutCountryIds.length ? [{
+      label: "Opt Out countries",
+      value: config.optOutCountryIds.map((id) =>
+        epCountries.find((country) => country.id === id)?.name ?? `EP country ${id}`
+      ).join(", "),
     }] : []),
     {
       label: "Delivery option",
@@ -398,40 +424,43 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             <RequesterSignaturePanel signatureRequests={signatureRequests} canSubmit={!isReadOnly} />
           ) : null}
           {isPatentSearch ? (
-            <Section
-              title="Patent Information"
-              icon={<FileSearch className="size-5" />}
-              action={
-                patentNumber ? (
-                  <PatentFileDownloadButton
-                    requestId={request.id}
-                    status={patentFileStatus}
-                  />
-                ) : null
-              }
-            >
-              <PatentCacheStatus
-                requestId={request.id}
-                status={patentFileStatus}
-                updatedAt={patentFile?.updated_at}
-                canRetry={!isReadOnly}
-              />
-              {patentCandidate ? (
-                <PatentDetailStep
-                  patent={patentCandidate}
-                  flushBibliographic
-                  plainBibliographic
-                  useParentScroll
-                  additionalMetadata={entityLabel
-                    ? [{ label: "Entity", value: entityLabel }]
-                    : []}
+            <>
+              <Section
+                title="Patent Information"
+                icon={<FileSearch className="size-5" />}
+                action={
+                  patentNumber ? (
+                    <PatentFileDownloadButton
+                      requestId={request.id}
+                      status={patentFileStatus}
+                    />
+                  ) : null
+                }
+              >
+                <PatentCacheStatus
+                  requestId={request.id}
+                  status={patentFileStatus}
+                  updatedAt={patentFile?.updated_at}
+                  canRetry={!isReadOnly}
                 />
-              ) : (
-                <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                  No patent information is associated with this request.
-                </p>
-              )}
-            </Section>
+                {patentCandidate ? (
+                  <PatentDetailStep
+                    patent={patentCandidate}
+                    flushBibliographic
+                    plainBibliographic
+                    useParentScroll
+                    additionalMetadata={entityLabel
+                      ? [{ label: "Entity", value: entityLabel }]
+                      : []}
+                  />
+                ) : (
+                  <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                    No patent information is associated with this request.
+                  </p>
+                )}
+              </Section>
+              <RequestFileInformation files={files} />
+            </>
           ) : (
             <RequestFileInformation
               files={uploadedFiles}
@@ -467,7 +496,24 @@ function resolveRequestConfig(
   return {
     channelCode: snapshot.channelCode ?? request.channel_code ?? "",
     sourceLanguage: snapshot.sourceLanguage ?? requirement?.source_language ?? "",
+    targetLanguages: snapshot.targetLanguages ?? requirement?.target_languages ?? [],
+    translationRequired: snapshot.translationRequired
+      ?? requirement?.translation_required
+      ?? (requirement?.service_types ?? []).includes("translation"),
+    epServiceType: snapshot.epServiceType
+      ?? requirement?.ep_service_type_code as WizardConfig["epServiceType"]
+      ?? "",
     epCountryIds: snapshot.epCountryIds ?? requirement?.ep_country_ids ?? [],
+    optOutCountryIds: snapshot.optOutCountryIds
+      ?? requirement?.opt_out_country_ids
+      ?? [],
+    epCountriesConfirmed: snapshot.epCountriesConfirmed
+      ?? Boolean((requirement?.ep_country_ids ?? []).length),
+    optOutCountriesConfirmed: snapshot.optOutCountriesConfirmed
+      ?? Boolean((requirement?.opt_out_country_ids ?? []).length),
+    serviceItem: snapshot.serviceItem
+      ?? requirement?.service_item_code as WizardConfig["serviceItem"]
+      ?? "",
     jurisdictionCodes:
       snapshot.jurisdictionCodes ?? requirement?.jurisdiction_codes ?? [],
     scopeType: snapshot.scopeType ?? requirement?.scope_type ?? "full_text",
