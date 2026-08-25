@@ -2,12 +2,48 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getDefaultServiceTypeSelection,
   getServiceTypeSelections,
   isTraditionalValidation,
   requestPathLabels,
   requiresEpCountries,
   usesEpoTargetLanguages,
 } from "./request-paths.ts";
+
+test("defaults the only selectable service type", () => {
+  const selection = getDefaultServiceTypeSelection(
+    "ep",
+    [],
+    "",
+    "",
+    (option) => option.value === "ep_granting",
+  );
+
+  assert.equal(selection?.value, "ep_granting");
+});
+
+test("does not replace an existing service type selection", () => {
+  const selection = getDefaultServiceTypeSelection(
+    "ep",
+    ["epv"],
+    "unitary_effect",
+    "unitary_patent",
+    (option) => option.value === "ep_granting",
+  );
+
+  assert.equal(selection, undefined);
+});
+
+test("does not default when multiple service types are selectable", () => {
+  const selection = getDefaultServiceTypeSelection(
+    "pct",
+    [],
+    "",
+    "",
+  );
+
+  assert.equal(selection, undefined);
+});
 
 test("EP route exposes the four base service types", () => {
   assert.equal(requestPathLabels.ep, "EP");

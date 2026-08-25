@@ -1,6 +1,27 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { enqueueSubmittedPatentCache } from "./patent-service";
+import {
+  enqueueSubmittedPatentCache,
+  persistDraftPatentCache,
+} from "./patent-service";
+
+export async function persistDraftPatentFile(input: {
+  supabase: SupabaseClient;
+  requestId: string;
+  lookupReceipt: string;
+  analysisReceipt: string;
+}) {
+  try {
+    const persisted = await persistDraftPatentCache(input);
+    if (persisted.status !== "completed") {
+      throw new Error("The official patent document was not stored.");
+    }
+    return persisted;
+  } catch (error) {
+    await markPatentFileFailed(input.supabase, input.requestId);
+    throw error;
+  }
+}
 
 export async function enqueueSubmittedPatentFilePreparation(input: {
   supabase: SupabaseClient;

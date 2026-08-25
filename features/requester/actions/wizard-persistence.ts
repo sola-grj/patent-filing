@@ -8,6 +8,7 @@ import {
   validateUploadFiles,
 } from "@/lib/validators/requester";
 import type { WizardPayload, WizardPersistResult } from "@/features/requester/wizard-types";
+import { buildWizardDraftPayloadV2 } from "@/features/requester/draft-v2";
 import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 import {
   HUMAN_TRANSLATION_QUALITY_LEVEL,
@@ -39,7 +40,10 @@ import { quoteForOrganization } from "@/lib/eci-erp/pricing";
 import {
   verifyPatentReceipts,
 } from "./patent-service";
-import { enqueueSubmittedPatentFilePreparation } from "./patent-file-readiness";
+import {
+  enqueueSubmittedPatentFilePreparation,
+  persistDraftPatentFile,
+} from "./patent-file-readiness";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 const DEFAULT_DELIVERY_OPTION = "standard";
@@ -60,18 +64,29 @@ export async function persistWizardRequest(
     if (!organization || !supplierOrganizationId) {
       throw new Error("Your organization is not linked to a supplier.");
     }
+    const reuseDurablePatent = payload.sourceMode === "patent_search"
+      && Boolean(payload.requestId)
+      && !payload.selectedPatent?.lookupReceipt
+      && !payload.analysis?.analysis_receipt
+      && await hasDurableDraftPatent(supabase, payload.requestId!);
     const dictionaryValidation = validateDictionaryValues(supabase, payload);
     if (mode !== "draft") {
       validateCommercialFields(payload);
       validateFutureDateString(payload.config.dueAt, "Due date");
-      const [, verifiedPayload] = await Promise.all([
-        dictionaryValidation,
-        verifySubmittedPatentPayload(payload),
-      ]);
-      payload = verifiedPayload;
+      await dictionaryValidation;
+      if (!reuseDurablePatent) {
+        payload = await verifySubmittedPatentPayload(payload);
+      }
       validateEpoServiceAvailability(payload);
     } else {
       await dictionaryValidation;
+      if (
+        payload.sourceMode === "patent_search"
+        && payload.selectedPatent
+        && !reuseDurablePatent
+      ) {
+        payload = await verifySubmittedPatentPayload(payload);
+      }
     }
 
     const requestId = payload.requestId ?? randomUUID();
@@ -90,13 +105,6 @@ export async function persistWizardRequest(
       : null;
     if (submittedRequestNo) {
       persistedResult = { requestId, requestNo: submittedRequestNo };
-      scheduleSubmittedPatentFile({
-        supabase,
-        requestId,
-        userId,
-        lookupReceipt: payload.selectedPatent!.lookupReceipt!,
-        analysisReceipt: payload.analysis!.analysis_receipt!,
-      });
       revalidateRequestPaths(requestId);
       return { success: true, data: persistedResult };
     }
@@ -113,7 +121,7 @@ export async function persistWizardRequest(
           requestId,
           payload.uploadedFiles,
         );
-      } else {
+      } else if (!reuseDurablePatent) {
         await clearDraftSourceArtifacts(supabase, requestId);
       }
       if (mode === "submit") {
@@ -130,21 +138,49 @@ export async function persistWizardRequest(
       payload,
       mode,
     );
-    const requestFileIds = await persistSourceFiles(
-      supabase,
-      requestId,
-      userId,
-      payload,
-      formData,
-      reuseExistingUploadFiles,
-      mode,
-    );
+    const requestFileIds = reuseDurablePatent
+      ? await fetchExistingRequestFileIds(supabase, requestId)
+      : await persistSourceFiles(
+          supabase,
+          requestId,
+          userId,
+          payload,
+          formData,
+          reuseExistingUploadFiles,
+          mode,
+        );
+    persistedResult = { requestId, requestNo };
+    const persistPatentBeforeSubmission = mode === "submit"
+      && payload.sourceMode === "patent_search"
+      && Boolean(payload.selectedPatent)
+      && !reuseDurablePatent;
+    if (
+      (mode === "draft" || persistPatentBeforeSubmission)
+      && payload.sourceMode === "patent_search"
+      && payload.selectedPatent
+      && !reuseDurablePatent
+    ) {
+      await persistDraftPatentFile({
+        supabase,
+        requestId,
+        lookupReceipt: payload.selectedPatent.lookupReceipt!,
+        analysisReceipt: payload.analysis!.analysis_receipt!,
+      });
+      await createParseResults(supabase, requestFileIds, payload);
+    }
     if (mode === "draft" && payload.sourceMode === "upload") {
       payload = await refreshDraftUploadPayload(supabase, requestId, payload);
     }
-    persistedResult = { requestId, requestNo };
 
     if (mode === "draft") {
+      await clearIncompleteSubmissionArtifacts(supabase, requestId);
+      await persistDraftConfigurationArtifacts(
+        supabase,
+        requestId,
+        userId,
+        payload,
+        requestFileIds,
+      );
       await writeRequestEvent(
         supabase,
         requestId,
@@ -163,6 +199,7 @@ export async function persistWizardRequest(
         payload,
         requestFileIds,
         !options?.deferFormalSubmission,
+        reuseDurablePatent || persistPatentBeforeSubmission,
       );
       if (
         !options?.deferFormalSubmission
@@ -181,6 +218,8 @@ export async function persistWizardRequest(
       if (
         payload.sourceMode === "patent_search"
         && !options?.deferPatentCache
+        && !reuseDurablePatent
+        && !persistPatentBeforeSubmission
       ) {
         scheduleSubmittedPatentFile({
           supabase,
@@ -525,7 +564,7 @@ async function upsertRequest(
     workflow_stage: "draft",
     requester_status: mode === "draft" ? "responding" : "responding",
     pm_status: mode === "draft" ? "responding" : "responding",
-    draft_payload: { ...payload, requestId },
+    draft_payload: buildWizardDraftPayloadV2(payload),
     last_draft_step: payload.lastStep,
     submitted_at: null,
   };
@@ -722,7 +761,7 @@ async function refreshDraftUploadPayload(
   };
   const { error: updateError } = await supabase
     .from("translation_requests")
-    .update({ draft_payload: refreshedPayload })
+    .update({ draft_payload: buildWizardDraftPayloadV2(refreshedPayload) })
     .eq("id", requestId);
 
   if (updateError) throw new Error(updateError.message);
@@ -853,6 +892,35 @@ async function persistPatentSelection(
   return files.map((entry) => entry.requestFileId);
 }
 
+async function hasDurableDraftPatent(
+  supabase: SupabaseClient,
+  requestId: string,
+) {
+  const { data: files, error: filesError } = await supabase
+    .from("request_files")
+    .select("id, status, patent_document_id")
+    .eq("request_id", requestId)
+    .eq("source", "patent_search");
+  if (filesError) throw new Error(filesError.message);
+  if (!files?.length || files.some((file) => (
+    file.status !== "parsed" || !file.patent_document_id
+  ))) {
+    return false;
+  }
+
+  const { data: parseResults, error: parseError } = await supabase
+    .from("file_parse_results")
+    .select("file_id, parse_status")
+    .in("file_id", files.map((file) => file.id));
+  if (parseError) throw new Error(parseError.message);
+  const parsedIds = new Set(
+    (parseResults ?? [])
+      .filter((result) => ["completed", "needs_review"].includes(result.parse_status))
+      .map((result) => result.file_id),
+  );
+  return files.every((file) => parsedIds.has(file.id));
+}
+
 async function assertEditableDraft(
   supabase: SupabaseClient,
   requestId: string,
@@ -924,8 +992,11 @@ async function persistSubmissionArtifacts(
   payload: WizardPayload,
   requestFileIds: string[],
   finalizeSubmission: boolean,
+  reuseExistingParseResults = false,
 ) {
-  await createParseResults(supabase, requestFileIds, payload);
+  if (!reuseExistingParseResults) {
+    await createParseResults(supabase, requestFileIds, payload);
+  }
   const requirementId = randomUUID();
   await createRequirement(supabase, requestId, requirementId, payload);
   const configId = randomUUID();
@@ -950,6 +1021,46 @@ async function persistSubmissionArtifacts(
   ]);
   if (configFilesResult.error) {
     throw new Error(configFilesResult.error.message);
+  }
+}
+
+async function persistDraftConfigurationArtifacts(
+  supabase: SupabaseClient,
+  requestId: string,
+  userId: string,
+  payload: WizardPayload,
+  requestFileIds: string[],
+) {
+  if (!isDraftConfigurationComplete(payload)) return;
+  const requirementId = randomUUID();
+  const configId = randomUUID();
+  await createRequirement(supabase, requestId, requirementId, payload);
+  await createConfigVersion(
+    supabase,
+    requestId,
+    requirementId,
+    configId,
+    userId,
+    payload,
+  );
+  if (requestFileIds.length) {
+    const { error } = await supabase.from("request_config_files").insert(
+      requestFileIds.map((requestFileId) => ({
+        config_version_id: configId,
+        request_file_id: requestFileId,
+      })),
+    );
+    if (error) throw new Error(error.message);
+  }
+}
+
+function isDraftConfigurationComplete(payload: WizardPayload) {
+  try {
+    validateCommercialFields(payload);
+    validateFutureDateString(payload.config.dueAt, "Due date");
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -988,6 +1099,7 @@ async function createParseResults(
           ? {
               input_mode: payload.analysis?.input_mode,
               status: analysisStatus,
+              analysis_profile: payload.analysis?.analysis_profile,
               warnings: payload.analysis?.warnings ?? [],
             }
           : { todo: "Replace upload parse preview with async parser worker." },
@@ -1008,6 +1120,7 @@ async function createParseResults(
               document_text_words: analysisFile.document_text_words,
               drawing_ocr_words: analysisFile.drawing_ocr_words,
               aggregate: payload.analysis?.aggregate,
+              analysis_profile: payload.analysis?.analysis_profile,
               warnings: analysisFile.warnings,
               counting_standard: payload.analysis?.counting_standard,
               excluded_content: payload.analysis?.excluded_content,

@@ -279,30 +279,65 @@ export function ConfigStep({
               onChange={handleServiceTypeChange}
             />
           </div>
+          {showTraditionalItems ? (
+            <div className="md:col-span-2">
+              <Field label="Service Items" required>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {traditionalServiceItemOptions.map((option) => (
+                    <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2.5 text-sm">
+                      <input
+                        type="radio"
+                        name="traditional-service-item"
+                        value={option.value}
+                        className="size-4 accent-brand"
+                        checked={config.serviceItem === option.value}
+                        onChange={() => onChange({
+                          ...config,
+                          serviceItem: option.value,
+                          optOutCountryIds: option.value === "traditional_validation_opt_out"
+                            ? config.optOutCountryIds.filter((id) => config.epCountryIds.includes(id))
+                            : [],
+                          optOutCountriesConfirmed: false,
+                        })}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+                {configFieldErrors.serviceItem ? (
+                  <p className="text-sm text-destructive">{configFieldErrors.serviceItem}</p>
+                ) : null}
+              </Field>
+            </div>
+          ) : null}
           {config.channelCode === "ep" ? (
-            <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border bg-background px-4 py-3.5 text-sm shadow-sm transition-colors hover:bg-muted/30 md:col-span-2">
-              <span className="font-medium">Translation Service</span>
-              <Checkbox
-                aria-label="Translation Service"
-                checked={config.translationRequired}
-                onCheckedChange={(checked) => {
-                  const translationRequired = checked === true;
-                  onChange({
-                    ...config,
-                    translationRequired,
-                    serviceTypes: translationRequired
-                      ? [...new Set([...config.serviceTypes, "translation"])]
-                      : config.serviceTypes.filter((value) => value !== "translation"),
-                    targetLanguages: normalizeEpoTargetLanguages(
-                      config.epServiceType,
-                      translationRequired,
-                      config.sourceLanguage,
-                      config.targetLanguages,
-                    ),
-                  });
-                }}
-              />
-            </label>
+            <div className="md:col-span-2">
+              <Field label="Translation Service">
+                <label className="flex cursor-pointer items-center justify-between gap-4 rounded-md border bg-background px-3 py-2.5 text-sm transition-colors hover:bg-muted/30">
+                  <span>{config.translationRequired ? "Included" : "Not included"}</span>
+                  <Checkbox
+                    aria-label="Translation Service"
+                    checked={config.translationRequired}
+                    onCheckedChange={(checked) => {
+                      const translationRequired = checked === true;
+                      onChange({
+                        ...config,
+                        translationRequired,
+                        serviceTypes: translationRequired
+                          ? [...new Set([...config.serviceTypes, "translation"])]
+                          : config.serviceTypes.filter((value) => value !== "translation"),
+                        targetLanguages: normalizeEpoTargetLanguages(
+                          config.epServiceType,
+                          translationRequired,
+                          config.sourceLanguage,
+                          config.targetLanguages,
+                        ),
+                      });
+                    }}
+                  />
+                </label>
+              </Field>
+            </div>
           ) : null}
           {hasFilingService ? (
             <div className="grid gap-4 md:contents">
@@ -340,38 +375,6 @@ export function ConfigStep({
                 onChange={onConfigValueChange(config, onChange, "entityType")}
               />
             </div>
-          ) : null}
-          {showTraditionalItems ? (
-            <fieldset className="space-y-3 rounded-lg border p-4 md:col-span-2">
-              <legend className="px-1 text-sm font-medium">
-                <span className="text-destructive" aria-hidden="true">*</span>{" "}
-                Service Items
-              </legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {traditionalServiceItemOptions.map((option) => (
-                  <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2.5 text-sm">
-                    <input
-                      type="radio"
-                      name="traditional-service-item"
-                      value={option.value}
-                      checked={config.serviceItem === option.value}
-                      onChange={() => onChange({
-                        ...config,
-                        serviceItem: option.value,
-                        optOutCountryIds: option.value === "traditional_validation_opt_out"
-                          ? config.optOutCountryIds.filter((id) => config.epCountryIds.includes(id))
-                          : [],
-                        optOutCountriesConfirmed: false,
-                      })}
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-              {configFieldErrors.serviceItem ? (
-                <p className="text-sm text-destructive">{configFieldErrors.serviceItem}</p>
-              ) : null}
-            </fieldset>
           ) : null}
           {hasFilingService && config.channelCode === "pct" ? (
             <label className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3 text-sm md:col-span-2">
@@ -454,25 +457,29 @@ export function ConfigStep({
             <>
               <EpCountrySelector
                 title="EP countries"
-                description="Select the countries covered by this service, then confirm the selection."
+                description="Select the countries covered by this service."
                 values={config.epCountryIds}
                 options={dictionaries.epCountries}
                 confirmed={config.epCountriesConfirmed}
                 error={configFieldErrors.epCountryIds}
-                onChange={(epCountryIds) => onChange({
-                  ...config,
-                  epCountryIds,
-                  epCountriesConfirmed: false,
-                  optOutCountryIds: config.optOutCountryIds.filter((id) => epCountryIds.includes(id)),
-                  optOutCountriesConfirmed: false,
-                })}
-                onConfirm={() => onChange({ ...config, epCountriesConfirmed: true })}
+                onChange={(epCountryIds) => {
+                  const optOutCountryIds = config.optOutCountryIds.filter((id) =>
+                    epCountryIds.includes(id)
+                  );
+                  onChange({
+                    ...config,
+                    epCountryIds,
+                    epCountriesConfirmed: epCountryIds.length > 0,
+                    optOutCountryIds,
+                    optOutCountriesConfirmed: optOutCountryIds.length > 0,
+                  });
+                }}
               />
               {config.serviceItem === "traditional_validation_opt_out"
                 && config.epCountriesConfirmed ? (
                   <EpCountrySelector
                     title="Opt Out countries"
-                    description="Choose the Opt Out subset from the confirmed business countries."
+                    description="Choose the Opt Out subset from the selected business countries."
                     values={config.optOutCountryIds}
                     options={dictionaries.epCountries.filter((country) => config.epCountryIds.includes(country.id))}
                     confirmed={config.optOutCountriesConfirmed}
@@ -480,9 +487,8 @@ export function ConfigStep({
                     onChange={(optOutCountryIds) => onChange({
                       ...config,
                       optOutCountryIds,
-                      optOutCountriesConfirmed: false,
+                      optOutCountriesConfirmed: optOutCountryIds.length > 0,
                     })}
-                    onConfirm={() => onChange({ ...config, optOutCountriesConfirmed: true })}
                   />
                 ) : null}
             </>
@@ -545,22 +551,23 @@ function ReadonlyLanguageList({
   error?: string;
 }) {
   const options = [...sourceLanguageOptions, ...mockUnitaryTargetLanguageOptions];
+  const valueLabel = values.length
+    ? joinOptionLabels(options, values)
+    : "Select a source language first.";
   return (
     <Field label={label} required>
       <div
         aria-invalid={Boolean(error)}
+        aria-readonly="true"
         className={getFieldClassName(
           Boolean(error),
-          "flex min-h-10 flex-wrap items-center gap-2 bg-muted/30 px-3 py-2",
+          "flex h-10 w-full items-center justify-between px-3 font-normal",
         )}
       >
-        {values.length ? values.map((value) => (
-          <span key={value} className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium">
-            {labelForOption(options, value) ?? value}
-          </span>
-        )) : (
-          <span className="text-sm text-muted-foreground">Select a source language first.</span>
-        )}
+        <span className={`truncate text-sm ${values.length ? "text-foreground" : "text-muted-foreground"}`}>
+          {valueLabel}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
       </div>
       <p className="text-xs text-muted-foreground">Target selection is locked by the service rule.</p>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

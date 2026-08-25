@@ -403,6 +403,11 @@ export function NewRequestWizard({
 
   async function handleSaveDraft() {
     setIsSavingDraft(true);
+    setStepLoadingMessage(
+      sourceMode === "patent_search" && selectedPatent
+        ? "Saving official document and verified analysis"
+        : "Saving draft",
+    );
     try {
       await persist(saveRequestDraft, {
         redirectOnSuccess: false,
@@ -413,6 +418,7 @@ export function NewRequestWizard({
       });
     } finally {
       setIsSavingDraft(false);
+      setStepLoadingMessage(null);
     }
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { Info } from "lucide-react";
+import { useEffect } from "react";
 
 import {
   Tooltip,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { EpoServiceAvailability } from "@/features/requester/deadlines";
 import {
+  getDefaultServiceTypeSelection,
   getServiceTypeSelections,
   resolveServiceTypeSelection,
   type ServiceTypeSelectionValue,
@@ -33,12 +35,25 @@ export function ServiceTypeCards(props: {
   epServiceType?: string;
   availability?: Partial<Record<ServiceTypeSelectionValue, EpoServiceAvailability>>;
 }) {
+  const onChange = props.onChange;
   const selectedOption = resolveServiceTypeSelection(
     props.channelCode,
     props.value,
     props.epvType,
     props.epServiceType,
   );
+  const defaultOption = getDefaultServiceTypeSelection(
+    props.channelCode,
+    props.value,
+    props.epvType,
+    props.epServiceType,
+    (option) => props.availability?.[option.value]?.available !== false,
+  );
+
+  useEffect(() => {
+    if (!defaultOption) return;
+    onChange(defaultOption.value);
+  }, [defaultOption, onChange]);
 
   return (
     <Field label="Service Type" required>

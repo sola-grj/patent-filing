@@ -6,6 +6,11 @@ import { normalizeRequestSearchTerm } from "./requester-routes";
 import type {
   DictionaryOption,
   WizardDictionaries,
+  WizardDraftPayloadV2,
+  WizardPatentAnalysisPart,
+  WizardPatentAnalysisResult,
+  WizardPatentCandidate,
+  WizardPatentFile,
   WizardPayload,
   WizardUploadedFile,
 } from "./wizard-types";
@@ -77,13 +82,72 @@ type DraftRow = {
   workflow_stage: string;
   updated_at: string;
   last_draft_step: string | null;
-  draft_payload: Partial<WizardPayload> | null;
+  draft_payload: Partial<WizardDraftPayloadV2> | null;
+  request_patents?: Array<{
+    patent_number: string;
+    application_no: string | null;
+    publication_no: string | null;
+    title: string | null;
+    abstract: string | null;
+    jurisdiction: string | null;
+    source: string | null;
+    applicants: string[] | null;
+    inventors: string[] | null;
+    filing_date: string | null;
+    publication_date: string | null;
+    language: string | null;
+    first_priority_date: string | null;
+    international_filing_date: string | null;
+    grant_publication_date: string | null;
+    rule_71_3_communication_date: string | null;
+    filing_deadline_30_months: string | null;
+    filing_deadline_31_months: string | null;
+    total_pages: number | null;
+    legal_status: string | null;
+    ipc_codes: string[] | null;
+    cpc_codes: string[] | null;
+    abstract_word_count: number | null;
+    description_word_count: number | null;
+    claims_word_count: number | null;
+    claims_count: number | null;
+    drawing_count: number | null;
+  }> | null;
+  patent_searches?: Array<{ query: string }> | null;
+  translation_requirements?: Array<{
+    service_types: string[] | null;
+    ep_service_type_code: string | null;
+  }> | null;
   request_files?: Array<{
     id: string;
+    source?: "patent_search" | "upload";
+    status?: string;
+    patent_document_id?: string | null;
     original_filename: string;
     mime_type: string | null;
+    file_role?: string | null;
+    language?: string | null;
+    version_label?: string | null;
     metadata?: { size?: number } | null;
+    file_parse_results?: DraftParseResult | DraftParseResult[] | null;
   }> | null;
+};
+
+type DraftParseResult = {
+  parse_status: string;
+  word_count: number;
+  page_count: number;
+  claim_count: number;
+  structure_json: Record<string, unknown> | null;
+  document_kind: string | null;
+  source_url: string | null;
+  retrieval_mode: "automatic" | "customer_upload" | null;
+  document_language: string | null;
+  publication_date: string | null;
+  document_date: string | null;
+  document_sha256: string | null;
+  epo_document_id: string | null;
+  is_pre_grant: boolean;
+  is_legacy_pre_grant: boolean;
 };
 
 type RequesterQuoteMessage = {
@@ -430,7 +494,7 @@ export async function getRequesterDrafts(filters?: {
 
   const { data, error } = await supabase
     .from("translation_requests")
-    .select("id, request_no, title, source_mode, updated_at, last_draft_step, draft_payload")
+    .select("id, request_no, title, source_mode, workflow_stage, updated_at, last_draft_step, draft_payload, request_patents(patent_number, title), patent_searches(query), translation_requirements(service_types, ep_service_type_code), request_files(id, source, status, patent_document_id, original_filename, mime_type, metadata)")
     .eq("requester_id", userId)
     .eq("workflow_stage", "draft")
     .order("updated_at", { ascending: false });
@@ -458,14 +522,21 @@ export async function getRequesterDrafts(filters?: {
 }
 
 function matchesRequesterDraftFilters(
-  draft: Pick<DraftRow, "request_no" | "title" | "source_mode" | "last_draft_step" | "draft_payload">,
+  draft: Pick<DraftRow, "request_no" | "title" | "source_mode" | "last_draft_step" | "draft_payload" | "patent_searches" | "translation_requirements" | "request_files"> & {
+    request_patents?: Array<Pick<
+      NonNullable<DraftRow["request_patents"]>[number],
+      "patent_number" | "title"
+    >> | null;
+  },
   filters?: { channel?: string; service?: string; step?: string; q?: string },
 ) {
   const payload = draft.draft_payload ?? {};
   const channel = draft.source_mode === "upload"
     ? "upload_files"
     : payload.config?.channelCode ?? "";
-  const services = payload.config?.serviceTypes ?? [];
+  const services = draft.translation_requirements?.[0]?.service_types
+    ?? payload.config?.serviceTypes
+    ?? [];
   const step = normalizeDraftStep(payload.lastStep ?? draft.last_draft_step);
 
   if (filters?.channel && filters.channel !== "all" && channel !== filters.channel) {
@@ -487,9 +558,10 @@ function matchesRequesterDraftFilters(
     draft.request_no,
     draft.title,
     payload.patentQuery,
-    payload.selectedPatent?.patentNumber,
-    payload.selectedPatent?.title,
-    ...(payload.uploadedFiles ?? []).map((file) => file.name),
+    draft.patent_searches?.[0]?.query,
+    draft.request_patents?.[0]?.patent_number,
+    draft.request_patents?.[0]?.title,
+    ...(draft.request_files ?? []).map((file) => file.original_filename),
   ]
     .filter(Boolean)
     .join(" ")
@@ -509,7 +581,7 @@ export async function getRequesterDraft(draftId: string) {
   const { supabase } = await getAuthenticatedUser();
   const { data, error } = await supabase
     .from("translation_requests")
-    .select("id, request_no, title, source_mode, workflow_stage, updated_at, last_draft_step, draft_payload, request_files(id, original_filename, mime_type, metadata)")
+    .select("id, request_no, title, source_mode, workflow_stage, updated_at, last_draft_step, draft_payload, patent_searches(query), request_patents(patent_number, application_no, publication_no, title, abstract, jurisdiction, source, applicants, inventors, filing_date, publication_date, language, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date, filing_deadline_30_months, filing_deadline_31_months, total_pages, legal_status, ipc_codes, cpc_codes, abstract_word_count, description_word_count, claims_word_count, claims_count, drawing_count), request_files(id, source, status, patent_document_id, original_filename, mime_type, file_role, language, version_label, metadata, file_parse_results(parse_status, word_count, page_count, claim_count, structure_json, document_kind, source_url, retrieval_mode, document_language, publication_date, document_date, document_sha256, epo_document_id, is_pre_grant, is_legacy_pre_grant))")
     .eq("id", draftId)
     .eq("workflow_stage", "draft")
     .maybeSingle();
@@ -604,20 +676,31 @@ export async function getRequesterOrder(orderId: string) {
 
 function mapDraftRowToWizardState(draft: DraftRow) {
   const payload = draft.draft_payload ?? {};
-  const uploadedFiles = payload.sourceMode === "upload" && (payload.uploadedFiles?.length ?? 0) > 0
+  const uploadedFiles = draft.source_mode === "upload" && (payload.uploadedFiles?.length ?? 0) > 0
     ? payload.uploadedFiles ?? []
     : mapDraftRequestFiles(draft.request_files ?? []);
+  const patent = draft.request_patents?.[0];
+  const patentFiles = (draft.request_files ?? []).filter(
+    (file) => file.source === "patent_search",
+  );
+  const selectedPatent = patent
+    ? mapDraftPatent(patent, patentFiles)
+    : undefined;
+  const analysis = patent && patentFiles.length
+    ? mapDraftPatentAnalysis(patent, patentFiles)
+    : undefined;
 
   return {
     requestId: draft.id,
     requestNo: draft.request_no,
     payload: {
       sourceMode: payload.sourceMode ?? draft.source_mode,
-      patentQuery: payload.patentQuery ?? "",
-      selectedPatent: payload.selectedPatent,
-      selectedPatentFileIds: payload.selectedPatentFileIds ?? [],
+      patentQuery: payload.patentQuery ?? draft.patent_searches?.[0]?.query ?? "",
+      selectedPatent,
+      selectedPatentFileIds: patentFiles.map((file) => file.id),
       uploadedFiles,
-      analysis: payload.analysis,
+      analysis,
+      quoteCurrency: payload.quoteCurrency,
       config: payload.config,
       lastStep: payload.lastStep ?? draft.last_draft_step ?? "Source",
     } satisfies Partial<WizardPayload>,
@@ -627,12 +710,183 @@ function mapDraftRowToWizardState(draft: DraftRow) {
 function mapDraftRequestFiles(
   requestFiles: NonNullable<DraftRow["request_files"]>,
 ): WizardUploadedFile[] {
-  return requestFiles.map((file) => ({
+  return requestFiles.filter((file) => file.source === "upload").map((file) => ({
     requestFileId: file.id,
     name: file.original_filename,
     size: file.metadata?.size ?? 0,
     type: file.mime_type ?? "",
   }));
+}
+
+function mapDraftPatent(
+  patent: NonNullable<DraftRow["request_patents"]>[number],
+  files: NonNullable<DraftRow["request_files"]>,
+): WizardPatentCandidate {
+  const downloadableFiles = files.map(mapDraftPatentFile);
+  const documentKind = firstParseResult(files[0])?.document_kind;
+  return {
+    id: patent.patent_number,
+    patentNumber: patent.patent_number,
+    title: patent.title ?? "",
+    jurisdiction: patent.jurisdiction ?? "EP",
+    applicationNo: patent.application_no ?? "",
+    publicationNo: patent.publication_no ?? patent.patent_number,
+    applicants: patent.applicants ?? [],
+    inventors: patent.inventors ?? [],
+    description: patent.abstract ?? "",
+    filingDate: patent.filing_date ?? "",
+    publicationDate: patent.publication_date ?? "",
+    language: patent.language ?? undefined,
+    firstPriorityDate: patent.first_priority_date ?? undefined,
+    internationalFilingDate: patent.international_filing_date ?? undefined,
+    grantPublicationDate: patent.grant_publication_date ?? undefined,
+    rule713CommunicationDate: patent.rule_71_3_communication_date ?? undefined,
+    hasB1Publication: documentKind === "B1",
+    filingDeadline30Months: patent.filing_deadline_30_months ?? undefined,
+    filingDeadline31Months: patent.filing_deadline_31_months ?? undefined,
+    totalPages: patent.total_pages ?? 0,
+    legalStatus: patent.legal_status ?? "",
+    technicalField: patent.ipc_codes?.[0] ?? "patent",
+    downloadableFiles,
+    abstractWordCount: patent.abstract_word_count ?? 0,
+    descriptionWordCount: patent.description_word_count ?? 0,
+    claimsWordCount: patent.claims_word_count ?? 0,
+    claimsCount: patent.claims_count ?? 0,
+    drawingCount: patent.drawing_count ?? 0,
+    source: patent.source ?? undefined,
+    ipcCodes: patent.ipc_codes ?? [],
+    cpcCodes: patent.cpc_codes ?? [],
+    dataOrigin: "official",
+  };
+}
+
+function mapDraftPatentFile(
+  file: NonNullable<DraftRow["request_files"]>[number],
+): WizardPatentFile {
+  const result = firstParseResult(file);
+  return {
+    id: file.id,
+    label: file.version_label ?? result?.document_kind ?? "Official document",
+    fileType: "pdf",
+    language: file.language ?? result?.document_language ?? "",
+    sourceUrl: "",
+    pageCount: result?.page_count ?? 0,
+    wordCount: result?.word_count ?? 0,
+    claimCount: result?.claim_count ?? 0,
+    drawingCount: 0,
+  };
+}
+
+function mapDraftPatentAnalysis(
+  patent: NonNullable<DraftRow["request_patents"]>[number],
+  files: NonNullable<DraftRow["request_files"]>,
+): WizardPatentAnalysisResult {
+  const analysisFiles = files.map((file) => {
+    const result = firstParseResult(file);
+    const structure = result?.structure_json ?? {};
+    const parts = (structure.parts ?? {}) as Record<string, unknown>;
+    return {
+      filename: file.original_filename,
+      file_type: "pdf" as const,
+      sha256: result?.document_sha256 ?? "",
+      status: result?.parse_status === "needs_review" ? "partial" as const : "success" as const,
+      parts: {
+        abstract: normalizeDraftPart(parts.abstract),
+        abstract_drawing: normalizeDraftPart(parts.abstract_drawing),
+        description: normalizeDraftPart(parts.description),
+        description_drawings: normalizeDraftPart(parts.description_drawings),
+        claims: normalizeDraftPart(parts.claims),
+        unclassified: normalizeDraftPart(parts.unclassified),
+      },
+      document_text_words: numberValue(structure.document_text_words),
+      drawing_ocr_words: numberValue(structure.drawing_ocr_words),
+      total_words: result?.word_count ?? 0,
+      claims_count: result?.claim_count ?? 0,
+      warnings: [] as string[],
+    };
+  });
+  const aggregateSource = (
+    firstParseResult(files[0])?.structure_json?.aggregate ?? {}
+  ) as Record<string, unknown>;
+  const storedStructure = (
+    firstParseResult(files[0])?.structure_json ?? {}
+  ) as Record<string, unknown>;
+  const aggregate = {
+    abstract_words: numberValue(aggregateSource.abstract_words),
+    abstract_drawing_words: numberValue(aggregateSource.abstract_drawing_words),
+    description_words: numberValue(aggregateSource.description_words),
+    description_drawings_words: numberValue(aggregateSource.description_drawings_words),
+    claims_words: numberValue(aggregateSource.claims_words),
+    claims_count: numberValue(aggregateSource.claims_count, patent.claims_count ?? 0),
+    unclassified_words: numberValue(aggregateSource.unclassified_words),
+    total_words: numberValue(
+      aggregateSource.total_words,
+      analysisFiles.reduce((sum, file) => sum + file.total_words, 0),
+    ),
+  };
+  const source = firstParseResult(files[0]);
+  const isPartial = analysisFiles.some((file) => file.status === "partial");
+  return {
+    input_mode: "patent_number",
+    status: isPartial ? "partial" : "success",
+    analysis_profile: storedStructure.analysis_profile === "claims_only"
+      ? "claims_only"
+      : "full_document",
+    patent_number: patent.patent_number,
+    source_document: source ? {
+      strategy: "generated_cache",
+      source: patent.source === "wipo" ? "wipo" : "epo",
+      normalized_number: patent.patent_number,
+      kind_code: source.document_kind === "B1" ? "B1" : null,
+      document_kind: source.document_kind,
+      filename: files[0].original_filename,
+      mime_type: files[0].mime_type ?? "application/pdf",
+      upstream_url: source.source_url,
+      source_url: source.source_url,
+      retrieval_mode: source.retrieval_mode ?? "automatic",
+      language: source.document_language,
+      publication_date: source.publication_date,
+      document_date: source.document_date,
+      sha256: source.document_sha256,
+      epo_document_id: source.epo_document_id,
+      application_number: patent.application_no,
+      is_pre_grant: source.is_pre_grant,
+      is_legacy_pre_grant: source.is_legacy_pre_grant,
+      strategy_version: "b1_then_tifg_v2",
+    } : null,
+    counting_standard: "Stored verified patent analysis",
+    excluded_content: [],
+    files: analysisFiles,
+    aggregate,
+    warnings: [],
+  };
+}
+
+function firstParseResult(
+  file?: NonNullable<DraftRow["request_files"]>[number],
+) {
+  const result = file?.file_parse_results;
+  return Array.isArray(result) ? result[0] : result ?? null;
+}
+
+function normalizeDraftPart(value: unknown): WizardPatentAnalysisPart {
+  const part = value && typeof value === "object"
+    ? value as Record<string, unknown>
+    : {};
+  const status = part.status;
+  return {
+    word_count: numberValue(part.word_count),
+    status: status === "parsed" || status === "parse_failed"
+      ? status
+      : "not_present",
+    method: typeof part.method === "string" ? part.method : "stored",
+    confidence: typeof part.confidence === "string" ? part.confidence : "high",
+  };
+}
+
+function numberValue(value: unknown, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 function mapNegotiationHistoryEntry(

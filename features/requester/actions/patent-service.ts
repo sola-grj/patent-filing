@@ -52,7 +52,25 @@ export async function enqueueSubmittedPatentCache(input: {
     request_id: input.requestId,
     ...(input.lookupReceipt ? { lookup_receipt: input.lookupReceipt } : {}),
     analysis_receipt: input.analysisReceipt,
+    persistence_mode: "submission",
   });
+}
+
+export async function persistDraftPatentCache(input: {
+  requestId: string;
+  lookupReceipt: string;
+  analysisReceipt: string;
+}) {
+  return callPatentService<{
+    request_id: string;
+    patent_id: string | null;
+    status: "pending" | "processing" | "completed" | "failed";
+  }>("/api/patents/cache", {
+    request_id: input.requestId,
+    lookup_receipt: input.lookupReceipt,
+    analysis_receipt: input.analysisReceipt,
+    persistence_mode: "draft",
+  }, 120_000);
 }
 
 export async function fetchSubmittedPatentFile(requestId: string) {

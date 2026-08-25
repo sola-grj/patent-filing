@@ -84,6 +84,27 @@ export function getServiceTypeSelection(value: ServiceTypeSelectionValue) {
   return serviceTypeSelections.find((option) => option.value === value);
 }
 
+export function getDefaultServiceTypeSelection(
+  channelCode: string,
+  serviceTypes: string[],
+  epvType: string | undefined,
+  epServiceType: string | undefined,
+  isSelectable: (option: ServiceTypeSelection) => boolean = () => true,
+) {
+  if (resolveServiceTypeSelection(
+    channelCode,
+    serviceTypes,
+    epvType,
+    epServiceType,
+  )) {
+    return undefined;
+  }
+
+  const selectableOptions = getServiceTypeSelections(channelCode)
+    .filter(isSelectable);
+  return selectableOptions.length === 1 ? selectableOptions[0] : undefined;
+}
+
 export function resolveServiceTypeSelection(
   channelCode: string,
   serviceTypes: string[],

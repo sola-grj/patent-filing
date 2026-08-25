@@ -23,7 +23,10 @@ import {
   sourceLanguageOptions,
   traditionalServiceItemOptions,
 } from "@/features/requester/options";
-import { resolveServiceTypeSelection } from "@/features/requester/request-paths";
+import {
+  isTraditionalValidation,
+  resolveServiceTypeSelection,
+} from "@/features/requester/request-paths";
 import {
   ERP_QUOTE_CURRENCIES,
   isErpQuoteCurrencyCode,
@@ -196,6 +199,9 @@ function RequestAuditCard({ payload }: { payload: WizardPayload }) {
     claims: "Claims",
   };
   const analysisFile = analysis?.files[0];
+  const visiblePartLabels = analysis?.analysis_profile === "claims_only"
+    ? { claims: partLabels.claims }
+    : partLabels;
 
   return (
     <section className="space-y-4 rounded-2xl border bg-card p-5">
@@ -205,7 +211,9 @@ function RequestAuditCard({ payload }: { payload: WizardPayload }) {
       </div>
       <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <AuditField label="Translation" value={config.translationRequired ? "Required" : "Not required"} />
-        <AuditField label="Service Item" value={labelFor(traditionalServiceItemOptions, config.serviceItem)} />
+        {isTraditionalValidation(config.epServiceType) ? (
+          <AuditField label="Service Item" value={labelFor(traditionalServiceItemOptions, config.serviceItem)} />
+        ) : null}
         <AuditField label="Source Language" value={labelFor(languageOptions, config.sourceLanguage)} />
         <AuditField label="Target Language(s)" value={config.targetLanguages.map((value) => labelFor(languageOptions, value)).join(", ") || "-"} />
         <AuditField label="EP countries" value={config.epCountryIds.join(", ") || "-"} />
@@ -224,8 +232,8 @@ function RequestAuditCard({ payload }: { payload: WizardPayload }) {
         <p className="break-all font-mono text-[11px]"><span className="font-sans text-muted-foreground">SHA-256: </span>{source?.sha256 ?? analysisFile?.sha256}</p>
       ) : null}
       {analysisFile ? (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {Object.entries(partLabels).map(([key, label]) => {
+        <div className={`grid gap-2 ${analysis?.analysis_profile === "claims_only" ? "sm:grid-cols-1" : "sm:grid-cols-2 lg:grid-cols-5"}`}>
+          {Object.entries(visiblePartLabels).map(([key, label]) => {
             const part = analysisFile.parts[key as keyof typeof analysisFile.parts];
             return (
               <div key={key} className="rounded-md border bg-muted/10 px-3 py-2 text-xs">
@@ -235,6 +243,11 @@ function RequestAuditCard({ payload }: { payload: WizardPayload }) {
             );
           })}
         </div>
+      ) : null}
+      {analysis?.analysis_profile === "claims_only" ? (
+        <p className="text-xs text-muted-foreground">
+          EP Granting uses claims-only analysis; other document sections were not processed.
+        </p>
       ) : null}
       <p className="text-xs text-muted-foreground">
         Claims: {(analysis?.aggregate.claims_words ?? 0).toLocaleString()} words · {(analysis?.aggregate.claims_count ?? 0).toLocaleString()} items

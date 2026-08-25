@@ -15,7 +15,7 @@ import { RequesterHeader } from "@/features/requester/components/requester-heade
 import { formatDate } from "@/features/requester/format";
 import { getRequesterDrafts } from "@/features/requester/queries";
 import { buildFreshRequestHref } from "@/features/requester/requester-routes";
-import type { WizardPayload } from "@/features/requester/wizard-types";
+import type { WizardDraftPayloadV2 } from "@/features/requester/wizard-types";
 
 type DraftListItem = Awaited<ReturnType<typeof getRequesterDrafts>>["drafts"][number];
 type DraftSearchParams = {
@@ -130,11 +130,18 @@ async function DraftsContent({
               </span>
               <span className="min-w-0">
                 <RequestServiceBadge
-                  serviceTypes={payload?.config?.serviceTypes ?? []}
+                  serviceTypes={draft.translation_requirements?.[0]?.service_types
+                    ?? payload?.config?.serviceTypes
+                    ?? []}
                   serviceOptions={dictionaries?.serviceTypes ?? []}
                 />
               </span>
-              <span>{normalizeDraftStep(payload?.lastStep ?? draft.last_draft_step)}</span>
+              <span>
+                <span className="block">{normalizeDraftStep(payload?.lastStep ?? draft.last_draft_step)}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {draftFileStatus(draft)}
+                </span>
+              </span>
               <span className="whitespace-nowrap text-right text-muted-foreground">
                 {formatDate(draft.updated_at)}
               </span>
@@ -168,20 +175,19 @@ function buildPageHref(page: number, filters: DraftSearchParams) {
 }
 
 function draftPayload(draft: DraftListItem) {
-  return draft.draft_payload as Partial<WizardPayload> | null;
+  return draft.draft_payload as Partial<WizardDraftPayloadV2> | null;
 }
 
 function draftMatter(draft: DraftListItem) {
-  const payload = draftPayload(draft);
-  if (payload?.sourceMode === "patent_search") {
-    return payload.selectedPatent?.patentNumber
-      || payload.patentQuery
+  if (draft.source_mode === "patent_search") {
+    return draft.request_patents?.[0]?.patent_number
+      || draft.patent_searches?.[0]?.query
       || draft.request_no;
   }
 
-  const files = payload?.uploadedFiles ?? [];
+  const files = (draft.request_files ?? []).filter((file) => file.source === "upload");
   if (files.length === 1) {
-    return files[0].name;
+    return files[0].original_filename;
   }
   return files.length ? `${files.length} uploaded files` : draft.request_no;
 }
@@ -189,6 +195,17 @@ function draftMatter(draft: DraftListItem) {
 function draftChannelCode(draft: DraftListItem) {
   if (draft.source_mode === "upload") return "upload_files";
   return draftPayload(draft)?.config?.channelCode ?? "";
+}
+
+function draftFileStatus(draft: DraftListItem) {
+  const files = draft.request_files ?? [];
+  if (!files.length) return "Source not selected";
+  if (files.some((file) => file.status === "failed")) return "Document needs retry";
+  if (files.some((file) => file.status === "parsing")) return "Preparing document";
+  if (files.every((file) => file.status === "parsed" || file.source === "upload")) {
+    return "Document stored";
+  }
+  return "Source saved";
 }
 
 function normalizeDraftStep(step?: string | null) {

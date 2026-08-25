@@ -8,9 +8,11 @@
     "lint": "eslint .",
     "test:deadlines": "node --experimental-strip-types --test features/requester/deadlines.test.ts",
     "test:deliverables": "node --experimental-strip-types --test features/deliverables/delivery-progress.test.ts",
+    "test:drafts": "node --experimental-strip-types --test features/requester/draft-v2.test.ts",
     "test:organization-access": "node --experimental-strip-types --test features/requester/request-scope.test.ts",
     "test:erp": "node --experimental-strip-types --test lib/eci-erp/eci-erp.test.ts",
     "backfill:deadlines": "node --env-file=.env.local scripts/backfill-deadline-basis.mjs",
+    "cleanup:drafts": "node --env-file=.env.local scripts/cleanup-drafts-v1.mjs",
     "admin:request-sharing": "node --env-file=.env.local scripts/set-request-sharing.mjs"
   },
   "dependencies": {

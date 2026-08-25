@@ -185,6 +185,7 @@ export type WizardPatentAnalysisFile = {
 export type WizardPatentAnalysisResult = {
   input_mode: "upload" | "patent_number";
   status: "success" | "partial" | "failed";
+  analysis_profile?: "full_document" | "claims_only";
   patent_number?: string | null;
   analysis_receipt?: string | null;
   analysis_cache?: {
@@ -223,7 +224,10 @@ export type WizardPatentAnalysisResult = {
     publication_date?: string | null;
     document_date?: string | null;
     sha256?: string | null;
+    byte_size?: number | null;
     epo_document_id?: string | null;
+    application_number?: string | null;
+    register_application_number?: string | null;
     is_pre_grant?: boolean;
     is_legacy_pre_grant?: boolean;
     strategy_version?: string;
@@ -254,6 +258,17 @@ export type WizardPayload = {
   selectedPatentFileIds: string[];
   uploadedFiles: WizardUploadedFile[];
   analysis?: WizardPatentAnalysisResult;
+  quoteCurrency?: ErpQuoteCurrencyCode;
+  config: WizardConfig;
+  lastStep: string;
+};
+
+export type WizardDraftPayloadV2 = {
+  schemaVersion: 2;
+  sourceMode: WizardSourceMode;
+  patentQuery?: string;
+  selectedPatentFileIds: string[];
+  uploadedFiles: WizardUploadedFile[];
   quoteCurrency?: ErpQuoteCurrencyCode;
   config: WizardConfig;
   lastStep: string;
