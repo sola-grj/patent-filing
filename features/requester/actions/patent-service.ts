@@ -1,8 +1,15 @@
 import type {
   WizardPatentAnalysisResult,
   WizardPatentCandidate,
+  WizardPayload,
 } from "@/features/requester/wizard-types";
 import {
+  isEpGrantingTranslation,
+  isVerifiedCustomerTifg,
+  requiresPatentDocumentAnalysis,
+} from "@/features/requester/epo-tifg-upload";
+import {
+  lookupPatent,
   mapPatentLookupResponse,
   type PatentLookupResponse,
 } from "./patent-lookup";
@@ -37,6 +44,72 @@ export async function verifyPatentReceipts(input: {
       analysis_receipt: input.analysisReceipt,
     },
   };
+}
+
+export async function verifyWizardPatentPayload(
+  payload: WizardPayload,
+): Promise<WizardPayload> {
+  if (payload.sourceMode !== "patent_search") return payload;
+
+  const patent = payload.selectedPatent;
+  const lookupReceipt = patent?.lookupReceipt;
+  if (!patent || !lookupReceipt) {
+    throw new Error(
+      "Patent lookup verification is missing. Search the patent again before continuing.",
+    );
+  }
+
+  if (!requiresPatentDocumentAnalysis(payload.config)) {
+    const verifiedPatent = await lookupPatent(patent.patentNumber, "epo");
+    return {
+      ...payload,
+      selectedPatent: verifiedPatent,
+      analysis: undefined,
+    };
+  }
+
+  const analysisReceipt = payload.analysis?.analysis_receipt;
+  if (!analysisReceipt) {
+    throw new Error(
+      "Patent analysis verification is missing. Analyze the patent again before continuing.",
+    );
+  }
+
+  const verified = await verifyPatentReceipts({
+    lookupReceipt,
+    analysisReceipt,
+    fallbackPatentNumber: patent.patentNumber,
+  });
+  const verifiedPayload = {
+    ...payload,
+    selectedPatent: verified.patent,
+    analysis: verified.analysis,
+  };
+
+  if (isEpGrantingTranslation(payload.config)) {
+    if (!isVerifiedCustomerTifg(verified.analysis)) {
+      throw new Error(
+        "The uploaded TIFG must finish claims-only parsing successfully before a quote can be generated.",
+      );
+    }
+    return verifiedPayload;
+  }
+
+  if (
+    !["success", "partial"].includes(verified.analysis.status)
+    || verified.analysis.aggregate.total_words <= 0
+    || !verified.analysis.files.length
+    || verified.analysis.files.some((file) =>
+      file.status === "failed"
+      || Object.values(file.parts).some((part) => part.status === "parse_failed")
+    )
+  ) {
+    throw new Error(
+      "Patent data processing has not produced usable word counts. Retry before continuing.",
+    );
+  }
+
+  return verifiedPayload;
 }
 
 export async function enqueueSubmittedPatentCache(input: {

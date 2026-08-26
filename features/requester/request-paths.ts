@@ -91,18 +91,19 @@ export function getDefaultServiceTypeSelection(
   epServiceType: string | undefined,
   isSelectable: (option: ServiceTypeSelection) => boolean = () => true,
 ) {
-  if (resolveServiceTypeSelection(
+  const selectedOption = resolveServiceTypeSelection(
     channelCode,
     serviceTypes,
     epvType,
     epServiceType,
-  )) {
+  );
+  if (selectedOption && isSelectable(selectedOption)) {
     return undefined;
   }
 
   const selectableOptions = getServiceTypeSelections(channelCode)
     .filter(isSelectable);
-  return selectableOptions.length === 1 ? selectableOptions[0] : undefined;
+  return channelCode === "ep" ? selectableOptions[0] : undefined;
 }
 
 export function resolveServiceTypeSelection(

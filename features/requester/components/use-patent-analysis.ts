@@ -12,6 +12,8 @@ import { patentSourceForChannel } from "@/features/requester/patent-source";
 type AnalysisInput = {
   sourceMode: WizardSourceMode;
   patentNumber?: string;
+  expectedPatentNumber?: string;
+  expectedDocumentKind?: "tifg";
   channelCode?: string;
   files: File[];
 };
@@ -129,6 +131,12 @@ function buildAnalysisFormData(input: AnalysisInput) {
 
   if (!input.files.length) return null;
   input.files.forEach((file) => formData.append("files", file));
+  if (input.expectedPatentNumber?.trim()) {
+    formData.set("expected_patent_number", input.expectedPatentNumber.trim());
+  }
+  if (input.expectedDocumentKind) {
+    formData.set("expected_document_kind", input.expectedDocumentKind);
+  }
   return formData;
 }
 
@@ -137,7 +145,7 @@ function buildInputKey(input: AnalysisInput) {
     const source = patentSourceForChannel(input.channelCode ?? "") ?? "auto";
     return `patent:${source}:${input.patentNumber?.trim().toUpperCase() ?? ""}`;
   }
-  return `upload:${input.files
+  return `upload:${input.expectedPatentNumber?.trim().toUpperCase() ?? ""}:${input.expectedDocumentKind ?? "general"}:${input.files
     .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
     .join("|")}`;
 }

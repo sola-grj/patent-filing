@@ -19,6 +19,7 @@ import {
 } from "./token-policy.ts";
 import { erpQuoteCurrency } from "./types.ts";
 import type { ErpPriceRow } from "./types.ts";
+import { divideMoney, multiplyMoney, sumMoney } from "./money.ts";
 
 const sampleRows = [
   { countryId: 189, officialFee: 1000, serviceFee: 2000, translationFees: { "15": 3000 } },
@@ -47,13 +48,26 @@ test("validates every country and reproduces the documented total", () => {
 });
 
 test("maps selectable quote currencies to ERP currency IDs", () => {
-  assert.deepEqual(erpQuoteCurrency(), { id: 2, code: "USD", label: "US Dollar" });
+  assert.deepEqual(erpQuoteCurrency(), {
+    id: 1,
+    code: "CNY",
+    symbol: "CN¥",
+    label: "Chinese Yuan",
+  });
   assert.equal(erpQuoteCurrency("CNY").id, 1);
   assert.equal(erpQuoteCurrency("USD").id, 2);
   assert.equal(erpQuoteCurrency("EUR").id, 3);
   assert.equal(erpQuoteCurrency("GBP").id, 4);
   assert.equal(erpQuoteCurrency("HKD").id, 5);
   assert.throws(() => erpQuoteCurrency("CAD"), /not supported/);
+});
+
+test("calculates money with decimal-safe addition, multiplication, and division", () => {
+  assert.equal(sumMoney([0.1, 0.2]), 0.3);
+  assert.equal(sumMoney([7.76, 427.04, 360, 300]), 1094.8);
+  assert.equal(multiplyMoney(1094.8, 0.9), 985.32);
+  assert.equal(divideMoney(10, 3), 3.33);
+  assert.throws(() => divideMoney(10, 0), /divided by zero/);
 });
 
 test("uses verified analysis metrics for ERP claim pricing", () => {
@@ -101,6 +115,37 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
     priceCurrencyId: 2,
     ...common.metrics,
   });
+  const metricsWithoutPageCount = {
+    patClaims: 45,
+    patTotalWords: 1000,
+    patClaimWords: 500,
+  };
+  assert.equal(
+    buildErpPriceRequest({
+      ...common,
+      categoryId: 82,
+      serviceItem: "traditional_validation",
+      metrics: metricsWithoutPageCount,
+    }).patTotalPages,
+    undefined,
+  );
+  assert.equal(
+    buildErpPriceRequest({
+      ...common,
+      categoryId: 83,
+      metrics: metricsWithoutPageCount,
+    }).patTotalPages,
+    undefined,
+  );
+  assert.equal(
+    buildErpPriceRequest({
+      ...common,
+      categoryId: 8283,
+      serviceItem: "traditional_validation",
+      metrics: metricsWithoutPageCount,
+    }).patTotalPages,
+    undefined,
+  );
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 84, translationRequired: false }), {
     categoryId: 84,
     sourceLangId: 12,

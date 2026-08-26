@@ -9,6 +9,8 @@ This repository implements Pat, a patent translation request system. Core roles 
 ## Product & Interaction Style
 Use the product name `Pat` in visible navigation and product-facing copy. UI and interaction design should follow European and North American B2B SaaS conventions: restrained, precise, trustworthy, and operationally efficient. Prefer clear hierarchy, strong typography, generous but not wasteful spacing, neutral surfaces, and direct task-oriented actions. Avoid playful consumer patterns, decorative clutter, and marketing-heavy hero sections on workflow pages.
 
+All user-visible component copy must be English. Do not expose browser-native localized controls when their visible labels can vary by system language; provide controlled English labels instead.
+
 ## Next.js App Router Rules
 Default to Server Components. Add `"use client"` only for interactivity, browser APIs, local state, effects, or client-only libraries. Keep `app/**/page.tsx` and `layout.tsx` focused on route-level data assembly and composition; move business UI into `components/` and shared logic into `lib/`. Prefer server-side data reads in Server Components or server-only helpers. Do not duplicate Supabase client setup outside `lib/supabase/`.
 

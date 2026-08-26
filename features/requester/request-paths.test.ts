@@ -10,19 +10,30 @@ import {
   usesEpoTargetLanguages,
 } from "./request-paths.ts";
 
-test("defaults the only selectable service type", () => {
+test("defaults EP to its first available service type", () => {
   const selection = getDefaultServiceTypeSelection(
     "ep",
     [],
     "",
     "",
-    (option) => option.value === "ep_granting",
   );
 
   assert.equal(selection?.value, "ep_granting");
 });
 
-test("does not replace an existing service type selection", () => {
+test("defaults EP to the first available service when EP Granting is unavailable", () => {
+  const selection = getDefaultServiceTypeSelection(
+    "ep",
+    [],
+    "",
+    "",
+    (option) => option.value !== "ep_granting",
+  );
+
+  assert.equal(selection?.value, "ep_validation");
+});
+
+test("replaces an unavailable existing EP service type selection", () => {
   const selection = getDefaultServiceTypeSelection(
     "ep",
     ["epv"],
@@ -31,7 +42,7 @@ test("does not replace an existing service type selection", () => {
     (option) => option.value === "ep_granting",
   );
 
-  assert.equal(selection, undefined);
+  assert.equal(selection?.value, "ep_granting");
 });
 
 test("does not default when multiple service types are selectable", () => {

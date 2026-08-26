@@ -1,16 +1,8 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Table } from "@radix-ui/themes";
-
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 import type {
   WizardPatentAnalysisFile,
@@ -19,23 +11,16 @@ import type {
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import {
-  mockUnitaryTargetLanguageOptions,
-  sourceLanguageOptions,
-  traditionalServiceItemOptions,
-} from "@/features/requester/options";
-import {
-  isTraditionalValidation,
-  resolveServiceTypeSelection,
-} from "@/features/requester/request-paths";
-import {
-  ERP_QUOTE_CURRENCIES,
-  isErpQuoteCurrencyCode,
+  erpQuoteCurrencySymbol,
   type ErpQuoteCurrencyCode,
   type ErpQuotePreview,
 } from "@/lib/eci-erp/types";
 import { StepShell } from "./new-request-wizard-shared";
 import { PatentProcessingNotice } from "./patent-processing-notice";
 import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
+import { EpGrantingQuotation } from "./ep-granting-quotation";
+import { PatentBasicInfo } from "./patent-basic-info";
+import { QuoteCurrencySelect } from "./quote-currency-select";
 
 export function QuoteStepContent({
   payload,
@@ -57,12 +42,30 @@ export function QuoteStepContent({
   onCurrencyChange: (currency: ErpQuoteCurrencyCode) => void;
 }) {
   const analysisReady = hasUsablePatentAnalysis(payload);
+  const isEpGranting = payload.config.epServiceType === "ep_granting";
   return (
     <StepShell
-      title="Estimate Sheet"
-      description="Review the estimate generated from the selected source package."
+      title={isEpGranting ? "European Patent Granting Quotation" : "Estimate Sheet"}
+      description={isEpGranting
+        ? "Review the quotation before submitting the request."
+        : "Review the estimate generated from the selected source package."}
     >
       <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto pr-1">
+        {payload.selectedPatent ? (
+          <PatentBasicInfo
+            patent={payload.selectedPatent}
+            heading="Patent Details"
+            additionalFields={isEpGranting
+              ? [{
+                  label: "Rule 71(3) Dispatch Date",
+                  value: formatPatentDate(payload.selectedPatent.rule713CommunicationDate),
+                }]
+              : [{
+                  label: "Grant Date",
+                  value: formatPatentDate(payload.selectedPatent.grantPublicationDate),
+                }]}
+          />
+        ) : null}
         {payload.sourceMode === "patent_search" ? (
           <PatentProcessingNotice
             status={analysisStatus}
@@ -77,17 +80,22 @@ export function QuoteStepContent({
             analysisFiles={payload.analysis?.files ?? []}
           />
         ) : null}
-        <RequestAuditCard payload={payload} />
-
-        <section className="rounded-2xl border bg-card">
+        {isEpGranting ? (
+          <EpGrantingQuotation
+            estimate={estimate}
+            translationRequired={payload.config.translationRequired}
+            currency={currency}
+            onCurrencyChange={onCurrencyChange}
+            action={action}
+          />
+        ) : (
+          <>
+            <section className="rounded-2xl border bg-card">
           <div className="flex flex-wrap items-start justify-between gap-4 border-b px-6 py-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Estimate
+                Fee Breakdown
               </p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-tight">
-                {estimate ? formatCurrency(estimate.total, estimate.currency) : "Pending"}
-              </h3>
               <p className="mt-2 text-sm text-muted-foreground">
                 {analysisReady
                   ? "Live estimate for the current request configuration."
@@ -95,23 +103,10 @@ export function QuoteStepContent({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <Select
+              <QuoteCurrencySelect
                 value={currency}
-                onValueChange={(value) => {
-                  if (isErpQuoteCurrencyCode(value)) onCurrencyChange(value);
-                }}
-              >
-                <SelectTrigger className="w-[180px]" aria-label="Quote currency">
-                  <SelectValue placeholder="Currency" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ERP_QUOTE_CURRENCIES.map((option) => (
-                    <SelectItem key={option.code} value={option.code}>
-                      {option.code} · {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onChange={onCurrencyChange}
+              />
               {action}
             </div>
           </div>
@@ -134,38 +129,24 @@ export function QuoteStepContent({
                 </Table.Header>
                 <Table.Body>
                   {estimate.rows.map((row) => {
-                    const translationDetails = row.translationFeeDetails.length
-                      ? row.translationFeeDetails
-                      : [{ languageId: 0, languageName: "", amount: row.translationFee }];
                     return (
-                      <Fragment key={row.countryId}>
-                        {translationDetails.map((detail, index) => (
-                          <Table.Row key={`${row.countryId}-${detail.languageId || index}`}>
-                            {index === 0 ? (
-                              <>
-                                <Table.RowHeaderCell rowSpan={translationDetails.length} className="font-medium">
-                                  {row.countryName}
-                                </Table.RowHeaderCell>
-                                <Table.Cell rowSpan={translationDetails.length} className="whitespace-nowrap" justify="end">
-                                  {formatCurrency(row.officialFee, estimate.currency)}
-                                </Table.Cell>
-                                <Table.Cell rowSpan={translationDetails.length} className="whitespace-nowrap" justify="end">
-                                  {formatCurrency(row.serviceFee, estimate.currency)}
-                                </Table.Cell>
-                              </>
-                            ) : null}
-                            <Table.Cell className="whitespace-nowrap" justify="end">
-                              <span className="mr-3 text-muted-foreground">{detail.languageName}</span>
-                              {formatCurrency(detail.amount, estimate.currency)}
-                            </Table.Cell>
-                            {index === 0 ? (
-                              <Table.Cell rowSpan={translationDetails.length} justify="end" className="whitespace-nowrap font-semibold">
-                                {formatCurrency(row.total, estimate.currency)}
-                              </Table.Cell>
-                            ) : null}
-                          </Table.Row>
-                        ))}
-                      </Fragment>
+                      <Table.Row key={row.countryId}>
+                        <Table.RowHeaderCell className="font-medium">
+                          {row.countryName}
+                        </Table.RowHeaderCell>
+                        <Table.Cell className="whitespace-nowrap" justify="end">
+                          {formatAmount(row.officialFee)}
+                        </Table.Cell>
+                        <Table.Cell className="whitespace-nowrap" justify="end">
+                          {formatAmount(row.serviceFee)}
+                        </Table.Cell>
+                        <Table.Cell className="whitespace-nowrap" justify="end">
+                          {formatAmount(row.translationFee)}
+                        </Table.Cell>
+                        <Table.Cell justify="end" className="whitespace-nowrap font-semibold">
+                          {formatAmount(row.total)}
+                        </Table.Cell>
+                      </Table.Row>
                     );
                   })}
                   <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
@@ -177,7 +158,7 @@ export function QuoteStepContent({
                       Estimated Total
                     </Table.Cell>
                     <Table.Cell justify="end" className="text-base font-semibold">
-                      {formatCurrency(estimate.total, estimate.currency)}
+                      {erpQuoteCurrencySymbol(estimate.currency)}{formatAmount(estimate.total)}
                     </Table.Cell>
                   </Table.Row>
                 </Table.Body>
@@ -190,97 +171,12 @@ export function QuoteStepContent({
               </div>
             )}
           </div>
-        </section>
+            </section>
+          </>
+        )}
       </div>
     </StepShell>
   );
-}
-
-function RequestAuditCard({ payload }: { payload: WizardPayload }) {
-  const { config, analysis } = payload;
-  const source = analysis?.source_document;
-  const serviceLabel = resolveServiceTypeSelection(
-    config.channelCode,
-    config.serviceTypes,
-    config.epvType,
-    config.epServiceType,
-  )?.label ?? config.epServiceType ?? "-";
-  const languageOptions = [...sourceLanguageOptions, ...mockUnitaryTargetLanguageOptions];
-  const partLabels: Record<string, string> = {
-    abstract: "Abstract",
-    abstract_drawing: "Abstract drawing",
-    description: "Description",
-    description_drawings: "Description drawings",
-    claims: "Claims",
-  };
-  const analysisFile = analysis?.files[0];
-  const visiblePartLabels = analysis?.analysis_profile === "claims_only"
-    ? { claims: partLabels.claims }
-    : partLabels;
-
-  return (
-    <section className="space-y-4 rounded-2xl border bg-card p-5">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Request audit</p>
-        <h3 className="mt-2 text-lg font-semibold">{serviceLabel}</h3>
-      </div>
-      <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-        <AuditField label="Translation" value={config.translationRequired ? "Required" : "Not required"} />
-        {isTraditionalValidation(config.epServiceType) ? (
-          <AuditField label="Service Item" value={labelFor(traditionalServiceItemOptions, config.serviceItem)} />
-        ) : null}
-        <AuditField label="Source Language" value={labelFor(languageOptions, config.sourceLanguage)} />
-        <AuditField label="Target Language(s)" value={config.targetLanguages.map((value) => labelFor(languageOptions, value)).join(", ") || "-"} />
-        <AuditField label="EP countries" value={config.epCountryIds.join(", ") || "-"} />
-        <AuditField label="Opt Out subset" value={config.optOutCountryIds.join(", ") || "-"} />
-        <AuditField label="Document" value={source?.document_kind ?? source?.kind_code ?? "-"} />
-        <AuditField label="Retrieval" value={source?.retrieval_mode ?? "-"} />
-        <AuditField label="Publication date" value={source?.publication_date ?? "-"} />
-        <AuditField label="Document date" value={source?.document_date ?? "-"} />
-        <AuditField label="Document language" value={source?.language?.toUpperCase() ?? "-"} />
-        <AuditField label="Pre-grant" value={source?.is_pre_grant ? source.is_legacy_pre_grant ? "Yes · legacy" : "Yes" : "No"} />
-      </dl>
-      {source?.source_url || source?.upstream_url ? (
-        <p className="break-all text-xs"><span className="text-muted-foreground">Source URL: </span>{source.source_url ?? source.upstream_url}</p>
-      ) : null}
-      {source?.sha256 || analysisFile?.sha256 ? (
-        <p className="break-all font-mono text-[11px]"><span className="font-sans text-muted-foreground">SHA-256: </span>{source?.sha256 ?? analysisFile?.sha256}</p>
-      ) : null}
-      {analysisFile ? (
-        <div className={`grid gap-2 ${analysis?.analysis_profile === "claims_only" ? "sm:grid-cols-1" : "sm:grid-cols-2 lg:grid-cols-5"}`}>
-          {Object.entries(visiblePartLabels).map(([key, label]) => {
-            const part = analysisFile.parts[key as keyof typeof analysisFile.parts];
-            return (
-              <div key={key} className="rounded-md border bg-muted/10 px-3 py-2 text-xs">
-                <p className="font-medium">{label}</p>
-                <p className="mt-1 text-muted-foreground">{part.status} · {part.word_count.toLocaleString()} words</p>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-      {analysis?.analysis_profile === "claims_only" ? (
-        <p className="text-xs text-muted-foreground">
-          EP Granting uses claims-only analysis; other document sections were not processed.
-        </p>
-      ) : null}
-      <p className="text-xs text-muted-foreground">
-        Claims: {(analysis?.aggregate.claims_words ?? 0).toLocaleString()} words · {(analysis?.aggregate.claims_count ?? 0).toLocaleString()} items
-      </p>
-    </section>
-  );
-}
-
-function AuditField({ label, value }: { label: string; value: string }) {
-  return <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{value || "-"}</dd></div>;
-}
-
-function labelFor(
-  options: readonly { value: string; label: string }[],
-  value?: string | null,
-) {
-  if (!value) return "-";
-  return options.find((option) => option.value === value)?.label ?? value;
 }
 
 function UploadOverviewCard({
@@ -348,11 +244,18 @@ function findAnalysisFile(
   );
 }
 
-function formatCurrency(value: number, currency = "USD") {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+function formatAmount(value: number) {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value);
+  });
+}
+
+function formatPatentDate(value?: string) {
+  if (!value) return "-";
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString().slice(0, 10);
 }

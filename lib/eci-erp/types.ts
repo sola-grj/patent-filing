@@ -1,16 +1,16 @@
 export const ERP_QUOTE_CURRENCIES = [
-  { id: 1, code: "CNY", label: "Chinese Yuan" },
-  { id: 2, code: "USD", label: "US Dollar" },
-  { id: 3, code: "EUR", label: "Euro" },
-  { id: 4, code: "GBP", label: "British Pound" },
-  { id: 5, code: "HKD", label: "Hong Kong Dollar" },
+  { id: 1, code: "CNY", symbol: "CN¥", label: "Chinese Yuan" },
+  { id: 2, code: "USD", symbol: "$", label: "US Dollar" },
+  { id: 3, code: "EUR", symbol: "€", label: "Euro" },
+  { id: 4, code: "GBP", symbol: "£", label: "British Pound" },
+  { id: 5, code: "HKD", symbol: "HK$", label: "Hong Kong Dollar" },
 ] as const;
 
 export type ErpQuoteCurrencyCode = (typeof ERP_QUOTE_CURRENCIES)[number]["code"];
 
 export function erpQuoteCurrency(value?: string | null) {
   if (!value) {
-    return ERP_QUOTE_CURRENCIES.find((currency) => currency.code === "USD")!;
+    return ERP_QUOTE_CURRENCIES.find((currency) => currency.id === 1)!;
   }
   const currency = ERP_QUOTE_CURRENCIES.find((option) => option.code === value);
   if (!currency) throw new Error("The selected quote currency is not supported by the pricing service.");
@@ -20,6 +20,10 @@ export function erpQuoteCurrency(value?: string | null) {
 export function isErpQuoteCurrencyCode(value: unknown): value is ErpQuoteCurrencyCode {
   return typeof value === "string"
     && ERP_QUOTE_CURRENCIES.some((currency) => currency.code === value);
+}
+
+export function erpQuoteCurrencySymbol(value: ErpQuoteCurrencyCode) {
+  return ERP_QUOTE_CURRENCIES.find((currency) => currency.code === value)!.symbol;
 }
 
 export type ErpCustomer = {
@@ -75,6 +79,8 @@ export type ErpQuotePreview = {
   source: "eci_erp";
   currency: ErpQuoteCurrencyCode;
   quotedAt: string;
+  customerName: string;
+  validUntil?: string;
   rows: ErpQuoteRow[];
   total: number;
 };

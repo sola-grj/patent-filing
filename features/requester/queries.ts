@@ -2,6 +2,7 @@ import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
 import { resolveRequesterRequestScope } from "./request-scope";
 import { buildDashboardAttentionItems } from "./dashboard-attention";
 import { buildDashboardDeadlineItems } from "./deadlines";
+import { isEpGrantingTranslation } from "./epo-tifg-upload";
 import { normalizeRequestSearchTerm } from "./requester-routes";
 import type {
   DictionaryOption,
@@ -680,14 +681,18 @@ function mapDraftRowToWizardState(draft: DraftRow) {
     ? payload.uploadedFiles ?? []
     : mapDraftRequestFiles(draft.request_files ?? []);
   const patent = draft.request_patents?.[0];
-  const patentFiles = (draft.request_files ?? []).filter(
-    (file) => file.source === "patent_search",
+  const requestFiles = draft.request_files ?? [];
+  const patentFiles = requestFiles.filter((file) => file.source === "patent_search");
+  const uploadedRequestFiles = requestFiles.filter((file) => file.source === "upload");
+  const usesCustomerTifg = Boolean(
+    payload.config && isEpGrantingTranslation(payload.config),
   );
+  const analysisFiles = usesCustomerTifg ? uploadedRequestFiles : patentFiles;
   const selectedPatent = patent
     ? mapDraftPatent(patent, patentFiles)
     : undefined;
-  const analysis = patent && patentFiles.length
-    ? mapDraftPatentAnalysis(patent, patentFiles)
+  const analysis = patent && analysisFiles.length && firstParseResult(analysisFiles[0])
+    ? mapDraftPatentAnalysis(patent, analysisFiles)
     : undefined;
 
   return {
@@ -827,7 +832,7 @@ function mapDraftPatentAnalysis(
   const source = firstParseResult(files[0]);
   const isPartial = analysisFiles.some((file) => file.status === "partial");
   return {
-    input_mode: "patent_number",
+    input_mode: source?.retrieval_mode === "customer_upload" ? "upload" : "patent_number",
     status: isPartial ? "partial" : "success",
     analysis_profile: storedStructure.analysis_profile === "claims_only"
       ? "claims_only"

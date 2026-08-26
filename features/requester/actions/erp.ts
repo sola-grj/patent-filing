@@ -9,6 +9,7 @@ import {
 import type { ErpActionResult, ErpCountry, ErpQuotePreview } from "@/lib/eci-erp/types";
 
 import { getRequesterOrganization, toErrorMessage } from "../server-utils";
+import { verifyWizardPatentPayload } from "./patent-service";
 
 export async function loadErpCountriesForWizard(
   config: Pick<WizardConfig, "channelCode" | "serviceTypes" | "epvType" | "epServiceType">,
@@ -23,7 +24,8 @@ export async function generateErpEstimate(
   try {
     const { organization, userId } = await getRequesterOrganization();
     if (!organization) throw new Error("Your account is not linked to a customer organization.");
-    const result = await quoteForOrganization(payload, organization.id, userId);
+    const verifiedPayload = await verifyWizardPatentPayload(payload);
+    const result = await quoteForOrganization(verifiedPayload, organization.id, userId);
     return { success: true, data: publicQuote(result) };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };

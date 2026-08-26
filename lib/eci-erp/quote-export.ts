@@ -1,13 +1,28 @@
 import JSZip from "jszip";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
+import { buildEpGrantingQuoteTable, type EpGrantingFeeLine } from "./ep-granting-quote.ts";
 import type { ErpQuotePreview, ErpQuoteRow } from "./types";
 
 export type QuoteExportFormat = "pdf" | "xlsx";
 
 export type QuoteExportMetadata = {
   serviceName: string;
+  serviceType: string;
   patentNumber: string;
+  applicationNumber: string;
+  translationRequired: boolean;
+  patentDetails?: {
+    title?: string;
+    source?: "epo" | "wipo";
+    filingDate?: string;
+    publicationNumber?: string;
+    publicationDate?: string;
+    firstPriorityDate?: string;
+    publicationLanguage?: string;
+    grantDate?: string;
+    rule713DispatchDate?: string;
+  };
 };
 
 export async function generateQuoteExport(
@@ -16,7 +31,9 @@ export async function generateQuoteExport(
   metadata: QuoteExportMetadata,
 ) {
   return format === "pdf"
-    ? generateQuotePdf(quote, metadata)
+    ? metadata.serviceType === "ep_granting"
+      ? generateEpGrantingQuotePdf(quote, metadata)
+      : generateQuotePdf(quote, metadata)
     : generateQuoteXlsx(quote, metadata);
 }
 
@@ -30,6 +47,226 @@ export function quoteExportFileName(
   return `Pat-estimate-${patent}-${quote.currency}-${date}.${format}`;
 }
 
+async function generateEpGrantingQuotePdf(
+  quote: ErpQuotePreview,
+  metadata: QuoteExportMetadata,
+) {
+  const document = await PDFDocument.create();
+  const regular = await document.embedFont(StandardFonts.Helvetica);
+  const bold = await document.embedFont(StandardFonts.HelveticaBold);
+  const page = document.addPage([595.28, 841.89]);
+  const table = buildEpGrantingQuoteTable(quote, metadata.translationRequired);
+  const colors = {
+    navy: rgb(0.09, 0.22, 0.33),
+    blue: rgb(0.18, 0.44, 0.56),
+    paleBlue: rgb(0.91, 0.95, 0.97),
+    paleOrange: rgb(1, 0.94, 0.87),
+    orange: rgb(0.72, 0.35, 0),
+    muted: rgb(0.38, 0.43, 0.47),
+    white: rgb(1, 1, 1),
+  };
+
+  page.drawRectangle({ x: 28, y: 764, width: 539, height: 50, color: colors.navy });
+  page.drawText("European Patent Granting Quotation", {
+    x: 42,
+    y: 783,
+    size: 19,
+    font: bold,
+    color: colors.white,
+  });
+  page.drawText("Commercial quotation for EP granting services", {
+    x: 42,
+    y: 744,
+    size: 8.5,
+    font: regular,
+    color: colors.muted,
+  });
+
+  drawCaseDetails(page, metadata, regular, bold, 719, colors.muted);
+
+  const columns = [28, 116, 242, 362, 459, 567];
+  let y = 570;
+  page.drawRectangle({ x: 28, y: y - 8, width: 539, height: 25, color: colors.blue });
+  const headers = ["Fee Category", "Fee Item", "Language / Scope", "Pricing Method", "Amount"];
+  headers.forEach((header, index) => {
+    const isAmount = index === headers.length - 1;
+    drawPdfCellText(page, header, columns[index], columns[index + 1], y, 7.5, bold, colors.white, isAmount);
+  });
+  y -= 26;
+
+  for (const line of table.baseFees) {
+    drawEpGrantingFeeRow(page, line, columns, y, regular, bold, colors.paleBlue, colors.muted);
+    y -= 27;
+  }
+  drawEpGrantingSubtotal(page, "Base Fee Subtotal", table.baseFeeSubtotal, columns, y, bold, colors.paleBlue, colors.navy);
+  y -= 27;
+
+  for (const line of table.translationFees) {
+    drawEpGrantingFeeRow(page, line, columns, y, regular, bold, colors.paleOrange, colors.orange);
+    y -= 27;
+  }
+  if (table.translationFees.length) {
+    drawEpGrantingSubtotal(page, "Translation Fee Subtotal", table.translationFeeSubtotal, columns, y, bold, colors.paleOrange, colors.orange);
+    y -= 27;
+  }
+
+  page.drawRectangle({ x: 28, y: y - 8, width: 539, height: 32, color: colors.navy });
+  page.drawText("Quotation Total", {
+    x: 302,
+    y: y + 3,
+    size: 11,
+    font: bold,
+    color: colors.white,
+  });
+  drawRightAligned(page, money(table.total, quote.currency), 555, y + 3, 12, bold, colors.white);
+
+  const notesY = y - 122;
+  page.drawRectangle({ x: 28, y: notesY, width: 539, height: 82, color: rgb(0.96, 0.97, 0.98) });
+  const notes = [
+    "Notes",
+    "EPO official fees are shown as disbursements and are based on the amount charged by the authority.",
+    "All amounts are pre-tax. This quotation remains valid until the EP granting deadline shown above.",
+  ];
+  page.drawText(notes[0], { x: 42, y: notesY + 60, size: 8.5, font: bold, color: colors.navy });
+  page.drawText(notes[1], { x: 42, y: notesY + 39, size: 7.5, font: regular, color: colors.muted });
+  page.drawText(notes[2], { x: 42, y: notesY + 21, size: 7.5, font: regular, color: colors.muted });
+  page.drawText("Private and confidential", { x: 28, y: 43, size: 7, font: regular, color: colors.muted });
+  drawRightAligned(page, "Pat", 567, 43, 7, bold, colors.muted);
+
+  return document.save();
+}
+
+function drawCaseDetails(
+  page: PDFPage,
+  metadata: QuoteExportMetadata,
+  regular: PDFFont,
+  bold: PDFFont,
+  startY: number,
+  muted: ReturnType<typeof rgb>,
+) {
+  const fields = caseDetailFields(metadata);
+  page.drawText("Case Details", { x: 40, y: startY, size: 9.5, font: bold });
+  const title = fields.find(([label]) => label === "Title");
+  const remainingFields = fields.filter(([label]) => label !== "Title");
+  let row = 0;
+
+  if (title) {
+    drawCaseDetail(page, title[0], title[1], 40, 82, startY - 23, 465, regular, bold, muted);
+    row = 1;
+  }
+
+  remainingFields.forEach(([label, value], index) => {
+    const column = index % 2;
+    const y = startY - 23 - (row + Math.floor(index / 2)) * 20;
+    const labelX = column === 0 ? 40 : 310;
+    drawCaseDetail(page, label, value, labelX, labelX + 96, y, 157, regular, bold, muted);
+  });
+}
+
+function drawCaseDetail(
+  page: PDFPage,
+  label: string,
+  value: string,
+  labelX: number,
+  valueX: number,
+  y: number,
+  maxValueWidth: number,
+  regular: PDFFont,
+  bold: PDFFont,
+  muted: ReturnType<typeof rgb>,
+) {
+  page.drawText(label, { x: labelX, y, size: 7.2, font: regular, color: muted });
+  page.drawText(fitPdfText(value, bold, 8.2, maxValueWidth), { x: valueX, y, size: 8.2, font: bold });
+}
+
+function caseDetailFields(metadata: QuoteExportMetadata): Array<[string, string]> {
+  const patent = metadata.patentDetails;
+  const isWipo = patent?.source === "wipo";
+  const additionalDate = metadata.serviceType === "ep_granting"
+    ? ["Rule 71(3) Dispatch Date", patent?.rule713DispatchDate]
+    : ["Grant Date", patent?.grantDate];
+  return [
+    ["Title", patent?.title],
+    [isWipo ? "International Application No." : "Application No.", metadata.applicationNumber || metadata.patentNumber],
+    [isWipo ? "International Filing Date" : "Filing Date", patent?.filingDate],
+    ["Publication No.", patent?.publicationNumber],
+    ["Publication Date", patent?.publicationDate],
+    ["First Priority Date", patent?.firstPriorityDate],
+    ["Publication Language", patent?.publicationLanguage],
+    additionalDate,
+  ].filter((field): field is [string, string] => Boolean(field[1]));
+}
+
+function drawEpGrantingFeeRow(
+  page: PDFPage,
+  line: EpGrantingFeeLine,
+  columns: number[],
+  y: number,
+  regular: PDFFont,
+  bold: PDFFont,
+  background: ReturnType<typeof rgb>,
+  accent: ReturnType<typeof rgb>,
+) {
+  page.drawRectangle({ x: columns[0], y: y - 8, width: columns[5] - columns[0], height: 27, color: background });
+  const values = [line.category, line.item, line.scope, line.pricingMethod];
+  values.forEach((value, index) => {
+    drawPdfCellText(page, value, columns[index], columns[index + 1], y, 7.4, index === 0 ? bold : regular, index === 0 ? accent : rgb(0.12, 0.15, 0.17));
+  });
+  const amount = line.waived ? `${formatAmount(line.amount)}  Waived` : formatAmount(line.amount);
+  drawPdfCellText(page, amount, columns[4], columns[5], y, 7.4, line.waived ? bold : regular, line.waived ? accent : rgb(0.12, 0.15, 0.17), true);
+  drawPdfRowBorders(page, columns, y);
+}
+
+function drawEpGrantingSubtotal(
+  page: PDFPage,
+  label: string,
+  amount: number,
+  columns: number[],
+  y: number,
+  font: PDFFont,
+  background: ReturnType<typeof rgb>,
+  color: ReturnType<typeof rgb>,
+) {
+  page.drawRectangle({ x: columns[0], y: y - 8, width: columns[5] - columns[0], height: 27, color: background });
+  drawRightAligned(page, label, columns[4] - 8, y, 8, font, color);
+  drawRightAligned(page, formatAmount(amount), columns[5] - 12, y, 8, font, color);
+  drawPdfRowBorders(page, columns, y);
+}
+
+function drawPdfCellText(
+  page: PDFPage,
+  value: string,
+  left: number,
+  right: number,
+  y: number,
+  size: number,
+  font: PDFFont,
+  color: ReturnType<typeof rgb>,
+  alignRight = false,
+) {
+  const fitted = fitPdfText(value, font, size, right - left - 12);
+  const x = alignRight ? right - 8 - font.widthOfTextAtSize(fitted, size) : left + 7;
+  page.drawText(fitted, { x, y, size, font, color });
+}
+
+function drawPdfRowBorders(page: PDFPage, columns: number[], y: number) {
+  const border = rgb(0.78, 0.83, 0.86);
+  for (const x of columns) {
+    page.drawLine({ start: { x, y: y - 8 }, end: { x, y: y + 19 }, thickness: 0.35, color: border });
+  }
+  page.drawLine({ start: { x: columns[0], y: y - 8 }, end: { x: columns[5], y: y - 8 }, thickness: 0.35, color: border });
+}
+
+function fitPdfText(value: string, font: PDFFont, size: number, maxWidth: number) {
+  const text = pdfText(value);
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+  let fitted = text;
+  while (fitted.length && font.widthOfTextAtSize(`${fitted}...`, size) > maxWidth) {
+    fitted = fitted.slice(0, -1);
+  }
+  return `${fitted}...`;
+}
+
 async function generateQuotePdf(
   quote: ErpQuotePreview,
   metadata: QuoteExportMetadata,
@@ -39,16 +276,16 @@ async function generateQuotePdf(
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
   const layout = { regular, bold, quote, metadata };
   let page = addPdfPage(document, layout);
-  let y = 650;
+  let y = 585;
 
   for (const row of quote.rows) {
-    const detailLines = wrapText(translationDetail(row, quote.currency), 82);
+    const detailLines = wrapText(translationDetailForPdf(row), 82);
     const rowHeight = 25 + detailLines.length * 10;
     if (y - rowHeight < 70) {
       page = addPdfPage(document, layout, true);
       y = 735;
     }
-    drawPdfRow(page, row, quote.currency, regular, y, detailLines);
+    drawPdfRow(page, row, regular, y, detailLines);
     y -= rowHeight;
   }
 
@@ -69,7 +306,7 @@ function addPdfPage(
   continuation = false,
 ) {
   const page = document.addPage([595.28, 841.89]);
-  const { regular, bold, quote, metadata } = layout;
+  const { regular, bold, metadata } = layout;
   page.drawText(continuation ? "Pat Estimate Sheet (continued)" : "Pat Estimate Sheet", {
     x: 40,
     y: 792,
@@ -78,18 +315,9 @@ function addPdfPage(
     color: rgb(0.08, 0.22, 0.18),
   });
   if (!continuation) {
-    const details = [
-      ["Service", metadata.serviceName],
-      ["Patent", metadata.patentNumber || "-"],
-      ["Generated", formatDate(quote.quotedAt)],
-      ["Currency", quote.currency],
-    ];
-    details.forEach(([label, value], index) => {
-      page.drawText(label, { x: 40, y: 755 - index * 18, size: 9, font: bold, color: rgb(0.35, 0.4, 0.38) });
-      page.drawText(pdfText(value), { x: 105, y: 755 - index * 18, size: 9, font: regular });
-    });
+    drawCaseDetails(page, metadata, regular, bold, 755, rgb(0.35, 0.4, 0.38));
   }
-  drawPdfTableHeader(page, bold, continuation ? 755 : 680);
+  drawPdfTableHeader(page, bold, continuation ? 755 : 615);
   page.drawText("Generated from the current estimate. Private and confidential.", {
     x: 40,
     y: 35,
@@ -102,7 +330,7 @@ function addPdfPage(
 
 function drawPdfTableHeader(page: PDFPage, font: PDFFont, y: number) {
   page.drawRectangle({ x: 40, y: y - 7, width: 515, height: 22, color: rgb(0.92, 0.95, 0.94) });
-  page.drawText("Destination", { x: 44, y, size: 8, font });
+  page.drawText("Countries", { x: 44, y, size: 8, font });
   page.drawText("Official", { x: 266, y, size: 8, font });
   page.drawText("Service", { x: 350, y, size: 8, font });
   page.drawText("Translation", { x: 423, y, size: 8, font });
@@ -112,16 +340,15 @@ function drawPdfTableHeader(page: PDFPage, font: PDFFont, y: number) {
 function drawPdfRow(
   page: PDFPage,
   row: ErpQuoteRow,
-  currency: string,
   font: PDFFont,
   y: number,
   detailLines: string[],
 ) {
   page.drawText(pdfText(row.countryName), { x: 44, y, size: 8, font });
-  drawRightAligned(page, money(row.officialFee, currency), 330, y, 8, font);
-  drawRightAligned(page, money(row.serviceFee, currency), 410, y, 8, font);
-  drawRightAligned(page, money(row.translationFee, currency), 495, y, 8, font);
-  drawRightAligned(page, money(row.total, currency), 555, y, 8, font);
+  drawRightAligned(page, formatAmount(row.officialFee), 330, y, 8, font);
+  drawRightAligned(page, formatAmount(row.serviceFee), 410, y, 8, font);
+  drawRightAligned(page, formatAmount(row.translationFee), 495, y, 8, font);
+  drawRightAligned(page, formatAmount(row.total), 555, y, 8, font);
   detailLines.forEach((line, index) => {
     page.drawText(pdfText(line), {
       x: 52,
@@ -141,9 +368,16 @@ function drawRightAligned(
   y: number,
   size: number,
   font: PDFFont,
+  color?: ReturnType<typeof rgb>,
 ) {
   const text = pdfText(value);
-  page.drawText(text, { x: right - font.widthOfTextAtSize(text, size), y, size, font });
+  page.drawText(text, {
+    x: right - font.widthOfTextAtSize(text, size),
+    y,
+    size,
+    font,
+    ...(color ? { color } : {}),
+  });
 }
 
 async function generateQuoteXlsx(
@@ -170,7 +404,7 @@ function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
     ["Generated", formatDate(quote.quotedAt)],
     ["Currency", quote.currency],
     [],
-    ["Destination", "Official Fee", "Service Fee", "Translation Fee", "Translation Details", "Total"],
+    ["Countries", "Official Fee", "Service Fee", "Translation Fee", "Translation Details", "Total"],
   ];
   for (const row of quote.rows) {
     rows.push([
@@ -249,6 +483,13 @@ function translationDetail(row: ErpQuoteRow, currency: string) {
     .join("; ");
 }
 
+function translationDetailForPdf(row: ErpQuoteRow) {
+  if (!row.translationFeeDetails.length) return "-";
+  return row.translationFeeDetails
+    .map((fee) => `${fee.languageName}: ${formatAmount(fee.amount)}`)
+    .join("; ");
+}
+
 function money(value: number, currency: string) {
   return `${currency} ${value.toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -259,6 +500,13 @@ function money(value: number, currency: string) {
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+}
+
+function formatAmount(value: number) {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function safeFilePart(value: string) {

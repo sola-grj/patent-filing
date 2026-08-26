@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { validateWizardPayload } from "@/features/requester/components/new-request-wizard-utils";
+import { verifyWizardPatentPayload } from "@/features/requester/actions/patent-service";
 import type { WizardPayload } from "@/features/requester/wizard-types";
 import { quoteForOrganization, publicQuote } from "@/lib/eci-erp/pricing";
 import {
   generateQuoteExport,
   quoteExportFileName,
+  type QuoteExportMetadata,
   type QuoteExportFormat,
 } from "@/lib/eci-erp/quote-export";
 import { createClient } from "@/lib/supabase/server";
@@ -51,19 +53,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
+    const verifiedPayload = await verifyWizardPatentPayload(payload);
     const result = await quoteForOrganization(
-      payload,
+      verifiedPayload,
       membership.organization_id,
       userId,
     );
     const quote = publicQuote(result);
-    const metadata = {
-      serviceName: serviceNames[payload.config.epServiceType]
-        ?? payload.config.epServiceType
+    const patent = verifiedPayload.selectedPatent;
+    const metadata: QuoteExportMetadata = {
+      serviceName: serviceNames[verifiedPayload.config.epServiceType]
+        ?? verifiedPayload.config.epServiceType
         ?? "Patent service",
-      patentNumber: payload.selectedPatent?.patentNumber
-        ?? payload.patentQuery
+      serviceType: verifiedPayload.config.epServiceType,
+      patentNumber: patent?.patentNumber
+        ?? verifiedPayload.patentQuery
         ?? "patent",
+      applicationNumber: patent?.applicationNo
+        || patent?.patentNumber
+        || verifiedPayload.patentQuery
+        || "patent",
+      translationRequired: verifiedPayload.config.translationRequired,
+      patentDetails: patent ? {
+        title: patent.title,
+        source: patent.source === "wipo" ? "wipo" : "epo",
+        filingDate: patent.source === "wipo"
+          ? patent.internationalFilingDate || patent.filingDate
+          : patent.filingDate,
+        publicationNumber: patent.publicationNo,
+        publicationDate: patent.publicationDate,
+        firstPriorityDate: patent.firstPriorityDate,
+        publicationLanguage: patent.publicationLanguage || patent.language,
+        grantDate: patent.grantPublicationDate,
+        rule713DispatchDate: patent.rule713CommunicationDate,
+      } : undefined,
     };
     const file = await generateQuoteExport(format, quote, metadata);
     const fileName = quoteExportFileName(format, quote, metadata);

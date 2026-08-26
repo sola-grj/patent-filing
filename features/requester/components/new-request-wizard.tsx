@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
@@ -26,12 +26,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { sourceLanguageOptions } from "@/features/requester/options";
@@ -77,6 +71,9 @@ import { usePatentAnalysis } from "./use-patent-analysis";
 import { PatentProcessingNotice } from "./patent-processing-notice";
 import { PatentCacheWarning } from "./patent-cache-warning";
 import type { RequestPathCode } from "../requester-routes";
+import {
+  shouldStartAutomaticPatentAnalysis,
+} from "../epo-tifg-upload";
 
 type WizardNegotiationDraft = {
   adjustmentNotes: string;
@@ -117,7 +114,7 @@ export function NewRequestWizard({
   const [quoteCurrency, setQuoteCurrency] = useState<ErpQuoteCurrencyCode>(
     isErpQuoteCurrencyCode(initialPayload?.quoteCurrency)
       ? initialPayload.quoteCurrency
-      : "USD",
+      : "CNY",
   );
   const [quotePreview, setQuotePreview] = useState<ErpQuotePreview | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -177,6 +174,53 @@ export function NewRequestWizard({
     })));
   }
 
+  function applyTifgFiles(nextFiles: File[]) {
+    if (nextFiles.length !== 1) {
+      setError("Upload exactly one TIFG clean-copy PDF.");
+      return;
+    }
+    if (
+      !nextFiles[0].name.toLowerCase().endsWith(".pdf")
+      || (nextFiles[0].type && nextFiles[0].type !== "application/pdf")
+    ) {
+      setError("The TIFG clean copy must be uploaded as a PDF.");
+      return;
+    }
+    try {
+      validateUploadFiles(nextFiles);
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "The TIFG clean-copy PDF could not be uploaded.",
+      );
+      return;
+    }
+
+    setError(null);
+    setUploadedFiles(nextFiles);
+    setUploadedFileSnapshots(nextFiles.map((file) => ({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    })));
+    analysis.reset();
+    analysis.start({
+      sourceMode: "upload",
+      expectedPatentNumber: selectedPatent?.patentNumber
+        || patentQuery,
+      expectedDocumentKind: "tifg",
+      files: nextFiles,
+    });
+  }
+
+  function removeTifg() {
+    setUploadedFiles([]);
+    setUploadedFileSnapshots([]);
+    analysis.reset();
+    setError(null);
+  }
+
   function clearSourceState() {
     analysis.reset();
     setPatentQuery("");
@@ -213,6 +257,17 @@ export function NewRequestWizard({
   }
 
   function retryCurrentAnalysis() {
+    if (
+      sourceMode === "patent_search"
+      && config.epServiceType === "ep_granting"
+    ) {
+      if (uploadedFiles.length) {
+        applyTifgFiles(uploadedFiles);
+      } else {
+        setError("Upload the TIFG clean-copy PDF to parse claims for EP Granting.");
+      }
+      return;
+    }
     if (sourceMode === "upload") {
       analysis.start({
         sourceMode: "upload",
@@ -231,12 +286,17 @@ export function NewRequestWizard({
     setSelectedPatentFileIds([]);
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
-    analysis.start({
-      sourceMode: "patent_search",
-      patentNumber: patentQuery,
+    if (shouldStartAutomaticPatentAnalysis({
       channelCode: config.channelCode,
-      files: [],
-    });
+      epServiceType: config.epServiceType,
+    })) {
+      analysis.start({
+        sourceMode: "patent_search",
+        patentNumber: patentQuery,
+        channelCode: config.channelCode,
+        files: [],
+      });
+    }
   }
 
   function failPatentSearch() {
@@ -286,8 +346,23 @@ export function NewRequestWizard({
   }
 
   function handleConfigChange(nextConfig: WizardConfig) {
+    const normalizedConfig = normalizeWizardConfig(nextConfig);
     setQuotePreview(null);
-    setConfig(normalizeWizardConfig(nextConfig));
+    const grantingSourceChanged = sourceMode === "patent_search"
+      && (
+        config.epServiceType === "ep_granting"
+        || normalizedConfig.epServiceType === "ep_granting"
+      )
+      && (
+        normalizedConfig.epServiceType !== config.epServiceType
+        || normalizedConfig.translationRequired !== config.translationRequired
+      );
+    if (grantingSourceChanged) {
+      setUploadedFiles([]);
+      setUploadedFileSnapshots([]);
+      analysis.reset();
+    }
+    setConfig(normalizedConfig);
   }
 
   async function handleQuoteCurrencyChange(nextCurrency: ErpQuoteCurrencyCode) {
@@ -310,12 +385,12 @@ export function NewRequestWizard({
     }
   }
 
-  async function handleQuoteDownload(format: "pdf" | "xlsx") {
+  async function handleQuoteDownload() {
     if (!quotePreview || isBusy) return;
-    setStepLoadingMessage(`Preparing ${format.toUpperCase()} estimate`);
+    setStepLoadingMessage("Preparing PDF quotation");
     setError(null);
     try {
-      const response = await fetch(`/api/requester/quotes/export?format=${format}`, {
+      const response = await fetch("/api/requester/quotes/export?format=pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payload }),
@@ -329,7 +404,7 @@ export function NewRequestWizard({
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = responseFileName(response.headers.get("content-disposition"))
-        ?? `Pat-estimate.${format}`;
+        ?? "Pat-estimate.pdf";
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -464,7 +539,7 @@ export function NewRequestWizard({
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
     setConfig(defaultWizardConfig);
-    setQuoteCurrency("USD");
+    setQuoteCurrency("CNY");
     setQuotePreview(null);
     setShowConfigValidation(false);
     setCancelOpen(false);
@@ -533,6 +608,10 @@ export function NewRequestWizard({
       sourceMode === "patent_search"
       && selectedPatent
       && analysisStatus === "idle"
+      && shouldStartAutomaticPatentAnalysis({
+        channelCode: config.channelCode,
+        epServiceType: config.epServiceType,
+      })
     ) {
       startAnalysis({
         sourceMode,
@@ -541,7 +620,14 @@ export function NewRequestWizard({
         files: [],
       });
     }
-  }, [analysisStatus, config.channelCode, selectedPatent, sourceMode, startAnalysis]);
+  }, [
+    analysisStatus,
+    config.channelCode,
+    config.epServiceType,
+    selectedPatent,
+    sourceMode,
+    startAnalysis,
+  ]);
 
   useEffect(() => {
     registerController({
@@ -584,7 +670,7 @@ export function NewRequestWizard({
                 analysisStatus={analysis.status}
                 analysisResult={analysis.result}
                 analysisError={analysis.error}
-                onAnalysisRetry={retryPatentAnalysis}
+                onAnalysisRetry={retryCurrentAnalysis}
                 isPending={isBusy}
                 setSourceMode={(value) => {
                   clearStepError(0);
@@ -606,6 +692,8 @@ export function NewRequestWizard({
                   clearStepError(0);
                   applyUploadedFiles(value);
                 }}
+                setTifgFiles={applyTifgFiles}
+                removeTifg={removeTifg}
                 removeUploadedFile={(index) => {
                   if (uploadedFiles.length) {
                     const nextFiles = uploadedFiles.filter((_, fileIndex) => fileIndex !== index);
@@ -623,30 +711,17 @@ export function NewRequestWizard({
                 }}
                 dictionaries={dictionaries}
                 quoteAction={
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                        disabled={!quotePreview || isBusy}
-                      >
-                        <Download className="h-4 w-4" />
-                        <span className="sr-only">Download estimate</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-36">
-                      <DropdownMenuItem onSelect={() => { void handleQuoteDownload("pdf"); }}>
-                        <FileText className="h-4 w-4" />
-                        PDF
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => { void handleQuoteDownload("xlsx"); }}>
-                        <FileSpreadsheet className="h-4 w-4" />
-                        XLSX
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                    disabled={!quotePreview || isBusy}
+                    onClick={() => { void handleQuoteDownload(); }}
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="sr-only">Download PDF quotation</span>
+                  </Button>
                 }
               />
             </div>
@@ -656,12 +731,14 @@ export function NewRequestWizard({
                   {sourceMode === "patent_search" && selectedPatent?.dataOrigin === "cache_fallback" ? (
                     <PatentCacheWarning />
                   ) : null}
-                  <PatentProcessingNotice
-                    status={analysis.status}
-                    result={analysis.result}
-                    error={analysis.error}
-                    onRetry={retryCurrentAnalysis}
-                  />
+                  {analysis.status !== "idle" && config.epServiceType !== "ep_granting" ? (
+                    <PatentProcessingNotice
+                      status={analysis.status}
+                      result={analysis.result}
+                      error={analysis.error}
+                      onRetry={retryCurrentAnalysis}
+                    />
+                  ) : null}
                   {sourceMode === "patent_search" && analysis.errorCode === "original_file_not_available" ? (
                     <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
                       <p>
@@ -824,6 +901,8 @@ function StepContent(props: {
   clearSourceState: () => void;
   setUploadedFiles: (value: File[]) => void;
   removeUploadedFile: (index: number) => void;
+  setTifgFiles: (value: File[]) => void;
+  removeTifg: () => void;
   setConfig: (value: WizardConfig) => void;
   onQuoteCurrencyChange: (value: ErpQuoteCurrencyCode) => void;
 }) {
@@ -868,12 +947,19 @@ function StepContent(props: {
       <ConfigStep
         config={props.config}
         configFieldErrors={props.configFieldErrors}
+        sourceMode={props.sourceMode}
         patent={
           props.sourceMode === "patent_search"
             ? props.selectedPatent
             : undefined
         }
         analysis={props.analysisResult}
+        tifgFiles={props.uploadedFiles}
+        tifgFileSnapshots={props.uploadedFileSnapshots}
+        analysisStatus={props.analysisStatus}
+        analysisError={props.analysisError}
+        onTifgFilesChange={props.setTifgFiles}
+        onRemoveTifg={props.removeTifg}
         onChange={props.setConfig}
         dictionaries={props.dictionaries}
       />

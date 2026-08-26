@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { ErpPriceRequest, ErpPriceRow } from "./types";
+import { sumMoney } from "./money.ts";
 
 type ServiceConfig = {
   channelCode: string;
@@ -80,13 +81,18 @@ export function buildErpPriceRequest(input: {
     // TODO: Remove this temporary placeholder when the category 84 backend no longer requires it.
     request.patTotalWords = 600;
   } else {
+    if (input.metrics.patTotalWords === undefined) {
+      throw new Error("Verified patent total word metric is required.");
+    }
     if (
       input.metrics.patTotalPages === undefined
-      || input.metrics.patTotalWords === undefined
+      && ![82, 83, 8283].includes(input.categoryId)
     ) {
-      throw new Error("Verified patent page and total word metrics are required.");
+      throw new Error("Verified patent page metric is required.");
     }
-    request.patTotalPages = input.metrics.patTotalPages;
+    if (input.metrics.patTotalPages !== undefined) {
+      request.patTotalPages = input.metrics.patTotalPages;
+    }
     request.patTotalWords = input.metrics.patTotalWords;
   }
   if ([82, 8283].includes(input.categoryId)) {
@@ -184,11 +190,11 @@ export function validatePriceRows(input: {
 }
 
 export function priceTotal(rows: ErpPriceRow[]) {
-  return roundMoney(rows.reduce(
-    (sum, row) => sum + row.officialFee + row.serviceFee
-      + Object.values(row.translationFees).reduce((feeSum, fee) => feeSum + fee, 0),
-    0,
-  ));
+  return sumMoney(rows.flatMap((row) => [
+    row.officialFee,
+    row.serviceFee,
+    ...Object.values(row.translationFees),
+  ]));
 }
 
 export function normalizeLogin(value: string) {
@@ -200,8 +206,4 @@ export function stableAuthUserId(clientId: number) {
   hex[12] = "5";
   hex[16] = ((Number.parseInt(hex[16], 16) & 3) | 8).toString(16);
   return `${hex.slice(0, 8).join("")}-${hex.slice(8, 12).join("")}-${hex.slice(12, 16).join("")}-${hex.slice(16, 20).join("")}-${hex.slice(20).join("")}`;
-}
-
-function roundMoney(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
 }

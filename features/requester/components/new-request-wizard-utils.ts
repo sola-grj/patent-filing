@@ -24,6 +24,12 @@ import {
 import { validateFutureDateString } from "@/lib/validators/requester";
 import type { ErpQuoteCurrencyCode } from "@/lib/eci-erp/types";
 import { getEpoServiceAvailability } from "@/features/requester/deadlines";
+import {
+  isEpGrantingTranslation,
+  isVerifiedCustomerTifg,
+  requiresCustomerTifg,
+  requiresPatentDocumentAnalysis,
+} from "@/features/requester/epo-tifg-upload";
 
 export const wizardSteps = [
   { title: "Source", description: "Search by patent number or upload source files." },
@@ -72,6 +78,7 @@ export type WizardConfigFieldErrors = Partial<Record<
   | "sourceLanguage"
   | "epCountryIds"
   | "optOutCountryIds"
+  | "tifgDocument"
   | "jurisdictionCodes"
   | "dueAt",
   string
@@ -151,6 +158,14 @@ export function validateWizardPayload(payload: WizardPayload) {
 }
 
 export function hasUsablePatentAnalysis(payload: WizardPayload) {
+  if (
+    payload.sourceMode === "patent_search"
+    && isEpGrantingTranslation(payload.config)
+  ) return isVerifiedCustomerTifg(payload.analysis);
+  if (
+    payload.sourceMode === "patent_search"
+    && !requiresPatentDocumentAnalysis(payload.config)
+  ) return true;
   const analysis = payload.analysis;
   if (!analysis || !["success", "partial"].includes(analysis.status)) return false;
   if (!analysis.files.length || analysis.files.some((file) =>
@@ -380,6 +395,15 @@ export function validateWizardConfigFields(
       errors.serviceTypes = availability.reason
         ?? "The selected EPO service is not currently available.";
     }
+  }
+
+  if (requiresCustomerTifg({
+    channelCode: config.channelCode,
+    epServiceType: config.epServiceType,
+    translationRequired: config.translationRequired,
+    analysis,
+  })) {
+    errors.tifgDocument = "Upload and verify the TIFG clean-copy PDF before continuing.";
   }
 
   if (hasFilingService) {

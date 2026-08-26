@@ -3,9 +3,14 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { WizardConfig, WizardPayload } from "@/features/requester/wizard-types";
 import { getEpoServiceAvailability } from "@/features/requester/deadlines";
+import {
+  isEpGrantingTranslation,
+  isVerifiedCustomerTifg,
+} from "@/features/requester/epo-tifg-upload";
 
 import { getErpCountries, getErpPrice } from "./client";
 import { erpQuoteCurrency } from "./types";
+import { sumMoney } from "./money.ts";
 import {
   buildErpPriceRequest,
   categoryForConfig,
@@ -128,7 +133,7 @@ export async function quoteForOrganization(
     await Promise.all([
       service
         .from("eci_erp_customers")
-        .select("client_id, auth_user_id")
+        .select("client_id, client_name, auth_user_id")
         .eq("organization_id", organizationId)
         .is("sync_error", null)
         .eq("is_black", false),
@@ -185,25 +190,28 @@ export async function quoteForOrganization(
         };
       },
     );
-    const translationFee = roundMoney(translationFeeDetails.reduce(
-      (sum, fee) => sum + fee.amount,
-      0,
-    ));
+    const translationFee = sumMoney(
+      translationFeeDetails.map((fee) => fee.amount),
+    );
     return {
       ...row,
       countryName: countries.get(row.countryId)!,
       translationFee,
       translationFeeDetails,
-      total: roundMoney(row.officialFee + row.serviceFee + translationFee),
+      total: sumMoney([row.officialFee, row.serviceFee, translationFee]),
     };
   });
   return {
     source: "eci_erp",
     currency: currency.code,
     quotedAt: new Date().toISOString(),
+    customerName: customer.client_name,
+    ...(payload.config.epServiceType === "ep_granting" && serviceAvailability.deadline
+      ? { validUntil: serviceAvailability.deadline }
+      : {}),
     request,
     rows,
-    total: roundMoney(rows.reduce((sum, row) => sum + row.total, 0)),
+    total: sumMoney(rows.map((row) => row.total)),
   };
 }
 
@@ -212,13 +220,26 @@ export function publicQuote(result: ErpQuoteResult): ErpQuotePreview {
     source: result.source,
     currency: result.currency,
     quotedAt: result.quotedAt,
+    customerName: result.customerName,
+    ...(result.validUntil ? { validUntil: result.validUntil } : {}),
     rows: result.rows,
     total: result.total,
   };
 }
 
 function verifiedPatentMetrics(payload: WizardPayload, categoryId: number) {
+  if (categoryId === 84 && !payload.config.translationRequired) {
+    return { patClaims: 0, patClaimWords: 0 };
+  }
   const analysis = payload.analysis;
+  if (
+    isEpGrantingTranslation(payload.config)
+    && !isVerifiedCustomerTifg(analysis)
+  ) {
+    throw new Error(
+      "The uploaded TIFG must finish claims-only parsing successfully before a quote can be generated.",
+    );
+  }
   if (!analysis || !["success", "partial"].includes(analysis.status)) {
     throw new Error("Verified patent analysis is required for an online quote.");
   }
@@ -237,6 +258,12 @@ function verifiedPatentMetrics(payload: WizardPayload, categoryId: number) {
   const pageCount = patent?.totalPages
     ?? selectedFiles.reduce((sum, file) => sum + file.pageCount, 0);
   if (!Number.isInteger(pageCount) || pageCount <= 0) {
+    if ([82, 83, 8283].includes(categoryId)) {
+      return {
+        ...claimMetrics,
+        patTotalWords: nonNegativeInteger(analysis.aggregate.total_words, "total word count"),
+      };
+    }
     throw new Error("Verified patent page count is missing.");
   }
   return {
@@ -341,9 +368,6 @@ function nonNegativeInteger(value: number, label: string) {
   return value;
 }
 
-function roundMoney(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
 
 function publicErpError(error: unknown) {
   return error instanceof Error ? error.message : "The pricing service is unavailable.";

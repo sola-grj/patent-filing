@@ -37,8 +37,14 @@ import {
   writeRequestEvent,
 } from "./helpers";
 import { quoteForOrganization } from "@/lib/eci-erp/pricing";
+import { quoteValidUntilTimestamp } from "@/lib/eci-erp/ep-granting-quote";
 import {
-  verifyPatentReceipts,
+  isEpGrantingTranslation,
+  requiresCustomerTifg,
+  requiresPatentDocumentAnalysis,
+} from "@/features/requester/epo-tifg-upload";
+import {
+  verifyWizardPatentPayload,
 } from "./patent-service";
 import {
   enqueueSubmittedPatentFilePreparation,
@@ -75,7 +81,7 @@ export async function persistWizardRequest(
       validateFutureDateString(payload.config.dueAt, "Due date");
       await dictionaryValidation;
       if (!reuseDurablePatent) {
-        payload = await verifySubmittedPatentPayload(payload);
+        payload = await verifyWizardPatentPayload(payload);
       }
       validateEpoServiceAvailability(payload);
     } else {
@@ -83,15 +89,21 @@ export async function persistWizardRequest(
       if (
         payload.sourceMode === "patent_search"
         && payload.selectedPatent
+        && payload.analysis?.analysis_receipt
+        && !isEpGrantingTranslation(payload.config)
         && !reuseDurablePatent
       ) {
-        payload = await verifySubmittedPatentPayload(payload);
+        payload = await verifyWizardPatentPayload(payload);
       }
     }
 
     const requestId = payload.requestId ?? randomUUID();
     const uploadedFormFiles = formData.getAll("files").filter((file): file is File => file instanceof File);
     validateUploadFiles(uploadedFormFiles);
+    const usesCustomerTifg = payload.sourceMode === "patent_search"
+      && isEpGrantingTranslation(payload.config);
+    validateCustomerTifgFiles(payload, uploadedFormFiles, mode);
+    const patentAnalysisRequired = requiresPatentDocumentAnalysis(payload.config);
     const submittedRequestNo = mode === "submit"
       && payload.requestId
       && payload.sourceMode === "patent_search"
@@ -109,7 +121,7 @@ export async function persistWizardRequest(
       return { success: true, data: persistedResult };
     }
     const reuseExistingUploadFiles = Boolean(payload.requestId)
-      && payload.sourceMode === "upload"
+      && (payload.sourceMode === "upload" || usesCustomerTifg)
       && uploadedFormFiles.length === 0
       && payload.uploadedFiles.some((file) => Boolean(file.requestFileId));
 
@@ -153,11 +165,15 @@ export async function persistWizardRequest(
     const persistPatentBeforeSubmission = mode === "submit"
       && payload.sourceMode === "patent_search"
       && Boolean(payload.selectedPatent)
+      && patentAnalysisRequired
+      && !usesCustomerTifg
       && !reuseDurablePatent;
     if (
       (mode === "draft" || persistPatentBeforeSubmission)
       && payload.sourceMode === "patent_search"
       && payload.selectedPatent
+      && payload.analysis?.analysis_receipt
+      && !usesCustomerTifg
       && !reuseDurablePatent
     ) {
       await persistDraftPatentFile({
@@ -168,7 +184,10 @@ export async function persistWizardRequest(
       });
       await createParseResults(supabase, requestFileIds, payload);
     }
-    if (mode === "draft" && payload.sourceMode === "upload") {
+    if (
+      mode === "draft"
+      && (payload.sourceMode === "upload" || usesCustomerTifg)
+    ) {
       payload = await refreshDraftUploadPayload(supabase, requestId, payload);
     }
 
@@ -215,8 +234,10 @@ export async function persistWizardRequest(
       if (
         payload.sourceMode === "patent_search"
         && !options?.deferPatentCache
+        && payload.analysis?.analysis_receipt
         && !reuseDurablePatent
         && !persistPatentBeforeSubmission
+        && !usesCustomerTifg
       ) {
         scheduleSubmittedPatentFile({
           supabase,
@@ -316,44 +337,18 @@ function revalidateRequestPaths(requestId: string) {
   revalidatePath(`/pm/${requestId}`);
 }
 
-async function verifySubmittedPatentPayload(
-  payload: WizardPayload,
-): Promise<WizardPayload> {
-  if (payload.sourceMode !== "patent_search") return payload;
-  const lookupReceipt = payload.selectedPatent?.lookupReceipt;
-  const analysisReceipt = payload.analysis?.analysis_receipt;
-  if (!payload.selectedPatent || !lookupReceipt || !analysisReceipt) {
-    throw new Error(
-      "Patent lookup or analysis verification is missing. Search the patent again before submitting.",
-    );
-  }
-  const verified = await verifyPatentReceipts({
-    lookupReceipt,
-    analysisReceipt,
-    fallbackPatentNumber: payload.selectedPatent.patentNumber,
-  });
-  if (
-    !["success", "partial"].includes(verified.analysis.status)
-    || verified.analysis.aggregate.total_words <= 0
-    || !verified.analysis.files.length
-    || verified.analysis.files.some((file) =>
-      file.status === "failed"
-      || Object.values(file.parts).some((part) => part.status === "parse_failed")
-    )
-  ) {
-    throw new Error(
-      "Patent data processing has not produced usable word counts. Retry before submitting.",
-    );
-  }
-  return {
-    ...payload,
-    selectedPatent: verified.patent,
-    analysis: verified.analysis,
-  };
-}
-
 function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
+  if (requiresCustomerTifg({
+    channelCode: config.channelCode,
+    epServiceType: config.epServiceType,
+    translationRequired: config.translationRequired,
+    analysis: payload.analysis,
+  })) {
+    throw new Error(
+      "Upload and verify the TIFG clean-copy PDF before submitting EP Granting.",
+    );
+  }
   if (
     config.channelCode === "ep"
     && requiresEpCountries(config.epServiceType)
@@ -633,7 +628,63 @@ async function persistSourceFiles(
     }
     return persistUploadedFiles(supabase, requestId, userId, formData);
   }
-  return persistPatentSelection(supabase, requestId, payload, mode);
+  const usesCustomerTifg = isEpGrantingTranslation(payload.config);
+  if (mode === "draft" && !payload.analysis?.analysis_receipt && !usesCustomerTifg) {
+    return [];
+  }
+  if (!requiresPatentDocumentAnalysis(payload.config)) {
+    await persistPatentSelection(supabase, requestId, payload, mode, false);
+    return [];
+  }
+  await persistPatentSelection(
+    supabase,
+    requestId,
+    payload,
+    mode,
+    !usesCustomerTifg,
+  );
+  if (!usesCustomerTifg) {
+    return fetchExistingRequestFileIds(supabase, requestId);
+  }
+  if (reuseExistingUploadFiles) {
+    return fetchExistingRequestFileIds(supabase, requestId);
+  }
+  return persistUploadedFiles(supabase, requestId, userId, formData);
+}
+
+function validateCustomerTifgFiles(
+  payload: WizardPayload,
+  files: File[],
+  mode: "draft" | "submit",
+) {
+  if (payload.sourceMode !== "patent_search" || !isEpGrantingTranslation(payload.config)) {
+    return;
+  }
+
+  if (files.length > 1 || payload.uploadedFiles.length > 1) {
+    throw new Error("Upload exactly one TIFG clean-copy PDF.");
+  }
+  const names = [
+    ...files.map((file) => file.name),
+    ...payload.uploadedFiles.map((file) => file.name),
+  ];
+  if (names.some((name) => !name.toLowerCase().endsWith(".pdf"))) {
+    throw new Error("The TIFG clean copy must be uploaded as a PDF.");
+  }
+  const mimeTypes = [
+    ...files.map((file) => file.type),
+    ...payload.uploadedFiles.map((file) => file.type),
+  ].filter(Boolean);
+  if (mimeTypes.some((mimeType) => mimeType !== "application/pdf")) {
+    throw new Error("The TIFG clean copy must be uploaded as a PDF.");
+  }
+
+  const hasNewFile = files.length === 1;
+  const hasStoredFile = payload.uploadedFiles.length === 1
+    && Boolean(payload.uploadedFiles[0].requestFileId);
+  if (mode === "submit" && !hasNewFile && !hasStoredFile) {
+    throw new Error("Upload exactly one TIFG clean-copy PDF before submitting.");
+  }
 }
 
 async function persistUploadedFiles(
@@ -770,13 +821,14 @@ async function persistPatentSelection(
   requestId: string,
   payload: WizardPayload,
   mode: "draft" | "submit",
+  includePatentFiles = true,
 ) {
   const patent = payload.selectedPatent;
   if (!patent) return [];
 
   const searchId = randomUUID();
   const candidateId = randomUUID();
-  const selectedFiles = resolvePatentFiles(payload);
+  const selectedFiles = includePatentFiles ? resolvePatentFiles(payload) : [];
   const analysis = payload.analysis;
 
   const { error: searchError } = await supabase.from("patent_searches").insert({
@@ -1157,6 +1209,13 @@ async function createParseResults(
   ]);
   if (jobs.error) throw new Error(jobs.error.message);
   if (results.error) throw new Error(results.error.message);
+  if (isEpGrantingTranslation(payload.config)) {
+    const { error: fileStatusError } = await supabase
+      .from("request_files")
+      .update({ status: "parsed", confirmed_for_translation: true })
+      .in("id", requestFileIds);
+    if (fileStatusError) throw new Error(fileStatusError.message);
+  }
 }
 
 function stripPatentReceipts(value: unknown): unknown {
@@ -1265,6 +1324,8 @@ async function createInitialQuote(
   const pricingSnapshot = {
     source: erpQuote.source,
     quotedAt: erpQuote.quotedAt,
+    customerName: erpQuote.customerName,
+    validUntil: erpQuote.validUntil ?? null,
     request: erpQuote.request,
     response: erpQuote.rows,
   };
@@ -1278,7 +1339,7 @@ async function createInitialQuote(
       currency: erpQuote.currency,
       total_amount: amount,
       estimated_delivery_at: payload.config.dueAt || null,
-      valid_until: new Date(Date.now() + 7 * 86400000).toISOString(),
+      valid_until: quoteValidUntilTimestamp(erpQuote.validUntil),
       notes: "Generated from verified request data.",
       pricing_snapshot: pricingSnapshot,
       breakdown_json: pricingSnapshot,

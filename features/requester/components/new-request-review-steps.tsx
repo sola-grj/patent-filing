@@ -49,8 +49,11 @@ import type {
   WizardConfig,
   WizardDictionaries,
   WizardPatentAnalysisResult,
+  WizardPatentAnalysisStatus,
   WizardPatentCandidate,
   WizardPayload,
+  WizardSourceMode,
+  WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import {
   onConfigValueChange,
@@ -61,8 +64,8 @@ import {
 } from "./new-request-wizard-utils";
 import { Field, Metric } from "./new-request-wizard-shared";
 import { EpCountrySelector } from "./ep-country-selector";
-import { PatentBasicInfo } from "./patent-basic-info";
 import { ServiceTypeCards } from "./service-type-cards";
+import { EpGrantingTifgUpload } from "./ep-granting-tifg-upload";
 
 export { QuoteStepContent } from "./new-request-quote-step";
 
@@ -182,15 +185,29 @@ export function ParsePreviewPanel({
 export function ConfigStep({
   config,
   configFieldErrors,
+  sourceMode,
   patent,
   analysis,
+  tifgFiles,
+  tifgFileSnapshots,
+  analysisStatus,
+  analysisError,
+  onTifgFilesChange,
+  onRemoveTifg,
   onChange,
   dictionaries,
 }: {
   config: WizardConfig;
   configFieldErrors: WizardConfigFieldErrors;
+  sourceMode: WizardSourceMode;
   patent?: WizardPatentCandidate;
   analysis?: WizardPatentAnalysisResult;
+  tifgFiles: File[];
+  tifgFileSnapshots: WizardUploadedFile[];
+  analysisStatus: WizardPatentAnalysisStatus;
+  analysisError?: string;
+  onTifgFilesChange: (files: File[]) => void;
+  onRemoveTifg: () => void;
   onChange: (config: WizardConfig) => void;
   dictionaries: WizardDictionaries;
 }) {
@@ -274,8 +291,7 @@ export function ConfigStep({
         </div>
       </div>
       <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {patent ? <PatentBasicInfo patent={patent} /> : null}
-        <div className={`grid gap-4 md:grid-cols-2 ${patent ? "mt-5" : ""}`}>
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <ServiceTypeCards
               channelCode={config.channelCode}
@@ -346,6 +362,22 @@ export function ConfigStep({
                 </label>
               </Field>
             </div>
+          ) : null}
+          {sourceMode === "patent_search"
+          && patent
+          && config.channelCode === "ep"
+          && config.epServiceType === "ep_granting"
+          && config.translationRequired ? (
+            <EpGrantingTifgUpload
+              files={tifgFiles}
+              snapshots={tifgFileSnapshots}
+              status={analysisStatus}
+              analysis={analysis}
+              analysisError={analysisError}
+              validationError={configFieldErrors.tifgDocument}
+              onFilesChange={onTifgFilesChange}
+              onRemove={onRemoveTifg}
+            />
           ) : null}
           {hasFilingService ? (
             <div className="grid gap-4 md:contents">
