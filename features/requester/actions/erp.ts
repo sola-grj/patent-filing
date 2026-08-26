@@ -11,7 +11,7 @@ import type { ErpActionResult, ErpCountry, ErpQuotePreview } from "@/lib/eci-erp
 import { getRequesterOrganization, toErrorMessage } from "../server-utils";
 
 export async function loadErpCountriesForWizard(
-  config: Pick<WizardConfig, "channelCode" | "serviceTypes" | "epvType">,
+  config: Pick<WizardConfig, "channelCode" | "serviceTypes" | "epvType" | "epServiceType">,
 ): Promise<ErpActionResult<ErpCountry[]>> {
   await getRequesterOrganization();
   return availableErpCountries(config);

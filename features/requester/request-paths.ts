@@ -175,7 +175,8 @@ export function requiresEpCountries(epServiceType?: string) {
 
 export function usesEpoTargetLanguages(epServiceType?: string) {
   return epServiceType === "ep_granting"
-    || epServiceType === "unitary_patent";
+    || epServiceType === "unitary_patent"
+    || epServiceType === "traditional_validation_unitary_patent";
 }
 
 function resolveLegacyEpvSelection(

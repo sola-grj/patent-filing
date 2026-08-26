@@ -50,7 +50,7 @@ async function CustomerContent({
         {result.erpAccounts?.length ? (
           <section className="grid gap-3">
             <div>
-              <h2 className="font-semibold">ECI ERP login accounts</h2>
+              <h2 className="font-semibold">Client login accounts</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 CRM accounts do not use email recovery. A reset forces a password change on next login.
               </p>

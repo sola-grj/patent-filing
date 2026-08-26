@@ -51,7 +51,7 @@ export async function resetErpCustomerPassword(
       throw new Error("Only a supplier administrator can reset customer passwords.");
     }
     const organizationId = requiredText(formData, "organizationId", "Organization");
-    const clientId = requiredText(formData, "clientId", "ERP client");
+    const clientId = requiredText(formData, "clientId", "Client");
     const service = createServiceClient();
     const { data: account, error: accountError } = await service
       .from("eci_erp_customers")
@@ -59,7 +59,7 @@ export async function resetErpCustomerPassword(
       .eq("client_id", clientId)
       .eq("organization_id", organizationId)
       .single();
-    if (accountError || !account.auth_user_id) throw new Error("ERP customer account not found.");
+    if (accountError || !account.auth_user_id) throw new Error("Customer account not found.");
     if (account.is_black) throw new Error("A blacklisted customer account cannot be reset.");
     const initialPassword = process.env.ECI_ERP_INITIAL_PASSWORD ?? "password";
     const { error: authError } = await service.auth.admin.updateUserById(

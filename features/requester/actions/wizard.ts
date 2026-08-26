@@ -93,7 +93,7 @@ export async function submitNegotiationFromWizard(
     }
 
     if (!quote) {
-      throw new Error("The ECI ERP quote could not be created for negotiation.");
+      throw new Error("The quote could not be created for negotiation.");
     }
 
     await startQuoteNegotiation(

@@ -201,6 +201,14 @@ export function ConfigStep({
   const showSourceLanguage = requiresSourceLanguage(config);
   const showEpCountries = config.channelCode === "ep"
     && requiresEpCountries(config.epServiceType);
+  const normalizedTargetLanguages = config.channelCode === "ep"
+    ? normalizeEpoTargetLanguages(
+        config.epServiceType,
+        config.translationRequired,
+        config.sourceLanguage,
+        config.targetLanguages,
+      )
+    : config.targetLanguages;
   const serviceAvailability = Object.fromEntries(
     getServiceTypeSelections(config.channelCode).map((option) => [
       option.value,
@@ -427,11 +435,11 @@ export function ConfigStep({
           {config.channelCode === "ep"
             && config.translationRequired
             && usesEpoTargetLanguages(config.epServiceType) ? (
-              config.epServiceType === "unitary_patent" ? (
+              ["unitary_patent", "traditional_validation_unitary_patent"].includes(config.epServiceType) ? (
                   config.sourceLanguage === "en" ? (
                     <SearchableSingleSelectField
                       label="Target Language"
-                      value={config.targetLanguages[0] ?? ""}
+                      value={normalizedTargetLanguages[0] ?? ""}
                       placeholder="Choose one target language"
                       options={mockUnitaryTargetLanguageOptions.filter((option) => option.value !== "en")}
                       error={configFieldErrors.targetLanguages}
@@ -441,14 +449,14 @@ export function ConfigStep({
                   ) : (
                     <ReadonlyLanguageList
                       label="Target Language"
-                      values={config.targetLanguages}
+                      values={normalizedTargetLanguages}
                       error={configFieldErrors.targetLanguages}
                     />
                   )
                 ) : (
                   <ReadonlyLanguageList
                     label="Target Languages"
-                    values={config.targetLanguages}
+                    values={normalizedTargetLanguages}
                     error={configFieldErrors.targetLanguages}
                   />
                 )

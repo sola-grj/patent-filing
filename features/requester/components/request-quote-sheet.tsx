@@ -25,7 +25,7 @@ export function RequestQuoteSheet({ quote, showEditAction = false }: {
   quote?: SavedQuote | null;
   showEditAction?: boolean;
 }) {
-  const currency = quote?.currency || "EUR";
+  const currency = quote?.currency || "USD";
   const rows = savedRows(quote);
   const total = finiteAmount(quote?.total_amount) ?? rows.reduce((sum, row) => sum + row.total, 0);
 
@@ -34,10 +34,10 @@ export function RequestQuoteSheet({ quote, showEditAction = false }: {
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b">
         <div>
           <CardTitle className="flex items-center gap-2"><ReceiptText className="size-5" />Quotation</CardTitle>
-          <p className="mt-2 text-sm text-muted-foreground">Saved ECI ERP quote · {formatCurrency(total, currency)}</p>
+          <p className="mt-2 text-sm text-muted-foreground">Saved quote · {formatCurrency(total, currency)}</p>
         </div>
         {showEditAction ? (
-          <Button type="button" variant="ghost" size="icon" disabled aria-label="Edit quotation amounts" title="ERP quotation amounts are read-only">
+          <Button type="button" variant="ghost" size="icon" disabled aria-label="Edit quotation amounts" title="Quotation amounts are read-only">
             <Pencil className="h-4 w-4" />
           </Button>
         ) : null}
@@ -73,7 +73,7 @@ export function RequestQuoteSheet({ quote, showEditAction = false }: {
             </Table.Root>
           </div>
         ) : (
-          <div className="py-10 text-sm text-muted-foreground">No saved ERP quote rows are available for this request.</div>
+          <div className="py-10 text-sm text-muted-foreground">No saved quote rows are available for this request.</div>
         )}
       </CardContent>
     </Card>

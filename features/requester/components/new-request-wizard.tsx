@@ -117,7 +117,7 @@ export function NewRequestWizard({
   const [quoteCurrency, setQuoteCurrency] = useState<ErpQuoteCurrencyCode>(
     isErpQuoteCurrencyCode(initialPayload?.quoteCurrency)
       ? initialPayload.quoteCurrency
-      : "EUR",
+      : "USD",
   );
   const [quotePreview, setQuotePreview] = useState<ErpQuotePreview | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -287,7 +287,7 @@ export function NewRequestWizard({
 
   function handleConfigChange(nextConfig: WizardConfig) {
     setQuotePreview(null);
-    setConfig(nextConfig);
+    setConfig(normalizeWizardConfig(nextConfig));
   }
 
   async function handleQuoteCurrencyChange(nextCurrency: ErpQuoteCurrencyCode) {
@@ -305,6 +305,41 @@ export function NewRequestWizard({
       }
       setQuoteCurrency(nextCurrency);
       setQuotePreview(result.data);
+    } finally {
+      setStepLoadingMessage(null);
+    }
+  }
+
+  async function handleQuoteDownload(format: "pdf" | "xlsx") {
+    if (!quotePreview || isBusy) return;
+    setStepLoadingMessage(`Preparing ${format.toUpperCase()} estimate`);
+    setError(null);
+    try {
+      const response = await fetch(`/api/requester/quotes/export?format=${format}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(result?.error ?? `Unable to export the estimate (${response.status}).`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = responseFileName(response.headers.get("content-disposition"))
+        ?? `Pat-estimate.${format}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (downloadError) {
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Unable to export the estimate.",
+      );
     } finally {
       setStepLoadingMessage(null);
     }
@@ -349,13 +384,7 @@ export function NewRequestWizard({
         return;
       }
 
-      if (config.epServiceType === "traditional_validation_unitary_patent") {
-        setQuotePreview(null);
-        setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
-        return;
-      }
-
-      setStepLoadingMessage("Requesting live estimate from ECI ERP");
+      setStepLoadingMessage("Requesting live estimate");
       try {
         const result = await generateErpEstimate(payload);
         if (!result.success) {
@@ -435,7 +464,7 @@ export function NewRequestWizard({
     setUploadedFiles([]);
     setUploadedFileSnapshots([]);
     setConfig(defaultWizardConfig);
-    setQuoteCurrency("EUR");
+    setQuoteCurrency("USD");
     setQuotePreview(null);
     setShowConfigValidation(false);
     setCancelOpen(false);
@@ -601,17 +630,18 @@ export function NewRequestWizard({
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                        disabled={!quotePreview || isBusy}
                       >
                         <Download className="h-4 w-4" />
                         <span className="sr-only">Download estimate</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-36">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => { void handleQuoteDownload("pdf"); }}>
                         <FileText className="h-4 w-4" />
                         PDF
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => { void handleQuoteDownload("xlsx"); }}>
                         <FileSpreadsheet className="h-4 w-4" />
                         XLSX
                       </DropdownMenuItem>
@@ -718,6 +748,13 @@ function uploadedFileIdentity(file: File) {
     file.type,
     file.lastModified,
   ]);
+}
+
+function responseFileName(contentDisposition: string | null) {
+  if (!contentDisposition) return null;
+  const encoded = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) return decodeURIComponent(encoded);
+  return contentDisposition.match(/filename="([^"]+)"/i)?.[1] ?? null;
 }
 
 function resolveInitialStep(lastStep?: string) {

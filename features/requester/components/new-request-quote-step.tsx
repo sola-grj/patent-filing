@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Table } from "@radix-ui/themes";
 
 import {
@@ -57,9 +57,6 @@ export function QuoteStepContent({
   onCurrencyChange: (currency: ErpQuoteCurrencyCode) => void;
 }) {
   const analysisReady = hasUsablePatentAnalysis(payload);
-  const onlineQuoteUnavailable = payload.config.epServiceType
-    === "traditional_validation_unitary_patent";
-
   return (
     <StepShell
       title="Estimate Sheet"
@@ -92,10 +89,8 @@ export function QuoteStepContent({
                 {estimate ? formatCurrency(estimate.total, estimate.currency) : "Pending"}
               </h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                {onlineQuoteUnavailable
-                  ? "Online quote is unavailable because this combined service has no ECI ERP category. The request will be sent for manual pricing."
-                  : analysisReady
-                  ? "Live estimate returned by ECI ERP for the current request configuration."
+                {analysisReady
+                  ? "Live estimate for the current request configuration."
                   : "Word counts and estimate details will appear when patent processing completes."}
               </p>
             </div>
@@ -138,19 +133,41 @@ export function QuoteStepContent({
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
-                  {estimate.rows.map((row) => (
-                    <Table.Row key={row.countryId}>
-                      <Table.RowHeaderCell className="font-medium">
-                        {row.countryName}
-                      </Table.RowHeaderCell>
-                      <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.officialFee, estimate.currency)}</Table.Cell>
-                      <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.serviceFee, estimate.currency)}</Table.Cell>
-                      <Table.Cell className="whitespace-nowrap" justify="end">{formatCurrency(row.translationFee, estimate.currency)}</Table.Cell>
-                      <Table.Cell justify="end" className="whitespace-nowrap font-semibold">
-                        {formatCurrency(row.total, estimate.currency)}
-                      </Table.Cell>
-                    </Table.Row>
-                  ))}
+                  {estimate.rows.map((row) => {
+                    const translationDetails = row.translationFeeDetails.length
+                      ? row.translationFeeDetails
+                      : [{ languageId: 0, languageName: "", amount: row.translationFee }];
+                    return (
+                      <Fragment key={row.countryId}>
+                        {translationDetails.map((detail, index) => (
+                          <Table.Row key={`${row.countryId}-${detail.languageId || index}`}>
+                            {index === 0 ? (
+                              <>
+                                <Table.RowHeaderCell rowSpan={translationDetails.length} className="font-medium">
+                                  {row.countryName}
+                                </Table.RowHeaderCell>
+                                <Table.Cell rowSpan={translationDetails.length} className="whitespace-nowrap" justify="end">
+                                  {formatCurrency(row.officialFee, estimate.currency)}
+                                </Table.Cell>
+                                <Table.Cell rowSpan={translationDetails.length} className="whitespace-nowrap" justify="end">
+                                  {formatCurrency(row.serviceFee, estimate.currency)}
+                                </Table.Cell>
+                              </>
+                            ) : null}
+                            <Table.Cell className="whitespace-nowrap" justify="end">
+                              <span className="mr-3 text-muted-foreground">{detail.languageName}</span>
+                              {formatCurrency(detail.amount, estimate.currency)}
+                            </Table.Cell>
+                            {index === 0 ? (
+                              <Table.Cell rowSpan={translationDetails.length} justify="end" className="whitespace-nowrap font-semibold">
+                                {formatCurrency(row.total, estimate.currency)}
+                              </Table.Cell>
+                            ) : null}
+                          </Table.Row>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
                   <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
                     <Table.Cell
                       colSpan={4}
@@ -167,10 +184,8 @@ export function QuoteStepContent({
               </Table.Root>
             ) : (
               <div className="px-6 py-10 text-sm text-muted-foreground">
-                {onlineQuoteUnavailable
-                  ? "Online quote unavailable · manual pricing required."
-                  : analysisReady
-                  ? "No live ERP estimate is available for this configuration."
+                {analysisReady
+                  ? "No live estimate is available for this configuration."
                   : "No provisional or mock word counts are shown while patent processing is incomplete."}
               </div>
             )}
@@ -333,7 +348,7 @@ function findAnalysisFile(
   );
 }
 
-function formatCurrency(value: number, currency = "EUR") {
+function formatCurrency(value: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,

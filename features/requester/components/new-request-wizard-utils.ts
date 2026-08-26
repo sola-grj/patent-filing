@@ -10,6 +10,7 @@ import type {
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
 import {
+  epoSourceLanguageOptions,
   HUMAN_TRANSLATION_QUALITY_LEVEL,
   mockUnitaryTargetLanguageOptions,
 } from "@/features/requester/options";
@@ -27,7 +28,7 @@ import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 export const wizardSteps = [
   { title: "Source", description: "Search by patent number or upload source files." },
   { title: "Configure", description: "Set languages, scope, and timing." },
-  { title: "Quote", description: "Review the live ERP quote before submission." },
+  { title: "Quote", description: "Review the live quote before submission." },
 ];
 
 export const defaultWizardConfig: WizardConfig = {
@@ -89,6 +90,7 @@ export function buildWizardPayload(input: {
   config: WizardConfig;
   lastStep: string;
 }): WizardPayload {
+  const normalizedConfig = normalizeWizardConfig(input.config);
   return {
     requestId: input.requestId,
     sourceMode: input.sourceMode,
@@ -101,7 +103,7 @@ export function buildWizardPayload(input: {
     analysis: input.analysis,
     quoteCurrency: input.quoteCurrency,
     config: {
-      ...input.config,
+      ...normalizedConfig,
       scopeType: "full_text",
       qualityLevel: HUMAN_TRANSLATION_QUALITY_LEVEL,
     },
@@ -279,8 +281,9 @@ export function normalizeWizardConfig(
     merged.serviceItem,
     merged.optType,
   );
+  const epoSourceLanguages = new Set(epoSourceLanguageOptions.map((option) => option.value));
   const sourceLanguage = channelCode === "ep"
-    && !["en", "fr", "de"].includes(merged.sourceLanguage)
+    && !epoSourceLanguages.has(merged.sourceLanguage)
     ? ""
     : merged.sourceLanguage;
   const targetLanguages = channelCode === "ep"
@@ -469,7 +472,7 @@ export function normalizeEpCountryIds(value: unknown): number[] {
 
 export function requiresSourceLanguage(config: WizardConfig) {
   if (config.channelCode !== "ep") return true;
-  return isTraditionalValidation(config.epServiceType) || config.translationRequired;
+  return Boolean(config.epServiceType);
 }
 
 export function normalizeEpoTargetLanguages(
@@ -479,7 +482,11 @@ export function normalizeEpoTargetLanguages(
   targetLanguages: unknown,
 ) {
   if (!translationRequired || !usesEpoTargetLanguages(epServiceType)) return [];
-  if (epServiceType === "ep_granting") return ["en", "fr", "de"];
+  if (epServiceType === "ep_granting") {
+    return epoSourceLanguageOptions
+      .map((option) => option.value)
+      .filter((language) => language !== sourceLanguage);
+  }
   if (["fr", "de"].includes(sourceLanguage)) return ["en"];
   if (sourceLanguage !== "en") return [];
   const allowed = new Set<string>(mockUnitaryTargetLanguageOptions

@@ -7,9 +7,11 @@ import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 import { getErpCountries, getErpPrice } from "./client";
 import { erpQuoteCurrency } from "./types";
 import {
+  buildErpPriceRequest,
   categoryForConfig,
   quoteAvailabilityError,
   validatePriceRows,
+  verifiedClaimMetrics,
 } from "./pricing-rules";
 import type {
   ErpActionResult,
@@ -19,7 +21,7 @@ import type {
   ErpQuoteResult,
 } from "./types";
 
-const SOURCE_LANGUAGE_SHORT_NAMES: Record<string, string> = {
+const LANGUAGE_SHORT_NAMES: Record<string, string> = {
   "zh-cn": "zh-CN",
   zh: "zh-CN",
   en: "en-US",
@@ -32,10 +34,34 @@ const SOURCE_LANGUAGE_SHORT_NAMES: Record<string, string> = {
   "de-de": "de-DE",
   fr: "fr-FR",
   "fr-fr": "fr-FR",
+  bg: "bg-BG",
+  hr: "hr-HR",
+  cs: "cs-CZ",
+  da: "da-DK",
+  nl: "nl-NL",
+  et: "et-EE",
+  fi: "fi-FI",
+  el: "el-GR",
+  hu: "hu-HU",
+  ga: "ga-IE",
+  it: "it-IT",
+  lv: "lv-LV",
+  lt: "lt-LT",
+  mt: "mt-MT",
+  pl: "pl-PL",
+  pt: "pt-PT",
+  ro: "ro-RO",
+  sk: "sk-SK",
+  sl: "sl-SI",
+  es: "es-ES",
+  sv: "sv-SE",
+  lb: "lb-LU",
+  tr: "tr-TR",
+  sq: "sq-AL",
 };
 
 export async function availableErpCountries(
-  config: Pick<WizardConfig, "channelCode" | "serviceTypes" | "epvType">,
+  config: Pick<WizardConfig, "channelCode" | "serviceTypes" | "epvType" | "epServiceType">,
 ): Promise<ErpActionResult<ErpCountry[]>> {
   try {
     const categoryId = categoryForConfig(config);
@@ -50,7 +76,7 @@ export async function availableErpCountries(
           .eq("enabled", true)
           .in("id", ids)
       : { data: [], error: null };
-    if (error) throw new Error("Unable to validate ERP countries.");
+    if (error) throw new Error("Unable to validate quote countries.");
     const localById = new Map((data ?? []).map((country) => [country.id, country]));
     const unknownIds = ids.filter((id) => !localById.has(id));
     await recordUnknownCountries(categoryId, unknownIds);
@@ -93,13 +119,12 @@ export async function quoteForOrganization(
   }
   const availabilityError = quoteAvailabilityError(payload.config);
   if (availabilityError) throw new Error(availabilityError);
-  if (!payload.config.epCountryIds.length) {
-    throw new Error("Select at least one ERP-supported country.");
-  }
-
   const service = createServiceClient();
   const categoryId = categoryForConfig(payload.config)!;
-  const [{ data: customerAccounts, error: customerError }, sourceLangId, countries, remoteCountries] =
+  const requiresCountries = [82, 8283].includes(categoryId);
+  const requiresTargets = payload.config.translationRequired
+    && [83, 84, 8283].includes(categoryId);
+  const [{ data: customerAccounts, error: customerError }, sourceLangId, targetLangIds, remoteCountries] =
     await Promise.all([
       service
         .from("eci_erp_customers")
@@ -108,35 +133,70 @@ export async function quoteForOrganization(
         .is("sync_error", null)
         .eq("is_black", false),
       resolveSourceLangId(payload.config.sourceLanguage),
-      resolveCountryNames(payload.config.epCountryIds),
-      getErpCountries(categoryId),
+      requiresTargets ? resolveTargetLangIds(payload.config.targetLanguages) : [],
+      requiresCountries ? getErpCountries(categoryId) : [],
     ]);
   const customer = customerAccounts?.find((account) => account.auth_user_id === authUserId)
     ?? (customerAccounts?.length === 1 ? customerAccounts[0] : null);
   if (customerError || !customer) {
-    throw new Error("Your organization is not linked to an active ECI ERP customer.");
+    throw new Error("Your organization is not linked to an active customer account.");
   }
   const availableIds = new Set(remoteCountries.map((country) => country.id));
-  if (payload.config.epCountryIds.some((id) => !availableIds.has(id))) {
-    throw new Error("One or more selected countries are not available for this ERP service category.");
+  if (requiresCountries && payload.config.epCountryIds.some((id) => !availableIds.has(id))) {
+    throw new Error("One or more selected countries are not available for this service category.");
   }
 
-  const metrics = verifiedPatentMetrics(payload);
+  const metrics = verifiedPatentMetrics(payload, categoryId);
   const currency = erpQuoteCurrency(payload.quoteCurrency);
-  const request: ErpPriceRequest = {
+  const request: ErpPriceRequest = buildErpPriceRequest({
     categoryId,
     sourceLangId,
-    countryIdList: payload.config.epCountryIds,
-    clientId: safeInteger(customer.client_id, "ERP client ID"),
+    targetLangIds,
+    countryIds: payload.config.epCountryIds,
+    optOutCountryIds: payload.config.optOutCountryIds,
+    serviceItem: payload.config.serviceItem,
+    translationRequired: payload.config.translationRequired,
+    clientId: safeInteger(customer.client_id, "Client ID"),
     priceCurrencyId: currency.id,
-    ...metrics,
-  };
+    metrics,
+  });
   const response = await getErpPrice(request);
-  const rows = validatePriceRows(request.countryIdList, response).map((row) => ({
-    ...row,
-    countryName: countries.get(row.countryId)!,
-    total: roundMoney(row.officialFee + row.serviceFee + row.translationFee),
-  }));
+  const validatedRows = validatePriceRows({
+    categoryId,
+    requestedCountryIds: request.countryIdList ?? [],
+    requestedTargetLangIds: request.targetLangIds ?? [],
+  }, response);
+  const responseCountryIds = uniqueIntegers(validatedRows.map((row) => row.countryId));
+  const responseLanguageIds = uniqueIntegers(validatedRows.flatMap((row) =>
+    Object.keys(row.translationFees).map(Number)
+  ));
+  const [countries, languageNames] = await Promise.all([
+    resolveCountryNames(responseCountryIds),
+    resolveLanguageNames(responseLanguageIds),
+  ]);
+  const rows = validatedRows.map((row) => {
+    const translationFeeDetails = Object.entries(row.translationFees).map(
+      ([languageIdValue, amount]) => {
+        const languageId = Number(languageIdValue);
+        return {
+          languageId,
+          languageName: languageNames.get(languageId)!,
+          amount,
+        };
+      },
+    );
+    const translationFee = roundMoney(translationFeeDetails.reduce(
+      (sum, fee) => sum + fee.amount,
+      0,
+    ));
+    return {
+      ...row,
+      countryName: countries.get(row.countryId)!,
+      translationFee,
+      translationFeeDetails,
+      total: roundMoney(row.officialFee + row.serviceFee + translationFee),
+    };
+  });
   return {
     source: "eci_erp",
     currency: currency.code,
@@ -157,7 +217,7 @@ export function publicQuote(result: ErpQuoteResult): ErpQuotePreview {
   };
 }
 
-function verifiedPatentMetrics(payload: WizardPayload) {
+function verifiedPatentMetrics(payload: WizardPayload, categoryId: number) {
   const analysis = payload.analysis;
   if (!analysis || !["success", "partial"].includes(analysis.status)) {
     throw new Error("Verified patent analysis is required for an online quote.");
@@ -171,39 +231,57 @@ function verifiedPatentMetrics(payload: WizardPayload) {
   const selectedFiles = patent?.downloadableFiles.filter((file) =>
     payload.selectedPatentFileIds.includes(file.id)
   ) ?? [];
+  const claimMetrics = verifiedClaimMetrics(analysis.aggregate);
+  if (categoryId === 84) return claimMetrics;
+
   const pageCount = patent?.totalPages
     ?? selectedFiles.reduce((sum, file) => sum + file.pageCount, 0);
-  const claimCount = patent?.claimsCount
-    ?? selectedFiles.reduce((sum, file) => sum + file.claimCount, 0);
   if (!Number.isInteger(pageCount) || pageCount <= 0) {
     throw new Error("Verified patent page count is missing.");
   }
-  if (!Number.isInteger(claimCount) || claimCount < 0) {
-    throw new Error("Verified patent claim count is missing.");
-  }
   return {
-    patClaims: claimCount,
+    ...claimMetrics,
     patTotalPages: pageCount,
     patTotalWords: nonNegativeInteger(analysis.aggregate.total_words, "total word count"),
-    patClaimWords: nonNegativeInteger(analysis.aggregate.claims_words, "claim word count"),
   };
 }
 
 async function resolveSourceLangId(sourceLanguage: string) {
-  const shortName = SOURCE_LANGUAGE_SHORT_NAMES[sourceLanguage.trim().toLowerCase()];
-  if (!shortName) throw new Error("The selected source language is not mapped to ECI ERP.");
+  const shortName = LANGUAGE_SHORT_NAMES[sourceLanguage.trim().toLowerCase()];
+  if (!shortName) throw new Error("The selected source language is not mapped to the pricing service.");
   const service = createServiceClient();
   const { data, error } = await service
     .from("patent_language_options")
-    .select("language_id")
+    .select("id")
     .eq("short_name", shortName)
     .eq("deleted", false)
     .single();
-  if (error) throw new Error("The selected source language is not available in ECI ERP.");
-  return data.language_id;
+  if (error) throw new Error("The selected source language is not available in the pricing service.");
+  return data.id;
+}
+
+async function resolveTargetLangIds(targetLanguages: string[]) {
+  const shortNames = targetLanguages.map((value) => {
+    const shortName = LANGUAGE_SHORT_NAMES[value.trim().toLowerCase()];
+    if (!shortName) throw new Error(`Target language ${value} is not mapped to the pricing service.`);
+    return shortName;
+  });
+  if (!shortNames.length) return [];
+  const service = createServiceClient();
+  const { data, error } = await service
+    .from("patent_language_options")
+    .select("id, short_name")
+    .in("short_name", shortNames)
+    .eq("deleted", false);
+  if (error) throw new Error("One or more target languages are not available in the pricing service.");
+  const idsByShortName = new Map((data ?? []).map((option) => [option.short_name, option.id]));
+  const missing = shortNames.filter((shortName) => !idsByShortName.has(shortName));
+  if (missing.length) throw new Error("One or more target languages are not available in the pricing service.");
+  return shortNames.map((shortName) => idsByShortName.get(shortName)!);
 }
 
 async function resolveCountryNames(ids: number[]) {
+  if (!ids.length) return new Map<number, string>();
   const service = createServiceClient();
   const { data, error } = await service
     .from("ep_countries")
@@ -214,6 +292,26 @@ async function resolveCountryNames(ids: number[]) {
   const result = new Map((data ?? []).map((country) => [country.id, country.name]));
   const missing = ids.filter((id) => !result.has(id));
   if (missing.length) throw new Error("One or more selected countries are not supported locally.");
+  return result;
+}
+
+async function resolveLanguageNames(ids: number[]) {
+  if (!ids.length) return new Map<number, string>();
+  const service = createServiceClient();
+  const { data, error } = await service
+    .from("patent_language_options")
+    .select("id, en_name, short_name")
+    .eq("deleted", false)
+    .in("id", ids);
+  if (error) throw new Error("Unable to resolve translation languages.");
+  const result = new Map((data ?? []).map((language) => [
+    language.id,
+    language.en_name ?? language.short_name,
+  ]));
+  const missing = ids.filter((id) => !result.has(id));
+  if (missing.length) {
+    throw new Error(`The pricing service returned unknown target languages: ${missing.join(", ")}.`);
+  }
   return result;
 }
 
@@ -248,5 +346,5 @@ function roundMoney(value: number) {
 }
 
 function publicErpError(error: unknown) {
-  return error instanceof Error ? error.message : "ECI ERP is unavailable.";
+  return error instanceof Error ? error.message : "The pricing service is unavailable.";
 }

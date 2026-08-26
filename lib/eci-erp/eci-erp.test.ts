@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildErpPriceRequest,
   categoryForConfig,
   normalizeLogin,
   priceTotal,
   quoteAvailabilityError,
   stableAuthUserId,
   validatePriceRows,
+  verifiedClaimMetrics,
 } from "./pricing-rules.ts";
 import {
   shouldRetryAuthentication,
@@ -16,34 +18,121 @@ import {
   tokenLifetimeMsFromPayload,
 } from "./token-policy.ts";
 import { erpQuoteCurrency } from "./types.ts";
+import type { ErpPriceRow } from "./types.ts";
 
 const sampleRows = [
-  { countryId: 189, officialFee: 1000, serviceFee: 2000, translationFee: 3000 },
-  { countryId: 183, officialFee: 1100, serviceFee: 2100, translationFee: 3100 },
-  { countryId: 171, officialFee: 1200, serviceFee: 2200, translationFee: 7319.26 },
+  { countryId: 189, officialFee: 1000, serviceFee: 2000, translationFees: { "15": 3000 } },
+  { countryId: 183, officialFee: 1100, serviceFee: 2100, translationFees: { "15": 3100 } },
+  { countryId: 171, officialFee: 1200, serviceFee: 2200, translationFees: { "15": 7319.26 } },
 ];
 
 test("maps supported ERP categories and blocks unmapped services", () => {
   assert.equal(categoryForConfig({ channelCode: "pct", serviceTypes: ["filing"] }), 80);
   assert.equal(categoryForConfig({ channelCode: "pct", serviceTypes: ["annuity"] }), 81);
-  assert.equal(categoryForConfig({ channelCode: "ep", serviceTypes: ["epv"], epvType: "traditional_validation" }), 82);
-  assert.equal(categoryForConfig({ channelCode: "ep", serviceTypes: ["epv"], epvType: "unitary_effect" }), 83);
-  assert.match(quoteAvailabilityError({ channelCode: "ep", serviceTypes: ["epv"], epvType: "traditional_validation" })!, /Opt Type/);
-  assert.match(quoteAvailabilityError({ channelCode: "ep", serviceTypes: ["european_patent_grant_registration"] })!, /not available/);
+  assert.equal(categoryForConfig({ channelCode: "ep", serviceTypes: ["epv"], epServiceType: "traditional_validation" }), 82);
+  assert.equal(categoryForConfig({ channelCode: "ep", serviceTypes: ["epv"], epServiceType: "unitary_patent" }), 83);
+  assert.equal(categoryForConfig({ channelCode: "ep", serviceTypes: ["european_patent_grant_registration"], epServiceType: "ep_granting" }), 84);
+  assert.equal(categoryForConfig({ channelCode: "ep", serviceTypes: ["epv"], epServiceType: "traditional_validation_unitary_patent" }), 8283);
+  assert.equal(quoteAvailabilityError({ channelCode: "ep", serviceTypes: ["epv"], epServiceType: "traditional_validation" }), null);
+  assert.equal(quoteAvailabilityError({ channelCode: "ep", serviceTypes: ["european_patent_grant_registration"], epServiceType: "ep_granting" }), null);
 });
 
-test("validates every country and reproduces the documented EUR total", () => {
-  assert.equal(priceTotal(validatePriceRows([189, 183, 171], sampleRows)), 23019.26);
-  assert.throws(() => validatePriceRows([189, 183], [sampleRows[0]]), /missing countries/);
-  assert.throws(() => validatePriceRows([189], [sampleRows[0], sampleRows[0]]), /duplicate country/);
-  assert.throws(() => validatePriceRows([189], [{ ...sampleRows[0], serviceFee: -1 }]), /invalid serviceFee/);
+test("validates every country and reproduces the documented total", () => {
+  const input = { categoryId: 82, requestedCountryIds: [189, 183, 171], requestedTargetLangIds: [] };
+  assert.equal(priceTotal(validatePriceRows(input, sampleRows)), 23019.26);
+  assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189, 183] }, [sampleRows[0]]), /missing countries/);
+  assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189] }, [sampleRows[0], sampleRows[0]]), /duplicate country/);
+  assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189] }, [{ ...sampleRows[0], serviceFee: -1 }]), /invalid serviceFee/);
+  assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189] }, [{ ...sampleRows[0], translationFees: { "15": -1 } }]), /invalid translation fee/);
 });
 
 test("maps selectable quote currencies to ERP currency IDs", () => {
-  assert.deepEqual(erpQuoteCurrency(), { id: 3, code: "EUR", label: "Euro" });
+  assert.deepEqual(erpQuoteCurrency(), { id: 2, code: "USD", label: "US Dollar" });
+  assert.equal(erpQuoteCurrency("CNY").id, 1);
   assert.equal(erpQuoteCurrency("USD").id, 2);
+  assert.equal(erpQuoteCurrency("EUR").id, 3);
   assert.equal(erpQuoteCurrency("GBP").id, 4);
+  assert.equal(erpQuoteCurrency("HKD").id, 5);
   assert.throws(() => erpQuoteCurrency("CAD"), /not supported/);
+});
+
+test("uses verified analysis metrics for ERP claim pricing", () => {
+  assert.deepEqual(verifiedClaimMetrics({ claims_count: 16, claims_words: 476 }), {
+    patClaims: 16,
+    patClaimWords: 476,
+  });
+  assert.throws(
+    () => verifiedClaimMetrics({ claims_count: -1, claims_words: 476 }),
+    /claim count is invalid/,
+  );
+});
+
+test("builds conditional ERP fields for all four EP quote categories", () => {
+  const common = {
+    sourceLangId: 12,
+    targetLangIds: [17, 15, 58],
+    countryIds: [133, 135, 157],
+    optOutCountryIds: [135, 157],
+    translationRequired: true,
+    clientId: 20031901,
+    priceCurrencyId: 2,
+    metrics: { patClaims: 45, patTotalPages: 16, patTotalWords: 1000, patClaimWords: 500 },
+  };
+  assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 82, serviceItem: "traditional_validation" }), {
+    categoryId: 82,
+    sourceLangId: 12,
+    countryIdList: [133, 135, 157],
+    patFilingTypeId: 1,
+    clientId: 20031901,
+    priceCurrencyId: 2,
+    optType: 1,
+    ...common.metrics,
+  });
+  assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 82, serviceItem: "traditional_validation_opt_out" }).countryOptMap, {
+    "135": true,
+    "157": true,
+  });
+  assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 83 }), {
+    categoryId: 83,
+    sourceLangId: 12,
+    targetLangIds: [17, 15, 58],
+    patFilingTypeId: 1,
+    clientId: 20031901,
+    priceCurrencyId: 2,
+    ...common.metrics,
+  });
+  assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 84, translationRequired: false }), {
+    categoryId: 84,
+    sourceLangId: 12,
+    patFilingTypeId: 1,
+    clientId: 20031901,
+    priceCurrencyId: 2,
+    patClaims: 45,
+    patClaimWords: 500,
+    patTotalWords: 600,
+  });
+  assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 8283, serviceItem: "opt_out_only" }).optType, 3);
+  assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 8283, serviceItem: "opt_in_only" }).optType, 4);
+});
+
+test("normalizes the documented combined quote response", () => {
+  const rows: ErpPriceRow[] = [
+    { countryId: 133, officialFee: 10, serviceFee: 200, translationFees: { "58": 0 } },
+    { countryId: 135, officialFee: 10, serviceFee: 55, translationFees: { "17": 0 } },
+    { countryId: 157, officialFee: 15.53, serviceFee: 22, translationFees: {} },
+    { countryId: 26, officialFee: 20, serviceFee: 44, translationFees: { "15": 0 } },
+    { countryId: 41, officialFee: 236.07, serviceFee: 22, translationFees: { "15": 0 } },
+    { countryId: 137, officialFee: 232.93, serviceFee: 140, translationFees: {} },
+    { countryId: 138, officialFee: 640, serviceFee: 2000, translationFees: {} },
+    { countryId: 1001, officialFee: 0, serviceFee: 7.76, translationFees: { "17": 500, "58": 700, "15": 600 } },
+  ];
+  const validated = validatePriceRows({
+    categoryId: 8283,
+    requestedCountryIds: [133, 135, 157, 26, 41, 137, 138],
+    requestedTargetLangIds: [17, 15, 58],
+  }, rows);
+  assert.equal(Object.values(validated.at(-1)!.translationFees).reduce((sum, fee) => sum + fee, 0), 1800);
+  assert.equal(priceTotal(validated), 5455.29);
 });
 
 test("normalizes clientName and derives a stable UUID", () => {

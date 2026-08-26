@@ -69,7 +69,7 @@ test("the two non-Traditional EPO services use target languages", () => {
   assert.equal(usesEpoTargetLanguages("ep_granting"), true);
   assert.equal(usesEpoTargetLanguages("traditional_validation"), false);
   assert.equal(usesEpoTargetLanguages("unitary_patent"), true);
-  assert.equal(usesEpoTargetLanguages("traditional_validation_unitary_patent"), false);
+  assert.equal(usesEpoTargetLanguages("traditional_validation_unitary_patent"), true);
 });
 
 test("Service Items are limited to Traditional and combined services", () => {

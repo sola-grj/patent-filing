@@ -116,7 +116,7 @@ export function ResetErpCustomerPasswordForm({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="font-medium">{clientName}</p>
-          <p className="text-xs text-muted-foreground">ERP client ID {clientId}</p>
+          <p className="text-xs text-muted-foreground">Client ID {clientId}</p>
         </div>
         <Button type="submit" variant="outline" disabled={pending || disabled}>
           {pending ? "Resetting..." : "Reset to initial password"}
