@@ -326,7 +326,12 @@ export function PmRequestDetail({
                     />
                   }
                 />
-                <RequestFileInformation files={files} />
+                <RequestFileInformation
+                  files={files}
+                  action={
+                    <RequestFilesDownloadButton href={`/pm/${request.id}/download`} />
+                  }
+                />
               </>
             ) : (
               <RequestFileInformation

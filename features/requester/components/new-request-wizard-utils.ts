@@ -22,7 +22,7 @@ import {
   usesEpoTargetLanguages,
 } from "@/features/requester/request-paths";
 import { validateFutureDateString } from "@/lib/validators/requester";
-import type { ErpQuoteCurrencyCode } from "@/lib/eci-erp/types";
+import type { ErpQuoteCurrencyCode, ErpQuotePreview } from "@/lib/eci-erp/types";
 import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 import {
   isEpGrantingTranslation,
@@ -94,6 +94,7 @@ export function buildWizardPayload(input: {
   uploadedFileSnapshots?: WizardUploadedFile[];
   analysis?: WizardPatentAnalysisResult;
   quoteCurrency: ErpQuoteCurrencyCode;
+  quotePreview?: ErpQuotePreview;
   config: WizardConfig;
   lastStep: string;
 }): WizardPayload {
@@ -109,6 +110,7 @@ export function buildWizardPayload(input: {
       : input.uploadedFileSnapshots ?? [],
     analysis: input.analysis,
     quoteCurrency: input.quoteCurrency,
+    quotePreview: input.quotePreview,
     config: {
       ...normalizedConfig,
       scopeType: "full_text",

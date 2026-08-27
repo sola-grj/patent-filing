@@ -17,12 +17,14 @@ export function EpGrantingQuotation({
   currency,
   onCurrencyChange,
   action,
+  readOnly = false,
 }: {
   estimate: ErpQuotePreview | null;
   translationRequired: boolean;
   currency: ErpQuoteCurrencyCode;
-  onCurrencyChange: (currency: ErpQuoteCurrencyCode) => void;
+  onCurrencyChange?: (currency: ErpQuoteCurrencyCode) => void;
   action?: ReactNode;
+  readOnly?: boolean;
 }) {
   const table = estimate
     ? buildEpGrantingQuoteTable(estimate, translationRequired)
@@ -41,10 +43,13 @@ export function EpGrantingQuotation({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <QuoteCurrencySelect
-              value={currency}
-              onChange={onCurrencyChange}
-            />
+            {readOnly ? (
+              <span className="text-sm font-medium">
+                {erpQuoteCurrencySymbol(currency)} {currency}
+              </span>
+            ) : onCurrencyChange ? (
+              <QuoteCurrencySelect value={currency} onChange={onCurrencyChange} />
+            ) : null}
             {action}
           </div>
         </div>
@@ -86,11 +91,12 @@ function QuotationTable({
           {table.translationFees.map((line, index) => (
             <FeeRow key={`translation-${index}`} line={line} />
           ))}
-          <SubtotalRow label="Base Fee Subtotal" amount={table.baseFeeSubtotal} />
+          <SubtotalRow label="Base Fee Subtotal" amount={table.baseFeeSubtotal} currency={currency} />
           {table.translationFees.length ? (
             <SubtotalRow
               label="Translation Fee Subtotal"
               amount={table.translationFeeSubtotal}
+              currency={currency}
             />
           ) : null}
           <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
@@ -131,15 +137,17 @@ function FeeRow({
 function SubtotalRow({
   label,
   amount,
+  currency,
 }: {
   label: string;
   amount: number;
+  currency: ErpQuoteCurrencyCode;
 }) {
   return (
     <Table.Row className="bg-muted/20 font-semibold [--table-row-box-shadow:none]">
       <Table.Cell colSpan={4} className="text-right">{label}</Table.Cell>
       <Table.Cell justify="end" className="whitespace-nowrap">
-        {formatAmount(amount)}
+        {erpQuoteCurrencySymbol(currency)}{formatAmount(amount)}
       </Table.Cell>
     </Table.Row>
   );

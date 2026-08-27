@@ -66,6 +66,8 @@ export async function POST(request: Request) {
         ?? verifiedPayload.config.epServiceType
         ?? "Patent service",
       serviceType: verifiedPayload.config.epServiceType,
+      serviceItem: verifiedPayload.config.serviceItem || undefined,
+      optOutCountryIds: verifiedPayload.config.optOutCountryIds,
       patentNumber: patent?.patentNumber
         ?? verifiedPayload.patentQuery
         ?? "patent",

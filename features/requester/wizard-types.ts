@@ -1,4 +1,4 @@
-import type { ErpQuoteCurrencyCode } from "@/lib/eci-erp/types";
+import type { ErpQuoteCurrencyCode, ErpQuotePreview } from "@/lib/eci-erp/types";
 
 export type WizardSourceMode = "patent_search" | "upload";
 
@@ -188,6 +188,7 @@ export type WizardPatentAnalysisResult = {
   analysis_profile?: "full_document" | "claims_only";
   patent_number?: string | null;
   analysis_receipt?: string | null;
+  restored_from_storage?: boolean;
   analysis_cache?: {
     scope: "global" | "organization";
     outcome: "hit" | "partial_hit" | "miss" | "waited_hit" | "bypass";
@@ -259,6 +260,7 @@ export type WizardPayload = {
   uploadedFiles: WizardUploadedFile[];
   analysis?: WizardPatentAnalysisResult;
   quoteCurrency?: ErpQuoteCurrencyCode;
+  quotePreview?: ErpQuotePreview;
   config: WizardConfig;
   lastStep: string;
 };

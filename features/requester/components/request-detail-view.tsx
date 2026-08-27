@@ -459,7 +459,16 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
                   </p>
                 )}
               </Section>
-              <RequestFileInformation files={files} />
+              <RequestFileInformation
+                files={files}
+                action={
+                  uploadedFiles.length ? (
+                    <RequestFilesDownloadButton
+                      href={`/requester/requests/${request.id}/download`}
+                    />
+                  ) : undefined
+                }
+              />
             </>
           ) : (
             <RequestFileInformation
@@ -473,6 +482,8 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
           )}
           <RequestQuoteSheet
             quote={latestQuote}
+            isEpGranting={config.epServiceType === "ep_granting"}
+            translationRequired={config.translationRequired}
           />
         </div>
       </div>

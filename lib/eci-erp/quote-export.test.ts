@@ -6,6 +6,7 @@ import JSZip from "jszip";
 import { PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 
 import { buildEpGrantingQuoteTable, quoteValidUntilTimestamp } from "./ep-granting-quote.ts";
+import { optServiceStatusForCountry } from "./opt-service-status.ts";
 import {
   generateQuoteExport,
   quoteExportFileName,
@@ -42,6 +43,8 @@ const metadata = {
   patentNumber: "EP4279487B1",
   applicationNumber: "EP22738959.0",
   translationRequired: true,
+  serviceItem: "traditional_validation_opt_out",
+  optOutCountryIds: [1001],
   patentDetails: {
     title: "Fall protection device on roofs",
     source: "epo" as const,
@@ -102,10 +105,23 @@ test("generates a readable PDF estimate", async () => {
   assert.ok(pdf.byteLength > 1000);
   const content = extractPdfContent(await PDFDocument.load(pdf));
   assert.match(content, /Case Details/);
+  assert.match(content, /Quotation Details/);
   assert.match(content, /Fall protection device on roofs/);
   assert.match(content, /Grant Date/);
-  assert.match(content, /Countries/);
+  assert.match(content, /Country \/ Service State/);
+  assert.match(content, /Quotation Date/);
+  assert.match(content, /Aug 25, 2026/);
+  assert.match(content, /Quotation Date: Aug 25, 2026/);
+  assert.doesNotMatch(content, /^QUOTATION$/m);
+  assert.match(content, /Company contact details/);
+  assert.match(content, /Opt Out/);
   assert.match(content, /USD 1,807\.76/);
+  assert.match(content, /Terms and Conditions/);
+  assert.match(content, /11\. Assignment/);
+  assert.match(content, /Translation Fee/);
+  assert.doesNotMatch(content, /German \(Germany\)/);
+  assert.doesNotMatch(content, /Pre-tax/);
+  assert.doesNotMatch(content, /Notes/);
   assert.doesNotMatch(content, /USD 0\.00/);
   assert.doesNotMatch(content, /German \(Germany\): USD/);
   assert.equal(
@@ -166,11 +182,11 @@ test("uses Shanghai end of day for the EP Granting deadline and keeps the seven-
   );
 });
 
-test("generates a one-page EP Granting quotation with the dedicated English layout", async () => {
+test("generates an EP Granting quotation with its Terms and Conditions appendix", async () => {
   const pdf = await generateQuoteExport("pdf", epGrantingQuote, epGrantingMetadata);
   assert.equal(Buffer.from(pdf).subarray(0, 5).toString(), "%PDF-");
   const document = await PDFDocument.load(pdf);
-  assert.equal(document.getPageCount(), 1);
+  assert.ok(document.getPageCount() > 1);
   const content = extractPdfContent(document);
   for (const expected of [
     "European Patent Granting Quotation",
@@ -183,12 +199,16 @@ test("generates a one-page EP Granting quotation with the dedicated English layo
     "German",
     "Waived",
     "Quotation Total",
+    "USD 434.80",
+    "USD 300.00",
     "USD 734.80",
     "Rule 71(3) Dispatch Date",
+    "Terms and Conditions",
+    "11. Assignment",
   ]) {
     assert.match(content, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  for (const forbidden of ["Quotation Number", "Quantity", "Unit Price", "Description", "Source URL"]) {
+  for (const forbidden of ["Quotation Number", "Quantity", "Unit Price", "Description", "Source URL", "Notes"]) {
     assert.doesNotMatch(content, new RegExp(forbidden));
   }
 });
@@ -202,6 +222,61 @@ test("generates an EP Granting PDF without translation rows when translation is 
   const content = extractPdfContent(await PDFDocument.load(pdf));
   assert.doesNotMatch(content, /Claims Translation/);
   assert.doesNotMatch(content, /Translation Fee Subtotal/);
+});
+
+test("places EP Granting subtotals after all fee detail rows", async () => {
+  const pdf = await generateQuoteExport("pdf", epGrantingQuote, epGrantingMetadata);
+  const content = extractPdfContent(await PDFDocument.load(pdf));
+  assert.ok(content.indexOf("German") < content.indexOf("Base Fee Subtotal"));
+  assert.ok(content.indexOf("Base Fee Subtotal") < content.indexOf("Translation Fee Subtotal"));
+  assert.ok(content.indexOf("Translation Fee Subtotal") < content.indexOf("Quotation Total"));
+});
+
+test("maps service items to per-country Opt Out and Opt In labels", () => {
+  assert.equal(optServiceStatusForCountry("traditional_validation_opt_out", 2, [2]), "Opt Out");
+  assert.equal(optServiceStatusForCountry("traditional_validation_opt_out", 1, [2]), null);
+  assert.equal(optServiceStatusForCountry("opt_out_only", 1), "Opt Out");
+  assert.equal(optServiceStatusForCountry("opt_in_only", 1), "Opt In");
+  assert.equal(optServiceStatusForCountry("traditional_validation", 1), null);
+});
+
+test("keeps each traditional-validation country as a separate row without language detail lines", async () => {
+  const rows = [
+    { ...quote.rows[0], countryId: 58, countryName: "Albania", total: 618.4 },
+    { ...quote.rows[0], countryId: 15, countryName: "Austria", total: 1243 },
+  ];
+  const pdf = await generateQuoteExport("pdf", { ...quote, rows, total: 1861.4 }, {
+    ...metadata,
+    optOutCountryIds: [58, 15],
+  });
+  const content = extractPdfContent(await PDFDocument.load(pdf));
+
+  assert.match(content, /Albania - Opt Out/);
+  assert.match(content, /Austria - Opt Out/);
+  assert.match(content, /Translation Fee/);
+  assert.doesNotMatch(content, /German \(Germany\)/);
+});
+
+test("repeats the branded table header on later pages and omits unrelated Opt labels", async () => {
+  const rows = Array.from({ length: 20 }, (_, index) => ({
+    ...quote.rows[0],
+    countryId: index + 1,
+    countryName: `Country ${index + 1}`,
+    translationFeeDetails: [],
+    translationFees: {},
+    translationFee: 0,
+    total: 7.76,
+  }));
+  const pdf = await generateQuoteExport("pdf", { ...quote, rows, total: 155.2 }, {
+    ...metadata,
+    serviceItem: "traditional_validation",
+    optOutCountryIds: [],
+  });
+  const document = await PDFDocument.load(pdf);
+  const content = extractPdfContent(document);
+  assert.ok(document.getPageCount() > 1);
+  assert.ok(content.split("Country / Service State").length - 1 >= 2);
+  assert.doesNotMatch(content, /Opt Out|Opt In/);
 });
 
 function extractPdfContent(document: PDFDocument) {

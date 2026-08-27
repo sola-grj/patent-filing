@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
@@ -45,6 +45,7 @@ export function SourceStep(props: {
   sourceMode: WizardSourceMode;
   channelCode: string;
   patentQuery: string;
+  autoStartPatentSearch?: boolean;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
   uploadReference?: WizardPatentCandidate;
@@ -61,11 +62,54 @@ export function SourceStep(props: {
 }) {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, startSearchTransition] = useTransition();
+  const autoSearchStarted = useRef(false);
   const activeCardId = props.sourceMode === "upload"
     ? "upload_files"
     : props.channelCode;
   const activeCard = searchEntryCards.find((card) => card.id === activeCardId) ?? searchEntryCards[0];
   const patentSearchMode = props.sourceMode === "patent_search";
+
+  const searchPatent = useCallback(async () => {
+    props.onPatentSearchLoadingChange("Parsing patent details");
+    props.onPatentSearchStart();
+    try {
+      const formData = new FormData();
+      formData.set("patentQuery", props.patentQuery);
+      formData.set("channelCode", props.channelCode);
+      const result = await lookupPatentForWizard(formData);
+
+      if (result.data?.patent) {
+        await props.onPatentSearch(result.data.patent);
+        return;
+      }
+
+      props.onPatentSearchFailure();
+      setSearchError(
+        result.error || "No patent data was found. Check the patent number and try again.",
+      );
+    } catch {
+      props.onPatentSearchFailure();
+      setSearchError("Patent search failed. Please try again later.");
+    } finally {
+      props.onPatentSearchLoadingChange(null);
+    }
+  }, [props]);
+
+  useEffect(() => {
+    if (
+      !props.autoStartPatentSearch
+      || autoSearchStarted.current
+      || !patentSearchMode
+      || !props.patentQuery.trim()
+    ) {
+      return;
+    }
+
+    autoSearchStarted.current = true;
+    startSearchTransition(async () => {
+      await searchPatent();
+    });
+  }, [patentSearchMode, props.autoStartPatentSearch, props.patentQuery, searchPatent]);
 
   return (
     <StepShell
@@ -112,30 +156,8 @@ export function SourceStep(props: {
                   setSearchError(validationError);
                   return;
                 }
-                props.onPatentSearchLoadingChange("Parsing patent details");
-                props.onPatentSearchStart();
                 startSearchTransition(async () => {
-                  try {
-                    const formData = new FormData();
-                    formData.set("patentQuery", props.patentQuery);
-                    formData.set("channelCode", props.channelCode);
-                    const result = await lookupPatentForWizard(formData);
-
-                    if (result.data?.patent) {
-                      await props.onPatentSearch(result.data.patent);
-                      return;
-                    }
-
-                    props.onPatentSearchFailure();
-                    setSearchError(
-                      result.error || "No patent data was found. Check the patent number and try again.",
-                    );
-                  } catch {
-                    props.onPatentSearchFailure();
-                    setSearchError("Patent search failed. Please try again later.");
-                  } finally {
-                    props.onPatentSearchLoadingChange(null);
-                  }
+                  await searchPatent();
                 });
               }}
             >

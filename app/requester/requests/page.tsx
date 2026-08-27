@@ -81,6 +81,14 @@ async function RequestsContent({
   if (
     params.from === "dashboard" &&
     dashboardQuery &&
+    totalCount > 0
+  ) {
+    redirect(`/requester/requests/${requests[0].id}`);
+  }
+
+  if (
+    params.from === "dashboard" &&
+    dashboardQuery &&
     totalCount === 0
   ) {
     redirect(buildFreshRequestHref(Date.now(), dashboardQuery));

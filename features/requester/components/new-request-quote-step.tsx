@@ -19,6 +19,7 @@ import { StepShell } from "./new-request-wizard-shared";
 import { PatentProcessingNotice } from "./patent-processing-notice";
 import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
 import { EpGrantingQuotation } from "./ep-granting-quotation";
+import { optServiceStatusForCountry } from "@/lib/eci-erp/opt-service-status";
 import { PatentBasicInfo } from "./patent-basic-info";
 import { QuoteCurrencySelect } from "./quote-currency-select";
 
@@ -129,10 +130,20 @@ export function QuoteStepContent({
                 </Table.Header>
                 <Table.Body>
                   {estimate.rows.map((row) => {
+                    const serviceStatus = optServiceStatusForCountry(
+                      payload.config.serviceItem || undefined,
+                      row.countryId,
+                      payload.config.optOutCountryIds,
+                    );
                     return (
                       <Table.Row key={row.countryId}>
                         <Table.RowHeaderCell className="font-medium">
-                          {row.countryName}
+                          <span>{row.countryName}</span>
+                          {serviceStatus ? (
+                            <span className="ml-2 whitespace-nowrap rounded-full border border-brand-border bg-brand/10 px-2 py-0.5 text-[10px] font-semibold text-brand">
+                              {serviceStatus}
+                            </span>
+                          ) : null}
                         </Table.RowHeaderCell>
                         <Table.Cell className="whitespace-nowrap" justify="end">
                           {formatAmount(row.officialFee)}

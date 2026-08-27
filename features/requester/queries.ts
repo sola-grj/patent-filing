@@ -15,6 +15,7 @@ import type {
   WizardPayload,
   WizardUploadedFile,
 } from "./wizard-types";
+import type { ErpQuotePreview, ErpQuoteRow } from "@/lib/eci-erp/types";
 
 const dictionaryCategoryMap = {
   request_channel: "channels",
@@ -117,6 +118,7 @@ type DraftRow = {
   translation_requirements?: Array<{
     service_types: string[] | null;
     ep_service_type_code: string | null;
+    config_snapshot?: WizardDraftPayloadV2["config"] | null;
   }> | null;
   request_files?: Array<{
     id: string;
@@ -130,6 +132,13 @@ type DraftRow = {
     version_label?: string | null;
     metadata?: { size?: number } | null;
     file_parse_results?: DraftParseResult | DraftParseResult[] | null;
+  }> | null;
+  quotes?: Array<{
+    status: string;
+    currency: string;
+    total_amount: number | string;
+    valid_until: string | null;
+    pricing_snapshot: Record<string, unknown> | null;
   }> | null;
 };
 
@@ -582,7 +591,7 @@ export async function getRequesterDraft(draftId: string) {
   const { supabase } = await getAuthenticatedUser();
   const { data, error } = await supabase
     .from("translation_requests")
-    .select("id, request_no, title, source_mode, workflow_stage, updated_at, last_draft_step, draft_payload, patent_searches(query), request_patents(patent_number, application_no, publication_no, title, abstract, jurisdiction, source, applicants, inventors, filing_date, publication_date, language, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date, filing_deadline_30_months, filing_deadline_31_months, total_pages, legal_status, ipc_codes, cpc_codes, abstract_word_count, description_word_count, claims_word_count, claims_count, drawing_count), request_files(id, source, status, patent_document_id, original_filename, mime_type, file_role, language, version_label, metadata, file_parse_results(parse_status, word_count, page_count, claim_count, structure_json, document_kind, source_url, retrieval_mode, document_language, publication_date, document_date, document_sha256, epo_document_id, is_pre_grant, is_legacy_pre_grant))")
+    .select("id, request_no, title, source_mode, workflow_stage, updated_at, last_draft_step, draft_payload, patent_searches(query), translation_requirements(service_types, ep_service_type_code, config_snapshot), request_patents(patent_number, application_no, publication_no, title, abstract, jurisdiction, source, applicants, inventors, filing_date, publication_date, language, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date, filing_deadline_30_months, filing_deadline_31_months, total_pages, legal_status, ipc_codes, cpc_codes, abstract_word_count, description_word_count, claims_word_count, claims_count, drawing_count), request_files(id, source, status, patent_document_id, original_filename, mime_type, file_role, language, version_label, metadata, file_parse_results(parse_status, word_count, page_count, claim_count, structure_json, document_kind, source_url, retrieval_mode, document_language, publication_date, document_date, document_sha256, epo_document_id, is_pre_grant, is_legacy_pre_grant)), quotes(status, currency, total_amount, valid_until, pricing_snapshot)")
     .eq("id", draftId)
     .eq("workflow_stage", "draft")
     .maybeSingle();
@@ -677,15 +686,17 @@ export async function getRequesterOrder(orderId: string) {
 
 function mapDraftRowToWizardState(draft: DraftRow) {
   const payload = draft.draft_payload ?? {};
+  const persistedConfig = payload.config
+    ?? firstRelated(draft.translation_requirements)?.config_snapshot;
   const uploadedFiles = draft.source_mode === "upload" && (payload.uploadedFiles?.length ?? 0) > 0
     ? payload.uploadedFiles ?? []
-    : mapDraftRequestFiles(draft.request_files ?? []);
-  const patent = draft.request_patents?.[0];
-  const requestFiles = draft.request_files ?? [];
+    : mapDraftRequestFiles(relatedArray(draft.request_files));
+  const patent = firstRelated(draft.request_patents);
+  const requestFiles = relatedArray(draft.request_files);
   const patentFiles = requestFiles.filter((file) => file.source === "patent_search");
   const uploadedRequestFiles = requestFiles.filter((file) => file.source === "upload");
   const usesCustomerTifg = Boolean(
-    payload.config && isEpGrantingTranslation(payload.config),
+    persistedConfig && isEpGrantingTranslation(persistedConfig),
   );
   const analysisFiles = usesCustomerTifg ? uploadedRequestFiles : patentFiles;
   const selectedPatent = patent
@@ -694,6 +705,7 @@ function mapDraftRowToWizardState(draft: DraftRow) {
   const analysis = patent && analysisFiles.length && firstParseResult(analysisFiles[0])
     ? mapDraftPatentAnalysis(patent, analysisFiles)
     : undefined;
+  const quotePreview = mapDraftQuote(draft.quotes);
 
   return {
     requestId: draft.id,
@@ -706,9 +718,40 @@ function mapDraftRowToWizardState(draft: DraftRow) {
       uploadedFiles,
       analysis,
       quoteCurrency: payload.quoteCurrency,
-      config: payload.config,
+      quotePreview,
+      config: persistedConfig ?? undefined,
       lastStep: payload.lastStep ?? draft.last_draft_step ?? "Source",
     } satisfies Partial<WizardPayload>,
+  };
+}
+
+function relatedArray<T>(value: T[] | T | null | undefined): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function firstRelated<T>(value: T[] | T | null | undefined): T | undefined {
+  return relatedArray(value)[0];
+}
+
+function mapDraftQuote(quotes: DraftRow["quotes"]): ErpQuotePreview | undefined {
+  const quote = quotes?.find((item) => item.status === "draft");
+  const snapshot = quote?.pricing_snapshot;
+  const rows = Array.isArray(snapshot?.response) ? snapshot.response as ErpQuoteRow[] : null;
+  if (!quote || !rows?.length || typeof snapshot?.quotedAt !== "string" || typeof snapshot.customerName !== "string") {
+    return undefined;
+  }
+  if (quote.currency !== "CNY" && quote.currency !== "USD" && quote.currency !== "EUR" && quote.currency !== "GBP" && quote.currency !== "HKD") {
+    return undefined;
+  }
+  return {
+    source: "eci_erp",
+    currency: quote.currency,
+    quotedAt: snapshot.quotedAt,
+    customerName: snapshot.customerName,
+    validUntil: typeof snapshot.validUntil === "string" ? snapshot.validUntil : quote.valid_until ?? undefined,
+    rows,
+    total: numberValue(quote.total_amount),
   };
 }
 
@@ -834,6 +877,7 @@ function mapDraftPatentAnalysis(
   return {
     input_mode: source?.retrieval_mode === "customer_upload" ? "upload" : "patent_number",
     status: isPartial ? "partial" : "success",
+    restored_from_storage: true,
     analysis_profile: storedStructure.analysis_profile === "claims_only"
       ? "claims_only"
       : "full_document",

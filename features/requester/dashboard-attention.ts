@@ -1,9 +1,14 @@
 import { latestPublishedDeliverables } from "@/features/deliverables/delivery-progress";
+import {
+  addCalendarMonths,
+  buildDashboardDeadlineItems,
+  type DashboardDeadlineItem,
+} from "@/features/requester/deadlines";
 
 export type DashboardAttentionItem = {
   id: string;
   requestId: string;
-  kind: "urgent" | "download" | "signature";
+  kind: "urgent" | "download" | "signature" | "deadline";
   title: string;
   detail: string;
   action: string;
@@ -20,13 +25,45 @@ type DashboardRequest = {
   requester_status?: string | null;
   workflow_stage?: string | null;
   updated_at: string;
+  channel_code?: string | null;
+  submitted_at?: string | null;
   translation_requirements?:
-    | { is_urgent?: boolean | null }
-    | Array<{ is_urgent?: boolean | null }>
+    | {
+      is_urgent?: boolean | null;
+      service_types?: string[] | null;
+      epv_type_code?: string | null;
+      ep_service_type_code?: string | null;
+      jurisdiction_codes?: string[] | null;
+      pct_chapter_code?: string | null;
+    }
+    | Array<{
+      is_urgent?: boolean | null;
+      service_types?: string[] | null;
+      epv_type_code?: string | null;
+      ep_service_type_code?: string | null;
+      jurisdiction_codes?: string[] | null;
+      pct_chapter_code?: string | null;
+    }>
     | null;
   request_patents?:
-    | { patent_number?: string | null }
-    | Array<{ patent_number?: string | null }>
+    | {
+      patent_number?: string | null;
+      application_no?: string | null;
+      publication_no?: string | null;
+      first_priority_date?: string | null;
+      international_filing_date?: string | null;
+      grant_publication_date?: string | null;
+      rule_71_3_communication_date?: string | null;
+    }
+    | Array<{
+      patent_number?: string | null;
+      application_no?: string | null;
+      publication_no?: string | null;
+      first_priority_date?: string | null;
+      international_filing_date?: string | null;
+      grant_publication_date?: string | null;
+      rule_71_3_communication_date?: string | null;
+    }>
     | null;
   filing_signature_requests?: Array<{
     id: string;
@@ -70,11 +107,37 @@ export function buildDashboardAttentionItems(
     .filter(isActiveUrgentRequest)
     .map(urgentAttentionItem)
     .sort(sortByNewest);
+  const deadlineItems = deadlineAttentionItems(requests);
   const downloadItems = orders
     .map((order) => downloadAttentionItem(order, requestById.get(order.request_id)))
     .filter((item): item is DashboardAttentionItem => Boolean(item))
     .sort(sortByNewest);
-  return selectBalancedItems(signatureItems, urgentItems, downloadItems);
+  return selectBalancedItems(signatureItems, urgentItems, deadlineItems, downloadItems);
+}
+
+function deadlineAttentionItems(requests: DashboardRequest[]) {
+  const today = new Date().toISOString().slice(0, 10);
+  const nextMonth = addCalendarMonths(today, 1);
+  if (!nextMonth) return [];
+
+  return buildDashboardDeadlineItems(requests, today)
+    .filter((deadline) => deadline.dueOn < nextMonth)
+    .map(deadlineAttentionItem);
+}
+
+function deadlineAttentionItem(deadline: DashboardDeadlineItem): DashboardAttentionItem {
+  return {
+    id: `deadline-${deadline.id}`,
+    requestId: deadline.requestId,
+    kind: "deadline",
+    title: deadline.title,
+    detail: `${deadline.detail} · Due ${formatShortDate(deadline.dueOn)}`,
+    action: "View deadline",
+    href: deadline.href,
+    tone: "amber",
+    timestamp: deadline.dueOn,
+    dueTimestamp: new Date(`${deadline.dueOn}T00:00:00Z`).getTime(),
+  };
 }
 
 function signatureAttentionItems(request: DashboardRequest) {
@@ -170,6 +233,7 @@ function downloadAttentionItem(
 function selectBalancedItems(
   signatureItems: DashboardAttentionItem[],
   urgentItems: DashboardAttentionItem[],
+  deadlineItems: DashboardAttentionItem[],
   downloadItems: DashboardAttentionItem[],
 ) {
   const selected: DashboardAttentionItem[] = [];
@@ -179,11 +243,11 @@ function selectBalancedItems(
     addIfAvailable(item, selected, usedRequestIds);
   }
 
-  for (const item of [urgentItems[0], downloadItems[0]]) {
+  for (const item of [urgentItems[0], deadlineItems[0], downloadItems[0]]) {
     addIfAvailable(item, selected, usedRequestIds);
   }
 
-  const remainingItems = [...urgentItems, ...downloadItems]
+  const remainingItems = [...urgentItems, ...deadlineItems, ...downloadItems]
     .sort(sortByNewest);
 
   for (const item of remainingItems) {

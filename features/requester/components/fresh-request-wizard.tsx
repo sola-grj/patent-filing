@@ -19,6 +19,7 @@ export async function FreshRequestWizard({
       key={wizardKey}
       dictionaries={dictionaries}
       initialPath={initialPath}
+      autoStartPatentSearch={Boolean(patentQuery)}
       initialPayload={
         patentQuery
           ? {

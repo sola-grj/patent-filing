@@ -6,7 +6,8 @@ export function formatCurrency(amount?: number | string | null, currency = "USD"
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(Number.isFinite(numericAmount) ? numericAmount : 0);
 }
 

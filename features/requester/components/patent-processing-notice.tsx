@@ -56,6 +56,15 @@ export function PatentProcessingNotice({
     );
   }
 
+  if (status === "idle") {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <p>Patent data has not been processed yet.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
       <Loader2 className="h-4 w-4 shrink-0 animate-spin" />

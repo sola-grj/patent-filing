@@ -25,7 +25,7 @@ export async function GET(
   const { data: requestRow, error: requestError } = await supabase
     .from("translation_requests")
     .select(
-      "request_no, source_mode, request_files(source, storage_bucket, storage_path, original_filename)",
+      "request_no, request_files(source, storage_bucket, storage_path, original_filename)",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -36,13 +36,6 @@ export async function GET(
   if (!requestRow) {
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
-  if (requestRow.source_mode !== "upload") {
-    return NextResponse.json(
-      { error: "This request was not created from uploaded files." },
-      { status: 400 },
-    );
-  }
-
   const files = ((requestRow.request_files ?? []) as RequestFileRow[])
     .filter((file) => file.source === "upload");
   if (!files.length) {

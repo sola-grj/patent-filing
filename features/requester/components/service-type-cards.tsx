@@ -72,7 +72,7 @@ export function ServiceTypeCards(props: {
               <div
                 key={option.value}
                 className={`relative rounded-[22px] border p-1 transition-all duration-200 ${
-                  disabled
+                  disabled && !selected
                     ? "cursor-not-allowed border-border bg-muted/40"
                     : selected
                       ? "border-[#64748b] bg-[#64748b] shadow-[0_18px_44px_rgba(15,23,42,0.16)]"
@@ -102,7 +102,7 @@ export function ServiceTypeCards(props: {
                   disabled={disabled}
                   onClick={() => props.onChange(option.value)}
                   className={`flex min-h-[124px] w-full flex-col items-center justify-center rounded-[18px] px-5 py-7 text-center transition-all duration-200 ${
-                    disabled
+                    disabled && !selected
                       ? "cursor-not-allowed bg-muted text-muted-foreground opacity-70"
                       : cardStyles[option.value]
                         ?? "bg-[linear-gradient(135deg,#334155,#475569)] text-white"

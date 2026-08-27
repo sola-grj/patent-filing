@@ -85,15 +85,18 @@ export function NewRequestWizard({
   initialDraft,
   initialPayload: seededPayload,
   initialPath,
+  autoStartPatentSearch = false,
   dictionaries,
 }: {
   initialDraft?: WizardDraftSession;
   initialPayload?: Partial<WizardPayload>;
   initialPath?: RequestPathCode;
+  autoStartPatentSearch?: boolean;
   dictionaries: WizardDictionaries;
 }) {
   const router = useRouter();
   const { registerController } = useRequestWizardController();
+  const isRestoredDraft = Boolean(initialDraft?.requestId);
   const initialPayload = initialDraft?.payload ?? seededPayload;
   const initialConfig = normalizeWizardConfig(
     initialPayload?.config ?? (initialPath ? { channelCode: initialPath } : undefined),
@@ -116,7 +119,9 @@ export function NewRequestWizard({
       ? initialPayload.quoteCurrency
       : "CNY",
   );
-  const [quotePreview, setQuotePreview] = useState<ErpQuotePreview | null>(null);
+  const [quotePreview, setQuotePreview] = useState<ErpQuotePreview | null>(
+    initialPayload?.quotePreview ?? null,
+  );
   const [cancelOpen, setCancelOpen] = useState(false);
   const [negotiationOpen, setNegotiationOpen] = useState(false);
   const [negotiationDraft, setNegotiationDraft] = useState<WizardNegotiationDraft>({
@@ -328,6 +333,7 @@ export function NewRequestWizard({
       uploadedFileSnapshots,
       analysis: analysis.result,
       quoteCurrency,
+      quotePreview: quotePreview ?? undefined,
       config,
       lastStep: wizardSteps[step].title,
     });
@@ -608,6 +614,7 @@ export function NewRequestWizard({
       sourceMode === "patent_search"
       && selectedPatent
       && analysisStatus === "idle"
+      && !isRestoredDraft
       && shouldStartAutomaticPatentAnalysis({
         channelCode: config.channelCode,
         epServiceType: config.epServiceType,
@@ -625,6 +632,7 @@ export function NewRequestWizard({
     config.channelCode,
     config.epServiceType,
     selectedPatent,
+    isRestoredDraft,
     sourceMode,
     startAnalysis,
   ]);
@@ -658,6 +666,7 @@ export function NewRequestWizard({
                 step={step}
                 sourceMode={sourceMode}
                 patentQuery={patentQuery}
+                autoStartPatentSearch={autoStartPatentSearch}
                 selectedPatent={selectedPatent}
                 uploadedFiles={uploadedFiles}
                 uploadedFileSnapshots={uploadedFileSnapshots}
@@ -876,6 +885,7 @@ function StepContent(props: {
   step: number;
   sourceMode: WizardSourceMode;
   patentQuery: string;
+  autoStartPatentSearch: boolean;
   selectedPatent?: WizardPatentCandidate;
   uploadedFiles: File[];
   uploadedFileSnapshots: WizardUploadedFile[];
@@ -912,6 +922,7 @@ function StepContent(props: {
         sourceMode={props.sourceMode}
         channelCode={props.config.channelCode}
         patentQuery={props.patentQuery}
+        autoStartPatentSearch={props.autoStartPatentSearch}
         uploadedFiles={props.uploadedFiles}
         uploadedFileSnapshots={props.uploadedFileSnapshots}
         uploadReference={props.uploadReference}

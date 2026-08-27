@@ -130,7 +130,9 @@ async function PmDashboardContent({
                   {request.request_no}
                 </span>
               </span>
-              <span className="truncate">{organization?.name ?? "-"}</span>
+              <span className="truncate">
+                {request.customer_name ?? organization?.name ?? "-"}
+              </span>
               <span className="min-w-0">
                 <RequestChannelBadge
                   channelCode={request.channel_code}

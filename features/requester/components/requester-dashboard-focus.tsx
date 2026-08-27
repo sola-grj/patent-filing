@@ -87,7 +87,7 @@ function AttentionPanel({ items }: { items: DashboardAttentionItem[] }) {
           <div>
             <p className="font-medium">You&apos;re all caught up</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Signature requests, urgent matters, and ready downloads will appear here.
+              Signature requests, urgent matters, approaching deadlines, and ready downloads will appear here.
             </p>
           </div>
         </div>
@@ -150,7 +150,9 @@ function DeadlinesPanel({ items }: { items: DashboardDeadlineItem[] }) {
               key={item.id}
               href={item.href}
               title={`Deadline ${item.dueOn}`}
-              className="grid min-h-[64px] flex-1 items-center gap-3 py-3 text-sm sm:grid-cols-[4.5rem_minmax(0,1fr)_auto_auto]"
+              className={`grid min-h-[64px] items-center gap-3 py-3 text-sm sm:grid-cols-[4.5rem_minmax(0,1fr)_auto_auto] ${
+                items.length > 1 ? "flex-1" : "basis-1/3 flex-none"
+              }`}
             >
               <span className="font-semibold text-foreground">
                 {item.date}

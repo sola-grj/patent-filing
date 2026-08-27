@@ -1,4 +1,5 @@
 import { requirePmContext } from "./server-utils";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export function normalizePmStatusFilter(status?: string, stage?: string) {
   if (status && status !== "all") {
@@ -55,7 +56,7 @@ export async function getPmRequests(filters?: {
     context.supabase
       .from("translation_requests")
       .select(
-        "id, request_no, title, channel_code, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(id), request_patents(patent_number), translation_requirements(source_language, target_language, target_languages, service_types, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
+        "id, request_no, requester_id, title, channel_code, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(id), request_patents(patent_number), translation_requirements(source_language, target_language, target_languages, service_types, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
       )
       .eq("supplier_organization_id", context.organization!.id)
       .neq("workflow_stage", "draft")
@@ -76,9 +77,16 @@ export async function getPmRequests(filters?: {
   }
 
   const allRequests = data ?? [];
+  const customerNames = await getRequesterCustomerNames(
+    allRequests.map((request) => request.requester_id),
+  );
+  const requestsWithCustomerNames = allRequests.map((request) => ({
+    ...request,
+    customer_name: customerNames.get(request.requester_id) ?? null,
+  }));
   const normalizedStatus = normalizePmStatusFilter(filters?.status, filters?.stage);
   const keyword = filters?.q?.toLowerCase().trim();
-  const requests = allRequests.filter((request) => {
+  const requests = requestsWithCustomerNames.filter((request) => {
     const organization = firstRelation(request.organizations);
     const patent = firstRelation(request.request_patents);
 
@@ -96,6 +104,7 @@ export async function getPmRequests(filters?: {
         request.request_no,
         request.title,
         patent?.patent_number,
+        request.customer_name,
         organization?.name,
       ]
           .join(" ")
@@ -118,10 +127,11 @@ export async function getPmRequests(filters?: {
   };
   const customers = Array.from(
     new Map(
-      allRequests.flatMap((request) => {
+      requestsWithCustomerNames.flatMap((request) => {
         const organization = firstRelation(request.organizations);
-        return organization?.id && organization.name
-          ? [[organization.id, organization.name] as const]
+        const customerName = request.customer_name ?? organization?.name;
+        return organization?.id && customerName
+          ? [[organization.id, customerName] as const]
           : [];
       }),
     ),
@@ -138,6 +148,26 @@ export async function getPmRequests(filters?: {
     dictionaries,
     customers,
   };
+}
+
+async function getRequesterCustomerNames(requesterIds: Array<string | null>) {
+  const uniqueRequesterIds = [...new Set(requesterIds.filter(Boolean))] as string[];
+  if (!uniqueRequesterIds.length) return new Map<string, string>();
+
+  const { data, error } = await createServiceClient()
+    .from("eci_erp_customers")
+    .select("auth_user_id, client_name")
+    .in("auth_user_id", uniqueRequesterIds)
+    .is("sync_error", null);
+  if (error) throw new Error(error.message);
+
+  return new Map(
+    (data ?? []).flatMap((customer) =>
+      customer.auth_user_id && customer.client_name.trim()
+        ? [[customer.auth_user_id, customer.client_name.trim()] as const]
+        : [],
+    ),
+  );
 }
 
 export async function getPmRequestDetail(requestId: string) {

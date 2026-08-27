@@ -38,6 +38,7 @@ import {
 } from "./helpers";
 import { quoteForOrganization } from "@/lib/eci-erp/pricing";
 import { quoteValidUntilTimestamp } from "@/lib/eci-erp/ep-granting-quote";
+import type { ErpQuotePreview } from "@/lib/eci-erp/types";
 import {
   isEpGrantingTranslation,
   requiresCustomerTifg,
@@ -182,6 +183,15 @@ export async function persistWizardRequest(
         lookupReceipt: payload.selectedPatent.lookupReceipt!,
         analysisReceipt: payload.analysis!.analysis_receipt!,
       });
+      await createParseResults(supabase, requestFileIds, payload);
+    }
+    if (
+      mode === "draft"
+      && payload.sourceMode === "patent_search"
+      && usesCustomerTifg
+      && payload.analysis?.analysis_receipt
+      && !reuseDurablePatent
+    ) {
       await createParseResults(supabase, requestFileIds, payload);
     }
     if (
@@ -630,6 +640,7 @@ async function persistSourceFiles(
   }
   const usesCustomerTifg = isEpGrantingTranslation(payload.config);
   if (mode === "draft" && !payload.analysis?.analysis_receipt && !usesCustomerTifg) {
+    await persistPatentSelection(supabase, requestId, payload, mode, false);
     return [];
   }
   if (!requiresPatentDocumentAnalysis(payload.config)) {
@@ -945,6 +956,14 @@ async function hasDurableDraftPatent(
   supabase: SupabaseClient,
   requestId: string,
 ) {
+  const { data: patent, error: patentError } = await supabase
+    .from("request_patents")
+    .select("request_id")
+    .eq("request_id", requestId)
+    .maybeSingle();
+  if (patentError) throw new Error(patentError.message);
+  if (patent) return true;
+
   const { data: files, error: filesError } = await supabase
     .from("request_files")
     .select("id, status, patent_document_id")
@@ -1100,6 +1119,15 @@ async function persistDraftConfigurationArtifacts(
       })),
     );
     if (error) throw new Error(error.message);
+  }
+  if (payload.quotePreview) {
+    await createQuoteFromPreview(
+      supabase,
+      requestId,
+      payload,
+      payload.quotePreview,
+      "draft",
+    );
   }
 }
 
@@ -1320,66 +1348,14 @@ async function createInitialQuote(
     quoteForOrganization(payload, organizationId, userId),
     nextVersion(supabase, "quotes", requestId),
   ]);
-  const amount = erpQuote.total;
-  const pricingSnapshot = {
-    source: erpQuote.source,
-    quotedAt: erpQuote.quotedAt,
-    customerName: erpQuote.customerName,
-    validUntil: erpQuote.validUntil ?? null,
-    request: erpQuote.request,
-    response: erpQuote.rows,
-  };
-
-  const { data: quote, error: quoteError } = await supabase
-    .from("quotes")
-    .insert({
-      request_id: requestId,
-      version_no: versionNo,
-      status: "accepted",
-      currency: erpQuote.currency,
-      total_amount: amount,
-      estimated_delivery_at: payload.config.dueAt || null,
-      valid_until: quoteValidUntilTimestamp(erpQuote.validUntil),
-      notes: "Generated from verified request data.",
-      pricing_snapshot: pricingSnapshot,
-      breakdown_json: pricingSnapshot,
-    })
-    .select("id")
-    .single();
-
-  if (quoteError) throw new Error(quoteError.message);
-
-  const quoteItems = erpQuote.rows.map((row) => ({
-    quote_id: quote.id,
-    label: row.countryName,
-    amount: row.total,
-    quantity: 1,
-    unit: "country",
-    description: [
-      `Official ${row.officialFee.toFixed(2)} + service ${row.serviceFee.toFixed(2)} + translation ${row.translationFee.toFixed(2)}`,
-      row.translationFeeDetails.length
-        ? row.translationFeeDetails.map((fee) =>
-            `${fee.languageName} ${fee.amount.toFixed(2)}`
-          ).join("; ")
-        : null,
-    ].filter(Boolean).join(" · "),
-  }));
-  const [quoteItemResult, factorResult] = await Promise.all([
-    supabase.from("quote_items").insert(quoteItems),
-    supabase.from("quote_factor_snapshots").insert({
-      quote_id: quote.id,
-      factors: {
-        ...pricingSnapshot,
-        amount,
-      },
-    }),
-  ]);
-  const { error: quoteItemError } = quoteItemResult;
-  if (quoteItemError) throw new Error(quoteItemError.message);
-
-  const { error: factorError } = factorResult;
-  if (factorError) throw new Error(factorError.message);
-
+  const quoteId = await createQuoteFromPreview(
+    supabase,
+    requestId,
+    payload,
+    erpQuote,
+    "accepted",
+    versionNo,
+  );
   const { error: requestError } = await supabase
     .from("translation_requests")
     .update({
@@ -1401,7 +1377,80 @@ async function createInitialQuote(
       "quote.accepted.eci_erp",
       "configured",
       "quoted",
-      { quoteId: quote.id, amount, currency: erpQuote.currency, source: "eci_erp" },
+      { quoteId, amount: erpQuote.total, currency: erpQuote.currency, source: "eci_erp" },
     );
   }
+}
+
+async function createQuoteFromPreview(
+  supabase: SupabaseClient,
+  requestId: string,
+  payload: WizardPayload,
+  quote: ErpQuotePreview,
+  status: "draft" | "accepted",
+  versionNo?: number,
+) {
+  const resolvedVersionNo = versionNo ?? await nextVersion(supabase, "quotes", requestId);
+  const amount = quote.total;
+  const pricingSnapshot = {
+    source: quote.source,
+    quotedAt: quote.quotedAt,
+    customerName: quote.customerName,
+    validUntil: quote.validUntil ?? null,
+    response: quote.rows,
+  };
+
+  const { data: storedQuote, error: quoteError } = await supabase
+    .from("quotes")
+    .insert({
+      request_id: requestId,
+      version_no: resolvedVersionNo,
+      status,
+      currency: quote.currency,
+      total_amount: amount,
+      estimated_delivery_at: payload.config.dueAt || null,
+      valid_until: quoteValidUntilTimestamp(quote.validUntil),
+      notes: status === "draft"
+        ? "Saved requester draft estimate."
+        : "Generated from verified request data.",
+      pricing_snapshot: pricingSnapshot,
+      breakdown_json: pricingSnapshot,
+    })
+    .select("id")
+    .single();
+
+  if (quoteError) throw new Error(quoteError.message);
+
+  const quoteItems = quote.rows.map((row) => ({
+    quote_id: storedQuote.id,
+    label: row.countryName,
+    amount: row.total,
+    quantity: 1,
+    unit: "country",
+    description: [
+      `Official ${row.officialFee.toFixed(2)} + service ${row.serviceFee.toFixed(2)} + translation ${row.translationFee.toFixed(2)}`,
+      row.translationFeeDetails.length
+        ? row.translationFeeDetails.map((fee) =>
+            `${fee.languageName} ${fee.amount.toFixed(2)}`
+          ).join("; ")
+        : null,
+    ].filter(Boolean).join(" · "),
+  }));
+  const [quoteItemResult, factorResult] = await Promise.all([
+    supabase.from("quote_items").insert(quoteItems),
+    supabase.from("quote_factor_snapshots").insert({
+      quote_id: storedQuote.id,
+      factors: {
+        ...pricingSnapshot,
+        amount,
+      },
+    }),
+  ]);
+  const { error: quoteItemError } = quoteItemResult;
+  if (quoteItemError) throw new Error(quoteItemError.message);
+
+  const { error: factorError } = factorResult;
+  if (factorError) throw new Error(factorError.message);
+
+  return storedQuote.id;
 }

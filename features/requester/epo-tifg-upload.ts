@@ -3,6 +3,7 @@ type EpoTifgAnalysis = {
   status?: string;
   analysis_profile?: string;
   analysis_receipt?: string | null;
+  restored_from_storage?: boolean;
   source_document?: {
     document_kind?: string | null;
     kind_code?: string | null;
@@ -48,7 +49,7 @@ export function isVerifiedCustomerTifg(analysis: EpoTifgAnalysis) {
   if (
     analysis?.status !== "success"
     || analysis.analysis_profile !== "claims_only"
-    || !analysis.analysis_receipt
+    || (!analysis.analysis_receipt && !analysis.restored_from_storage)
     || analysis.files?.length !== 1
     || !Number.isInteger(analysis.aggregate?.claims_words ?? Number.NaN)
     || (analysis.aggregate?.claims_words ?? 0) <= 0

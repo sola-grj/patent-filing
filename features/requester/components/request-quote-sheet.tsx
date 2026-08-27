@@ -3,6 +3,12 @@ import { Table } from "@radix-ui/themes";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EpGrantingQuotation } from "./ep-granting-quotation";
+import {
+  isErpQuoteCurrencyCode,
+  type ErpQuotePreview,
+  type ErpQuoteRow,
+} from "@/lib/eci-erp/types";
 
 type SavedQuote = {
   currency?: string | null;
@@ -21,13 +27,36 @@ type SavedErpRow = {
   total: number;
 };
 
-export function RequestQuoteSheet({ quote, showEditAction = false }: {
+export function RequestQuoteSheet({
+  quote,
+  showEditAction = false,
+  isEpGranting = false,
+  translationRequired = true,
+}: {
   quote?: SavedQuote | null;
   showEditAction?: boolean;
+  isEpGranting?: boolean;
+  translationRequired?: boolean;
 }) {
   const currency = quote?.currency || "USD";
   const rows = savedRows(quote);
   const total = finiteAmount(quote?.total_amount) ?? rows.reduce((sum, row) => sum + row.total, 0);
+  const epGrantingQuote = isEpGranting ? savedErpQuote(quote) : null;
+
+  if (epGrantingQuote) {
+    return (
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
+          <EpGrantingQuotation
+            estimate={epGrantingQuote}
+            translationRequired={translationRequired}
+            currency={epGrantingQuote.currency}
+            readOnly
+          />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden">
@@ -78,6 +107,63 @@ export function RequestQuoteSheet({ quote, showEditAction = false }: {
       </CardContent>
     </Card>
   );
+}
+
+function savedErpQuote(quote?: SavedQuote | null): ErpQuotePreview | null {
+  const currency = quote?.currency;
+  const snapshot = asRecord(quote?.breakdown_json) ?? asRecord(quote?.pricing_snapshot);
+  const response = Array.isArray(snapshot?.response) ? snapshot.response : null;
+  if (!isErpQuoteCurrencyCode(currency) || !response?.length) return null;
+  const rows = response.flatMap(savedErpRow);
+  if (!rows.length) return null;
+  return {
+    source: "eci_erp",
+    currency,
+    quotedAt: typeof snapshot?.quotedAt === "string" ? snapshot.quotedAt : "",
+    customerName: typeof snapshot?.customerName === "string" ? snapshot.customerName : "",
+    validUntil: typeof snapshot?.validUntil === "string" ? snapshot.validUntil : undefined,
+    rows,
+    total: finiteAmount(quote?.total_amount) ?? rows.reduce((sum, row) => sum + row.total, 0),
+  };
+}
+
+function savedErpRow(value: unknown): ErpQuoteRow[] {
+  const row = asRecord(value);
+  const countryId = finiteAmount(row?.countryId);
+  const countryName = typeof row?.countryName === "string" ? row.countryName : null;
+  const officialFee = finiteAmount(row?.officialFee);
+  const serviceFee = finiteAmount(row?.serviceFee);
+  const translationFee = finiteAmount(row?.translationFee);
+  const total = finiteAmount(row?.total);
+  const translationFeeDetails = Array.isArray(row?.translationFeeDetails)
+    ? row.translationFeeDetails.flatMap((fee) => {
+        const detail = asRecord(fee);
+        const languageId = finiteAmount(detail?.languageId);
+        const languageName = typeof detail?.languageName === "string" ? detail.languageName : null;
+        const amount = finiteAmount(detail?.amount);
+        return languageId === null || !languageName || amount === null
+          ? []
+          : [{ languageId, languageName, amount }];
+      })
+    : [];
+  if (
+    countryId === null
+    || !countryName
+    || officialFee === null
+    || serviceFee === null
+    || translationFee === null
+    || total === null
+  ) return [];
+  return [{
+    countryId,
+    countryName,
+    officialFee,
+    serviceFee,
+    translationFees: {},
+    translationFee,
+    translationFeeDetails,
+    total,
+  }];
 }
 
 function savedRows(quote?: SavedQuote | null): SavedErpRow[] {
