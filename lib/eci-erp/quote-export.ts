@@ -29,6 +29,9 @@ export type QuoteExportMetadata = {
   };
 };
 
+const traditionalQuoteColumns = [40, 260, 340, 420, 505, 555];
+const traditionalTotalGap = 18;
+
 export async function generateQuoteExport(
   format: QuoteExportFormat,
   quote: ErpQuotePreview,
@@ -338,12 +341,21 @@ async function generateQuotePdf(
     y -= rowHeight;
   }
 
-  if (y < 200) {
+  let totalY = y - traditionalTotalGap;
+  if (totalY < 200) {
     page = addStandardQuotePage(document, layout, true);
-    y = 680;
+    totalY = 680;
   }
-  drawRightAligned(page, "Quotation Total", 481, y, 10, bold, colors.navy);
-  drawRightAligned(page, money(quote.total, quote.currency), 559, y, 10, bold, colors.navy);
+  drawRightAligned(page, "Quotation Total", 477, totalY, 10, bold, colors.navy);
+  drawRightAligned(
+    page,
+    money(quote.total, quote.currency),
+    traditionalQuoteColumns[5],
+    totalY,
+    10,
+    bold,
+    colors.navy,
+  );
   appendTermsAndConditions(document, regular, bold, colors);
   return document.save();
 }
@@ -400,22 +412,34 @@ function drawPdfRow(
   y: number,
   metadata: QuoteExportMetadata,
 ) {
-  const columns = [40, 260, 340, 420, 505, 555];
-  page.drawRectangle({ x: columns[0], y: y - 17, width: columns[5] - columns[0], height: 25, color: rgb(0.96, 0.97, 0.98) });
+  const columns = traditionalQuoteColumns;
+  const border = rgb(0.72, 0.78, 0.82);
+  page.drawRectangle({
+    x: columns[0],
+    y: y - 17,
+    width: columns[5] - columns[0],
+    height: 25,
+    color: rgb(0.96, 0.97, 0.98),
+    borderColor: border,
+    borderWidth: 0.5,
+  });
   page.drawText(pdfText(countryServiceLabel(row, metadata)), { x: 44, y, size: 8, font: bold });
   drawRightAligned(page, formatAmount(row.officialFee), 332, y, 8, regular);
   drawRightAligned(page, formatAmount(row.serviceFee), 412, y, 8, regular);
   drawRightAligned(page, formatAmount(row.translationFee), 497, y, 8, regular);
   drawRightAligned(page, formatAmount(row.total), 547, y, 8, regular);
-  drawTraditionalRowBorders(page, columns, y);
+  drawTraditionalRowBorders(page, columns, y, border);
 }
 
-function drawTraditionalRowBorders(page: PDFPage, columns: number[], y: number) {
-  const border = rgb(0.78, 0.83, 0.86);
-  for (const x of columns) {
-    page.drawLine({ start: { x, y: y - 17 }, end: { x, y: y + 8 }, thickness: 0.35, color: border });
+function drawTraditionalRowBorders(
+  page: PDFPage,
+  columns: number[],
+  y: number,
+  border: ReturnType<typeof rgb>,
+) {
+  for (const x of columns.slice(1, -1)) {
+    page.drawLine({ start: { x, y: y - 17 }, end: { x, y: y + 8 }, thickness: 0.5, color: border });
   }
-  page.drawLine({ start: { x: columns[0], y: y - 17 }, end: { x: columns[5], y: y - 17 }, thickness: 0.35, color: border });
 }
 
 function drawRightAligned(
