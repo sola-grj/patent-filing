@@ -206,7 +206,7 @@ export function PmSignaturePanel({
             />
           ) : (
             <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-              New signature packages can only be created while this Filing request is In progress.
+              New signature packages can only be created while this request is In progress.
             </p>
           )}
 

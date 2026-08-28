@@ -244,6 +244,12 @@ export function ConfigStep({
       ? config.serviceItem || "traditional_validation"
       : "";
     const nextRequiresCountries = requiresEpCountries(selection.epServiceType);
+    const nextOptOutCountryIds = nextServiceItem === "traditional_validation_opt_out"
+      ? config.optOutCountryIds.filter((id) => config.epCountryIds.includes(id))
+      : [];
+    const preservesOptOutConfirmation = nextServiceItem === config.serviceItem
+      && config.optOutCountriesConfirmed
+      && nextOptOutCountryIds.length === config.optOutCountryIds.length;
     onChange({
       ...config,
       serviceTypes: nextServiceTypes,
@@ -260,10 +266,8 @@ export function ConfigStep({
       epCountriesConfirmed: nextRequiresCountries
         ? config.epCountriesConfirmed
         : false,
-      optOutCountryIds: nextServiceItem === "traditional_validation_opt_out"
-        ? config.optOutCountryIds.filter((id) => config.epCountryIds.includes(id))
-        : [],
-      optOutCountriesConfirmed: false,
+      optOutCountryIds: nextOptOutCountryIds,
+      optOutCountriesConfirmed: preservesOptOutConfirmation,
       targetLanguages: normalizeEpoTargetLanguages(
         selection.epServiceType,
         config.translationRequired,
@@ -335,7 +339,7 @@ export function ConfigStep({
             </div>
           ) : null}
           {config.channelCode === "ep" ? (
-            <div className="md:col-span-2">
+            <div>
               <Field label="Translation Service">
                 <label className="flex cursor-pointer items-center justify-between gap-4 rounded-md border bg-background px-3 py-2.5 text-sm transition-colors hover:bg-muted/30">
                   <span>{config.translationRequired ? "Included" : "Not included"}</span>
@@ -492,15 +496,51 @@ export function ConfigStep({
                     error={configFieldErrors.targetLanguages}
                   />
                 )
-            ) : null}
+          ) : null}
           {showEpCountries ? (
-            <>
+            config.serviceItem === "traditional_validation_opt_out" ? (
+              <div className="grid gap-4 md:col-span-2 md:grid-cols-2 md:items-stretch">
+                <EpCountrySelector
+                  className="h-full min-w-0"
+                  title="EP countries"
+                  description="Select the countries covered by this service."
+                  values={config.epCountryIds}
+                  options={dictionaries.epCountries}
+                  error={configFieldErrors.epCountryIds}
+                  onChange={(epCountryIds) => {
+                    const optOutCountryIds = config.optOutCountryIds.filter((id) =>
+                      epCountryIds.includes(id)
+                    );
+                    onChange({
+                      ...config,
+                      epCountryIds,
+                      epCountriesConfirmed: epCountryIds.length > 0,
+                      optOutCountryIds,
+                      optOutCountriesConfirmed: optOutCountryIds.length > 0,
+                    });
+                  }}
+                />
+                <EpCountrySelector
+                  className="h-full min-w-0"
+                  title="Opt Out countries"
+                  description="Choose the Opt Out subset from the selected business countries."
+                  values={config.optOutCountryIds}
+                  options={dictionaries.epCountries.filter((country) => config.epCountryIds.includes(country.id))}
+                  disabled={!config.epCountryIds.length}
+                  error={configFieldErrors.optOutCountryIds}
+                  onChange={(optOutCountryIds) => onChange({
+                    ...config,
+                    optOutCountryIds,
+                    optOutCountriesConfirmed: optOutCountryIds.length > 0,
+                  })}
+                />
+              </div>
+            ) : (
               <EpCountrySelector
                 title="EP countries"
                 description="Select the countries covered by this service."
                 values={config.epCountryIds}
                 options={dictionaries.epCountries}
-                confirmed={config.epCountriesConfirmed}
                 error={configFieldErrors.epCountryIds}
                 onChange={(epCountryIds) => {
                   const optOutCountryIds = config.optOutCountryIds.filter((id) =>
@@ -515,23 +555,7 @@ export function ConfigStep({
                   });
                 }}
               />
-              {config.serviceItem === "traditional_validation_opt_out"
-                && config.epCountriesConfirmed ? (
-                  <EpCountrySelector
-                    title="Opt Out countries"
-                    description="Choose the Opt Out subset from the selected business countries."
-                    values={config.optOutCountryIds}
-                    options={dictionaries.epCountries.filter((country) => config.epCountryIds.includes(country.id))}
-                    confirmed={config.optOutCountriesConfirmed}
-                    error={configFieldErrors.optOutCountryIds}
-                    onChange={(optOutCountryIds) => onChange({
-                      ...config,
-                      optOutCountryIds,
-                      optOutCountriesConfirmed: optOutCountryIds.length > 0,
-                    })}
-                  />
-                ) : null}
-            </>
+            )
           ) : config.channelCode !== "ep" ? (
             <MultiSelectField
               label="Jurisdictions"

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildDeliverySubmissionPlan,
   buildEpDeliverySubmissionPlan,
+  buildSingleDeliverySubmissionPlan,
   latestPublishedDeliverables,
 } from "./delivery-progress.ts";
 
@@ -72,4 +73,14 @@ test("keeps EP country ids separate from legacy country codes", () => {
   ]);
 
   assert.deepEqual(deliverables.map((deliverable) => deliverable.id), ["ep-de", "legacy-de"]);
+});
+
+test("submits one general delivery without a country binding", () => {
+  const plan = buildSingleDeliverySubmissionPlan([
+    { id: "general-draft", status: "draft" },
+    { id: "country-draft", ep_country_id: 144, status: "draft" },
+  ]);
+
+  assert.deepEqual(plan.draftDeliverableIds, ["general-draft"]);
+  assert.equal(plan.completesRequest, true);
 });

@@ -87,6 +87,20 @@ export function buildDeliverySubmissionPlan(
   };
 }
 
+export function buildSingleDeliverySubmissionPlan(
+  deliverables: DeliveryProgressItem[],
+) {
+  const singleDeliverables = deliverables.filter((deliverable) =>
+    !deliverable.ep_country_id && !deliverable.jurisdiction_code);
+  const draftDeliverables = singleDeliverables.filter((deliverable) =>
+    deliverable.status === "draft");
+
+  return {
+    draftDeliverableIds: draftDeliverables.map((deliverable) => deliverable.id),
+    completesRequest: draftDeliverables.length > 0,
+  };
+}
+
 export function latestPublishedDeliverables<T extends DeliveryProgressItem>(
   deliverables: T[],
 ) {

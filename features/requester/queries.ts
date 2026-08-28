@@ -481,7 +481,6 @@ function firstRelation<T>(value?: T | T[] | null) {
 export async function getRequesterDrafts(filters?: {
   channel?: string;
   service?: string;
-  step?: string;
   q?: string;
   page?: number;
 }) {
@@ -538,7 +537,7 @@ function matchesRequesterDraftFilters(
       "patent_number" | "title"
     >> | null;
   },
-  filters?: { channel?: string; service?: string; step?: string; q?: string },
+  filters?: { channel?: string; service?: string; q?: string },
 ) {
   const payload = draft.draft_payload ?? {};
   const channel = draft.source_mode === "upload"
@@ -547,18 +546,12 @@ function matchesRequesterDraftFilters(
   const services = draft.translation_requirements?.[0]?.service_types
     ?? payload.config?.serviceTypes
     ?? [];
-  const step = normalizeDraftStep(payload.lastStep ?? draft.last_draft_step);
-
   if (filters?.channel && filters.channel !== "all" && channel !== filters.channel) {
     return false;
   }
   if (filters?.service && filters.service !== "all" && !services.includes(filters.service)) {
     return false;
   }
-  if (filters?.step && filters.step !== "all" && step !== filters.step) {
-    return false;
-  }
-
   const keyword = filters?.q?.trim().toLowerCase();
   if (!keyword) {
     return true;
@@ -577,14 +570,6 @@ function matchesRequesterDraftFilters(
     .join(" ")
     .toLowerCase()
     .includes(keyword);
-}
-
-function normalizeDraftStep(step?: string | null) {
-  if (!step || ["Basics", "Parse", "Patent Detail"].includes(step)) {
-    return "Source";
-  }
-
-  return step;
 }
 
 export async function getRequesterDraft(draftId: string) {

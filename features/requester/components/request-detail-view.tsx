@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { latestPublishedDeliverables } from "@/features/deliverables/delivery-progress";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
-import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
 import { PatentCacheStatus } from "@/features/requester/components/patent-cache-status";
 import {
@@ -217,10 +216,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
       .flatMap((task) => task.task_deliverables ?? []),
   );
   const isPatentSearch = request.source_mode === "patent_search";
+  const showFileInformation = config.epServiceType === "ep_granting";
   const patentNumber = isPatentSearch ? patent?.patent_number ?? null : null;
   const patentCandidate = isPatentSearch && patent ? toPatentCandidate(patent) : null;
   const patentFile = files.find((file) => file.source === "patent_search");
-  const patentFileStatus = patentFile?.status;
   const entityType = requirement?.entity_type_code
     ?? requirement?.entity_type
     ?? config.entityType;
@@ -372,10 +371,14 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
         }
         action={
           <div className="flex flex-wrap items-start justify-end gap-3">
-            <Button asChild variant="outline">
-              <Link href={isReadOnly ? "/requester/requests?scope=organization" : "/requester/requests"}>
-                <ArrowLeft />
-                Back to Requests
+            <Button asChild variant="ghost" size="icon" className="size-11 text-foreground hover:bg-muted">
+              <Link
+                href={isReadOnly ? "/requester/requests?scope=organization" : "/requester/requests"}
+                aria-label="Back to Requests"
+                title="Back to Requests"
+              >
+                <ArrowLeft className="size-6" strokeWidth={3} />
+                <span className="sr-only">Back to Requests</span>
               </Link>
             </Button>
             {order?.id && deliverables.length ? (
@@ -420,7 +423,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
               </div>
             </section>
           </Section>
-          {showFilingFields && signatureRequests.length ? (
+          {signatureRequests.length ? (
             <RequesterSignaturePanel signatureRequests={signatureRequests} canSubmit={!isReadOnly} />
           ) : null}
           {isPatentSearch ? (
@@ -428,18 +431,10 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
               <Section
                 title="Patent Information"
                 icon={<FileSearch className="size-5" />}
-                action={
-                  patentNumber ? (
-                    <PatentFileDownloadButton
-                      requestId={request.id}
-                      status={patentFileStatus}
-                    />
-                  ) : null
-                }
               >
                 <PatentCacheStatus
                   requestId={request.id}
-                  status={patentFileStatus}
+                  status={patentFile?.status}
                   updatedAt={patentFile?.updated_at}
                   canRetry={!isReadOnly}
                 />
@@ -459,18 +454,20 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
                   </p>
                 )}
               </Section>
-              <RequestFileInformation
-                files={files}
-                action={
-                  uploadedFiles.length ? (
-                    <RequestFilesDownloadButton
-                      href={`/requester/requests/${request.id}/download`}
-                    />
-                  ) : undefined
-                }
-              />
+              {showFileInformation ? (
+                <RequestFileInformation
+                  files={files}
+                  action={
+                    uploadedFiles.length ? (
+                      <RequestFilesDownloadButton
+                        href={`/requester/requests/${request.id}/download`}
+                      />
+                    ) : undefined
+                  }
+                />
+              ) : null}
             </>
-          ) : (
+          ) : showFileInformation ? (
             <RequestFileInformation
               files={uploadedFiles}
               action={
@@ -479,7 +476,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
                 />
               }
             />
-          )}
+          ) : null}
           <RequestQuoteSheet
             quote={latestQuote}
             isEpGranting={config.epServiceType === "ep_granting"}

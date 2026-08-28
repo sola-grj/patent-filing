@@ -28,6 +28,13 @@ test("builds a fresh request URL with the inferred path", () => {
   );
 });
 
+test("can start a dashboard patent lookup directly in Configure", () => {
+  assert.equal(
+    buildFreshRequestHref(123, "EP4686383A1", "configure"),
+    "/requester/requests/new?fresh=123&q=EP4686383A1&step=configure&path=ep",
+  );
+});
+
 test("normalizes equivalent patent-number display formats", () => {
   assert.equal(
     normalizeRequestSearchTerm("WO/2026/148366"),

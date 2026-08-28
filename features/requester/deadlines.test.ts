@@ -41,10 +41,10 @@ test("builds EP granting, validation and unitary deadlines from separate dates",
 
   const items = buildDashboardDeadlineItems(requests, "2026-01-01");
 
-  assert.deepEqual(items.map((item) => [item.title, item.dueOn]), [
-    ["EP validation deadline", "2026-05-28"],
-    ["European Patent Granting deadline", "2026-05-31"],
-    ["Unitary Patent deadline", "2026-04-30"],
+  assert.deepEqual(items.map((item) => [item.title, item.dueOn, item.service]), [
+    ["EP validation deadline", "2026-05-28", "Traditional Validation"],
+    ["European Patent Granting deadline", "2026-05-31", "EP Granting"],
+    ["Unitary Patent deadline", "2026-04-30", "Unitary Patent"],
   ].sort((left, right) => left[1].localeCompare(right[1])));
 });
 
@@ -182,7 +182,7 @@ test("builds Paris deadline but excludes translation-only and missing priority",
 
   assert.equal(items.length, 1);
   assert.equal(items[0].dueOn, "2026-08-31");
-  assert.equal(items[0].service, "Paris Convention");
+  assert.equal(items[0].service, "Direct Filing under Paris Convention + Translation");
 });
 
 test("uses international filing date and groups PCT jurisdictions by due date", () => {

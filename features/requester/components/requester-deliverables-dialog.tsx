@@ -51,8 +51,8 @@ export function RequesterDeliverablesDialog({
           {totalJurisdictionCount ? `/${totalJurisdictionCount}` : ""})
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-        <DialogHeader className="pr-8">
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-x-hidden overflow-y-auto">
+        <DialogHeader className="min-w-0 pr-8">
           <DialogTitle>Deliverables</DialogTitle>
           <DialogDescription>
             {isComplete
@@ -61,8 +61,8 @@ export function RequesterDeliverablesDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex min-w-0 flex-col gap-3 rounded-lg border bg-muted/20 p-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">
               {isComplete ? "Complete delivery package" : "Available delivery package"}
             </p>
@@ -78,17 +78,20 @@ export function RequesterDeliverablesDialog({
           />
         </div>
 
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3">
           {deliverables.map((deliverable) => (
             <div
               key={deliverable.id}
-              className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+              className="flex min-w-0 flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="font-medium">
                   {destinationLabel(deliverable, epCountries)}
                 </p>
-                <p className="mt-1 truncate text-sm text-muted-foreground">
+                <p
+                  className="mt-1 truncate text-sm text-muted-foreground"
+                  title={storageName(deliverable.storage_path) || "Delivery file"}
+                >
                   {storageName(deliverable.storage_path) || "Delivery file"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">

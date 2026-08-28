@@ -8,6 +8,12 @@ import {
 } from "@/features/requests/components/request-list-table";
 import { DraftFilterForm } from "@/features/requester/components/draft-filter-form";
 import {
+  DraftBulkDeleteControl,
+  DraftDeleteButton,
+  DraftSelectionCheckbox,
+  DraftSelectionProvider,
+} from "@/features/requester/components/draft-list-actions";
+import {
   RequestChannelBadge,
   RequestServiceBadge,
 } from "@/features/requester/components/request-summary-badges";
@@ -21,13 +27,12 @@ type DraftListItem = Awaited<ReturnType<typeof getRequesterDrafts>>["drafts"][nu
 type DraftSearchParams = {
   channel?: string;
   service?: string;
-  step?: string;
   q?: string;
   page?: string;
 };
 
 const draftGridClassName =
-  "grid grid-cols-[minmax(17rem,1.4fr)_minmax(8rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.8fr)_minmax(9rem,0.75fr)]";
+  "grid grid-cols-[2rem_minmax(17rem,1.4fr)_minmax(8rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.8fr)_minmax(9rem,0.75fr)_5rem]";
 
 export default function RequesterDraftsPage({
   searchParams,
@@ -58,7 +63,6 @@ async function DraftsContent({
   } = await getRequesterDrafts({
     channel: params.channel,
     service: params.service,
-    step: params.step,
     q: params.q,
     page: Number.isFinite(page) ? page : 1,
   });
@@ -77,20 +81,25 @@ async function DraftsContent({
         services={dictionaries?.serviceTypes ?? []}
         channel={params.channel}
         service={params.service}
-        step={params.step}
         query={params.q}
       />
-      <div className="shrink-0 flex items-center justify-between text-sm text-muted-foreground">
-        <span>{totalCount} drafts found</span>
-        <span>Page {currentPage} of {totalPages}</span>
-      </div>
-      <RequestListTable
+      <DraftSelectionProvider>
+        <div className="shrink-0 flex items-center justify-between text-sm text-muted-foreground">
+          <span>{totalCount} drafts found</span>
+          <div className="flex items-center gap-4">
+            <DraftBulkDeleteControl />
+            <span>Page {currentPage} of {totalPages}</span>
+          </div>
+        </div>
+        <RequestListTable
         columns={[
+          <span key="select" aria-label="Select drafts" />,
           "Matter / Request No.",
           "Channel",
           "Service",
           "Resume from",
           <span key="updated" className="block text-right">Updated</span>,
+          <span key="actions" className="text-right">Actions</span>,
         ]}
         gridClassName={draftGridClassName}
         minWidthClassName="min-w-[900px]"
@@ -112,6 +121,8 @@ async function DraftsContent({
               key={draft.id}
               href={`/requester/drafts/${draft.id}`}
               gridClassName={draftGridClassName}
+              leading={<DraftSelectionCheckbox draftId={draft.id} />}
+              action={<span className="text-right"><DraftDeleteButton draftId={draft.id} /></span>}
             >
               <span className="min-w-0">
                 <strong className="block truncate text-base text-foreground">
@@ -148,7 +159,8 @@ async function DraftsContent({
             </RequestListRow>
           );
         })}
-      </RequestListTable>
+        </RequestListTable>
+      </DraftSelectionProvider>
       <div className="shrink-0 pt-2">
         <PaginationNav
           currentPage={currentPage}
@@ -163,7 +175,7 @@ async function DraftsContent({
 function buildPageHref(page: number, filters: DraftSearchParams) {
   const searchParams = new URLSearchParams();
 
-  for (const key of ["channel", "service", "step", "q"] as const) {
+  for (const key of ["channel", "service", "q"] as const) {
     const value = filters[key]?.trim();
     if (value && value !== "all") {
       searchParams.set(key, value);

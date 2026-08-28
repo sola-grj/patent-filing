@@ -91,7 +91,7 @@ async function RequestsContent({
     dashboardQuery &&
     totalCount === 0
   ) {
-    redirect(buildFreshRequestHref(Date.now(), dashboardQuery));
+    redirect(buildFreshRequestHref(Date.now(), dashboardQuery, "configure"));
   }
 
   return (

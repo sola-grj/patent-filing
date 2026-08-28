@@ -10,6 +10,7 @@ import { isPublishedDeliverable } from "@/features/deliverables/delivery-progres
 import { deliverPmOrder, uploadPmDeliverableFile } from "@/features/pm/actions";
 import { jurisdictionOptions } from "@/features/requester/options";
 import { titleCaseStatus } from "@/features/requester/format";
+import { usesSingleEpDelivery } from "@/features/requester/request-paths";
 
 import { PmCountryDeliveryCard } from "./pm-country-delivery-card";
 
@@ -47,6 +48,7 @@ export function PmDeliveryPanel({
   embedded = false,
   epCountryIds,
   epCountries,
+  epServiceType,
   jurisdictionCodes,
   requestId,
   order,
@@ -54,6 +56,7 @@ export function PmDeliveryPanel({
   embedded?: boolean;
   epCountryIds: number[];
   epCountries: Array<{ id: number; name: string; abbr: string }>;
+  epServiceType?: string;
   jurisdictionCodes: string[];
   requestId: string;
   order?: Order | null;
@@ -66,7 +69,11 @@ export function PmDeliveryPanel({
   const [uploadingJurisdiction, setUploadingJurisdiction] = useState<string | null>(null);
   const [isUploading, startUploadTransition] = useTransition();
   const [isDelivering, startDeliverTransition] = useTransition();
+  const isSingleDelivery = usesSingleEpDelivery(epServiceType);
   const destinations = useMemo<DeliveryDestination[]>(() => {
+    if (isSingleDelivery) {
+      return [{ key: "general", label: "Delivery", displayCode: "" }];
+    }
     const countryIds = [...new Set(epCountryIds)]
       .filter((id) => Number.isInteger(id) && id > 0);
     if (countryIds.length) {
@@ -88,7 +95,7 @@ export function PmDeliveryPanel({
         displayCode: code,
         jurisdictionCode: code,
       }));
-  }, [epCountries, epCountryIds, jurisdictionCodes]);
+  }, [epCountries, epCountryIds, isSingleDelivery, jurisdictionCodes]);
   const deliverables = useMemo(
     () => (order?.translation_tasks ?? [])
       .flatMap((task) => task.task_deliverables ?? [])
@@ -103,7 +110,7 @@ export function PmDeliveryPanel({
   const deliveredByDestination = latestByDestination(
     deliverables.filter((item) => isPublishedDeliverable(item.status)),
   );
-  const generalDeliverables = deliverables.filter(
+  const generalDeliverables = isSingleDelivery ? [] : deliverables.filter(
     (item) => !item.ep_country_id && !item.jurisdiction_code,
   );
   const draftDestinationKeys = destinations
@@ -141,7 +148,7 @@ export function PmDeliveryPanel({
         formData.set("orderId", order.id);
         if (destination.epCountryId) {
           formData.set("epCountryId", String(destination.epCountryId));
-        } else {
+        } else if (destination.jurisdictionCode) {
           formData.set("jurisdictionCode", destination.jurisdictionCode ?? "");
         }
         formData.set("deliverableFile", selectedFiles[key] as File);
@@ -223,7 +230,9 @@ export function PmDeliveryPanel({
         <div className="mt-1 text-sm">{titleCaseStatus(order.status)}</div>
       </div>
       <p className="text-right text-sm font-medium">
-        {deliveredCount} of {destinations.length} countries delivered
+        {isSingleDelivery
+          ? `${deliveredCount} of 1 delivery completed`
+          : `${deliveredCount} of ${destinations.length} countries delivered`}
         {draftDestinationKeys.length ? (
           <span className="block text-xs font-normal text-muted-foreground">
             {draftDestinationKeys.length} ready to deliver
@@ -382,8 +391,8 @@ function latestByDestination(deliverables: TaskDeliverable[]) {
       ? `ep:${deliverable.ep_country_id}`
       : deliverable.jurisdiction_code
         ? `legacy:${deliverable.jurisdiction_code}`
-        : null;
-    if (key && !result.has(key)) {
+        : "general";
+    if (!result.has(key)) {
       result.set(key, deliverable);
     }
   }

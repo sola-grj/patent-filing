@@ -17,8 +17,10 @@ import {
 import {
   buildDeliverySubmissionPlan,
   buildEpDeliverySubmissionPlan,
+  buildSingleDeliverySubmissionPlan,
 } from "@/features/deliverables/delivery-progress";
 import { safeFileName } from "@/features/requester/server-utils";
+import { usesSingleEpDelivery } from "@/features/requester/request-paths";
 
 import { requirePmContext, toPmErrorMessage } from "./server-utils";
 
@@ -577,9 +579,6 @@ export async function uploadPmDeliverableFile(
     if (epCountryId && jurisdictionCode) {
       throw new Error("Choose either an EP country or a legacy jurisdiction.");
     }
-    if (!epCountryId && !jurisdictionCode) {
-      throw new Error("Delivery country is required.");
-    }
     const upload = formData.get("deliverableFile");
 
     if (!(upload instanceof File)) {
@@ -596,9 +595,16 @@ export async function uploadPmDeliverableFile(
       context.supabase,
       requestId,
     );
+    const isSingleDelivery = usesSingleEpDelivery(deliveryConfig.epServiceType);
+    if (isSingleDelivery && (epCountryId || jurisdictionCode)) {
+      throw new Error("This Request has one delivery and cannot be bound to a country.");
+    }
+    if (!isSingleDelivery && !epCountryId && !jurisdictionCode) {
+      throw new Error("Delivery country is required.");
+    }
     if (epCountryId) {
       assertDeliveryEpCountry(epCountryId, deliveryConfig.epCountryIds);
-    } else {
+    } else if (jurisdictionCode) {
       assertDeliveryJurisdiction(jurisdictionCode!, deliveryConfig.jurisdictionCodes);
     }
     const targetTask = selectDeliveryTask(order.translation_tasks ?? []);
@@ -657,19 +663,27 @@ export async function deliverPmOrder(
         jurisdiction_code?: string | null;
       }> | null;
     }>;
-    if (!deliveryConfig.epCountryIds.length && !deliveryConfig.jurisdictionCodes.length) {
+    const isSingleDelivery = usesSingleEpDelivery(deliveryConfig.epServiceType);
+    if (!isSingleDelivery
+      && !deliveryConfig.epCountryIds.length
+      && !deliveryConfig.jurisdictionCodes.length) {
       throw new Error("No delivery jurisdictions are configured for this request.");
     }
     const deliverables = tasks.flatMap((task) => task.task_deliverables ?? []);
-    const epDeliveryPlan = deliveryConfig.epCountryIds.length
+    const singleDeliveryPlan = isSingleDelivery
+      ? buildSingleDeliverySubmissionPlan(deliverables)
+      : null;
+    const epDeliveryPlan = !singleDeliveryPlan && deliveryConfig.epCountryIds.length
       ? buildEpDeliverySubmissionPlan(deliveryConfig.epCountryIds, deliverables)
       : null;
-    const legacyDeliveryPlan = epDeliveryPlan
+    const legacyDeliveryPlan = singleDeliveryPlan || epDeliveryPlan
       ? null
       : buildDeliverySubmissionPlan(deliveryConfig.jurisdictionCodes, deliverables);
-    const draftDeliverableIds = epDeliveryPlan?.draftDeliverableIds
+    const draftDeliverableIds = singleDeliveryPlan?.draftDeliverableIds
+      ?? epDeliveryPlan?.draftDeliverableIds
       ?? legacyDeliveryPlan!.draftDeliverableIds;
-    const completesRequest = epDeliveryPlan?.completesRequest
+    const completesRequest = singleDeliveryPlan?.completesRequest
+      ?? epDeliveryPlan?.completesRequest
       ?? legacyDeliveryPlan!.completesRequest;
 
     if (!draftDeliverableIds.length) {
@@ -721,7 +735,9 @@ export async function deliverPmOrder(
       {
         orderId,
         deliverableCount: draftDeliverableIds.length,
-        ...(epDeliveryPlan
+        ...(singleDeliveryPlan
+          ? { deliveryScope: "single" }
+          : epDeliveryPlan
           ? {
               epCountryIds: epDeliveryPlan.newlyDeliveredCountryIds,
               remainingEpCountryIds: epDeliveryPlan.missingCountryIds,
@@ -927,6 +943,7 @@ type DeliveryTask = {
 
 type DeliveryConfiguration = {
   epCountryIds: number[];
+  epServiceType: string | null;
   jurisdictionCodes: string[];
   targetLanguage: string | null;
 };
@@ -960,7 +977,7 @@ async function getDeliveryConfiguration(
   const [requirementResult, configVersionResult] = await Promise.all([
     supabase
       .from("translation_requirements")
-      .select("target_language, ep_country_ids, jurisdiction_codes, config_snapshot")
+      .select("target_language, ep_country_ids, ep_service_type_code, jurisdiction_codes, config_snapshot")
       .eq("request_id", requestId)
       .maybeSingle(),
     supabase
@@ -986,9 +1003,14 @@ async function getDeliveryConfiguration(
     (latestSnapshot as { epCountryIds?: unknown } | null)?.epCountryIds,
   );
   const storedCountryIds = normalizeEpCountryIds(requirement?.ep_country_ids);
+  const snapshotServiceType = (latestSnapshot as { epServiceType?: unknown } | null)
+    ?.epServiceType;
 
   return {
     epCountryIds: snapshotCountryIds.length ? snapshotCountryIds : storedCountryIds,
+    epServiceType: typeof snapshotServiceType === "string" && snapshotServiceType
+      ? snapshotServiceType
+      : requirement?.ep_service_type_code ?? null,
     jurisdictionCodes: snapshotCodes.length ? snapshotCodes : storedCodes,
     targetLanguage: requirement?.target_language ?? null,
   };
@@ -1072,7 +1094,9 @@ async function saveCountryDeliverable(
     .eq("task_id", input.taskId);
   existingQuery = input.epCountryId
     ? existingQuery.eq("ep_country_id", input.epCountryId)
-    : existingQuery.eq("jurisdiction_code", input.jurisdictionCode!);
+    : input.jurisdictionCode
+      ? existingQuery.eq("jurisdiction_code", input.jurisdictionCode)
+      : existingQuery.is("ep_country_id", null).is("jurisdiction_code", null);
   const { data: existingDeliverables, error } = await existingQuery
     .order("version_no", { ascending: false });
   if (error) throw new Error(error.message);
@@ -1082,7 +1106,9 @@ async function saveCountryDeliverable(
   const storagePath = [
     "deliverables",
     input.orderId,
-    input.epCountryId ? `ep-${input.epCountryId}` : input.jurisdictionCode,
+    input.epCountryId
+      ? `ep-${input.epCountryId}`
+      : input.jurisdictionCode ?? "general",
     `${Date.now()}-${safeFileName(input.upload.name)}`,
   ].join("/");
   const bytes = new Uint8Array(await input.upload.arrayBuffer());

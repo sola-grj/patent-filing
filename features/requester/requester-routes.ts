@@ -3,16 +3,21 @@ export const NEW_REQUEST_PATH = "/requester/requests/new";
 export const requestPathCodes = ["ep", "pct", "paris_convention"] as const;
 
 export type RequestPathCode = (typeof requestPathCodes)[number];
+export type FreshRequestStartStep = "source" | "configure";
 
 export function buildFreshRequestHref(
   seed = Date.now(),
   patentQuery?: string,
+  startStep: FreshRequestStartStep = "source",
 ) {
   const searchParams = new URLSearchParams({ fresh: String(seed) });
   const normalizedQuery = patentQuery?.trim();
 
   if (normalizedQuery) {
     searchParams.set("q", normalizedQuery);
+    if (startStep === "configure") {
+      searchParams.set("step", startStep);
+    }
     const requestPath = inferRequestPathFromSearch(normalizedQuery);
     if (requestPath) {
       searchParams.set("path", requestPath);

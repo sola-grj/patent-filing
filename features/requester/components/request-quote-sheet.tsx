@@ -88,9 +88,9 @@ export function RequestQuoteSheet({
                 {rows.map((row, index) => (
                   <Table.Row key={row.countryId ?? `${row.countryName}-${index}`}>
                     <Table.RowHeaderCell className="font-medium">{row.countryName}</Table.RowHeaderCell>
-                    <Table.Cell justify="end">{formatOptionalCurrency(row.officialFee, currency)}</Table.Cell>
-                    <Table.Cell justify="end">{formatOptionalCurrency(row.serviceFee, currency)}</Table.Cell>
-                    <Table.Cell justify="end">{formatOptionalCurrency(row.translationFee, currency)}</Table.Cell>
+                    <Table.Cell justify="end">{formatOptionalAmount(row.officialFee)}</Table.Cell>
+                    <Table.Cell justify="end">{formatOptionalAmount(row.serviceFee)}</Table.Cell>
+                    <Table.Cell justify="end">{formatOptionalAmount(row.translationFee)}</Table.Cell>
                     <Table.Cell justify="end" className="font-semibold">{formatCurrency(row.total, currency)}</Table.Cell>
                   </Table.Row>
                 ))}
@@ -218,6 +218,13 @@ function formatCurrency(value: number, currency: string) {
   }).format(value);
 }
 
-function formatOptionalCurrency(value: number | null, currency: string) {
-  return value === null ? "-" : formatCurrency(value, currency);
+function formatOptionalAmount(value: number | null) {
+  return value === null ? "-" : formatAmount(value);
+}
+
+function formatAmount(value: number) {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }

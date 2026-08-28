@@ -3,7 +3,10 @@
 import type { ReactNode } from "react";
 import { Table } from "@radix-ui/themes";
 
-import { buildEpGrantingQuoteTable, type EpGrantingFeeLine } from "@/lib/eci-erp/ep-granting-quote";
+import {
+  buildEpGrantingQuoteTable,
+  type EpGrantingFeeLine,
+} from "@/lib/eci-erp/ep-granting-quote";
 import {
   erpQuoteCurrencySymbol,
   type ErpQuoteCurrencyCode,
@@ -48,7 +51,10 @@ export function EpGrantingQuotation({
                 {erpQuoteCurrencySymbol(currency)} {currency}
               </span>
             ) : onCurrencyChange ? (
-              <QuoteCurrencySelect value={currency} onChange={onCurrencyChange} />
+              <QuoteCurrencySelect
+                value={currency}
+                onChange={onCurrencyChange}
+              />
             ) : null}
             {action}
           </div>
@@ -73,7 +79,7 @@ function QuotationTable({
   currency: ErpQuoteCurrencyCode;
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto px-6">
       <Table.Root size="2" variant="ghost" className="min-w-[760px] text-xs">
         <Table.Header>
           <Table.Row className="hover:bg-transparent">
@@ -81,7 +87,9 @@ function QuotationTable({
             <Table.ColumnHeaderCell>Fee Item</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell>Language / Scope</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell>Pricing Method</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell justify="end">
+              Amount
+            </Table.ColumnHeaderCell>
           </Table.Row>
         </Table.Header>
         <Table.Body>
@@ -91,7 +99,11 @@ function QuotationTable({
           {table.translationFees.map((line, index) => (
             <FeeRow key={`translation-${index}`} line={line} />
           ))}
-          <SubtotalRow label="Base Fee Subtotal" amount={table.baseFeeSubtotal} currency={currency} />
+          <SubtotalRow
+            label="Base Fee Subtotal"
+            amount={table.baseFeeSubtotal}
+            currency={currency}
+          />
           {table.translationFees.length ? (
             <SubtotalRow
               label="Translation Fee Subtotal"
@@ -100,11 +112,18 @@ function QuotationTable({
             />
           ) : null}
           <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
-            <Table.Cell colSpan={4} className="py-3 text-right text-sm font-semibold">
-              Quotation Total · Pre-tax Total
+            <Table.Cell
+              colSpan={4}
+              className="py-3 text-right text-sm font-semibold"
+            >
+              Quotation Total
             </Table.Cell>
-            <Table.Cell justify="end" className="whitespace-nowrap py-3 text-base font-semibold">
-              {erpQuoteCurrencySymbol(currency)}{formatAmount(table.total)}
+            <Table.Cell
+              justify="end"
+              className="whitespace-nowrap py-3 text-base font-semibold"
+            >
+              {erpQuoteCurrencySymbol(currency)}
+              {formatAmount(table.total)}
             </Table.Cell>
           </Table.Row>
         </Table.Body>
@@ -113,11 +132,7 @@ function QuotationTable({
   );
 }
 
-function FeeRow({
-  line,
-}: {
-  line: EpGrantingFeeLine;
-}) {
+function FeeRow({ line }: { line: EpGrantingFeeLine }) {
   return (
     <Table.Row>
       <Table.RowHeaderCell className="font-medium">
@@ -127,7 +142,9 @@ function FeeRow({
       <Table.Cell>{line.scope}</Table.Cell>
       <Table.Cell>{line.pricingMethod}</Table.Cell>
       <Table.Cell justify="end" className="whitespace-nowrap">
-        {line.waived ? <span className="mr-2 text-muted-foreground">Waived</span> : null}
+        {line.waived ? (
+          <span className="mr-2 text-muted-foreground">Waived</span>
+        ) : null}
         {formatAmount(line.amount)}
       </Table.Cell>
     </Table.Row>
@@ -145,9 +162,12 @@ function SubtotalRow({
 }) {
   return (
     <Table.Row className="bg-muted/20 font-semibold [--table-row-box-shadow:none]">
-      <Table.Cell colSpan={4} className="text-right">{label}</Table.Cell>
+      <Table.Cell colSpan={4} className="text-right">
+        {label}
+      </Table.Cell>
       <Table.Cell justify="end" className="whitespace-nowrap">
-        {erpQuoteCurrencySymbol(currency)}{formatAmount(amount)}
+        {erpQuoteCurrencySymbol(currency)}
+        {formatAmount(amount)}
       </Table.Cell>
     </Table.Row>
   );

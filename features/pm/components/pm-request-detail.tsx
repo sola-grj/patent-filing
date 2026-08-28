@@ -18,7 +18,6 @@ import {
   formatRequestEventTransition,
 } from "@/features/pm/request-event-copy";
 import type { RequesterQuoteHistoryEntry } from "@/features/requester/queries";
-import { PatentFileDownloadButton } from "@/features/requester/components/patent-file-download-button";
 import {
   RequestFileInformation,
   type RequestInformationFile,
@@ -219,12 +218,10 @@ export function PmRequestDetail({
   )?.metadata ?? null;
   const isPatentSearch = request.source_mode === "patent_search";
   const config = resolveRequestConfig(request, requirement);
+  const showFileInformation = config.epServiceType === "ep_granting";
   const order = firstRelation(request.orders);
   const files = request.request_files ?? [];
   const uploadedFiles = files.filter((file) => file.source === "upload");
-  const patentFileStatus = files.find(
-    (file) => file.source === "patent_search",
-  )?.status;
   const quoteById = new Map((request.quotes ?? []).map((quote) => [quote.id, quote]));
   const negotiations = [...(request.quote_negotiations ?? [])].sort((left, right) =>
     new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
@@ -254,8 +251,7 @@ export function PmRequestDetail({
     request.request_no;
   const signatureRequests = request.filing_signature_requests ?? [];
   const showSignaturePanel =
-    config.serviceTypes.includes("filing")
-    && (request.pm_status === "in_progress" || signatureRequests.length > 0);
+    request.pm_status === "in_progress" || signatureRequests.length > 0;
   const deadlineItems = buildRequestDeadlineItems({
     id: request.id,
     request_no: request.request_no,
@@ -288,6 +284,7 @@ export function PmRequestDetail({
             <PmRequestHeaderAction
               epCountryIds={config.epCountryIds}
               epCountries={request.ep_countries ?? []}
+              epServiceType={config.epServiceType}
               jurisdictionCodes={config.jurisdictionCodes}
               requestId={request.id}
               status={request.pm_status}
@@ -319,21 +316,17 @@ export function PmRequestDetail({
                 <PmPatentInfo
                   patent={patent}
                   candidate={patentCandidate}
-                  action={
-                    <PatentFileDownloadButton
-                      requestId={request.id}
-                      status={patentFileStatus}
-                    />
-                  }
                 />
-                <RequestFileInformation
-                  files={files}
-                  action={
-                    <RequestFilesDownloadButton href={`/pm/${request.id}/download`} />
-                  }
-                />
+                {showFileInformation ? (
+                  <RequestFileInformation
+                    files={files}
+                    action={
+                      <RequestFilesDownloadButton href={`/pm/${request.id}/download`} />
+                    }
+                  />
+                ) : null}
               </>
-            ) : (
+            ) : showFileInformation ? (
               <RequestFileInformation
                 files={uploadedFiles}
                 action={
@@ -342,9 +335,11 @@ export function PmRequestDetail({
                   />
                 }
               />
-            )}
+            ) : null}
             <PmQuoteSheet
               quote={latestQuote}
+              isEpGranting={config.epServiceType === "ep_granting"}
+              translationRequired={config.translationRequired}
             />
             {SHOW_NEGOTIATION_HISTORY ? (
               negotiationHistory.length ? (

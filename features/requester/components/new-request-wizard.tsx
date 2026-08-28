@@ -33,6 +33,7 @@ import { validateUploadFiles } from "@/lib/validators/requester";
 import {
   saveRequestDraft,
   generateErpEstimate,
+  lookupPatentForWizard,
   submitNegotiationFromWizard,
   submitRequestFromWizard,
 } from "@/features/requester/actions";
@@ -86,12 +87,14 @@ export function NewRequestWizard({
   initialPayload: seededPayload,
   initialPath,
   autoStartPatentSearch = false,
+  skipSourceStep = false,
   dictionaries,
 }: {
   initialDraft?: WizardDraftSession;
   initialPayload?: Partial<WizardPayload>;
   initialPath?: RequestPathCode;
   autoStartPatentSearch?: boolean;
+  skipSourceStep?: boolean;
   dictionaries: WizardDictionaries;
 }) {
   const router = useRouter();
@@ -105,7 +108,11 @@ export function NewRequestWizard({
   const analysisStatus = analysis.status;
   const startAnalysis = analysis.start;
   const [requestId, setRequestId] = useState<string | undefined>(initialDraft?.requestId);
-  const [step, setStep] = useState(resolveInitialStep(initialPayload?.lastStep));
+  const [step, setStep] = useState(
+    isRestoredDraft
+      ? 1
+      : resolveInitialStep(initialPayload?.lastStep),
+  );
   const [sourceMode, setSourceMode] = useState<WizardSourceMode>(initialPayload?.sourceMode ?? "patent_search");
   const [patentQuery, setPatentQuery] = useState(initialPayload?.patentQuery ?? "");
   const [selectedPatent, setSelectedPatent] = useState<WizardPatentCandidate | undefined>(initialPayload?.selectedPatent);
@@ -148,6 +155,7 @@ export function NewRequestWizard({
     || uploadedFiles.length > 0
     || uploadedFileSnapshots.length > 0
     || JSON.stringify(config) !== JSON.stringify(defaultWizardConfig);
+  const directSearchStarted = useRef(false);
 
   function applyUploadedFiles(nextFiles: File[]) {
     try {
@@ -309,6 +317,56 @@ export function NewRequestWizard({
     setSelectedPatent(undefined);
     setSelectedPatentFileIds([]);
   }
+
+  const startPatentSearchRef = useRef(startPatentSearch);
+  const failPatentSearchRef = useRef(failPatentSearch);
+  startPatentSearchRef.current = startPatentSearch;
+  failPatentSearchRef.current = failPatentSearch;
+
+  useEffect(() => {
+    if (
+      !skipSourceStep
+      || !autoStartPatentSearch
+      || directSearchStarted.current
+      || sourceMode !== "patent_search"
+      || !patentQuery.trim()
+    ) {
+      return;
+    }
+
+    directSearchStarted.current = true;
+    setError(null);
+    setStepLoadingMessage("Parsing patent details");
+    startPatentSearchRef.current();
+
+    void (async () => {
+      try {
+        const formData = new FormData();
+        formData.set("patentQuery", patentQuery);
+        formData.set("channelCode", config.channelCode);
+        const result = await lookupPatentForWizard(formData);
+
+        if (result.data?.patent) {
+          applyPatentSearchResult(result.data.patent);
+          return;
+        }
+
+        failPatentSearchRef.current();
+        setError(result.error || "No patent data was found. Check the patent number and try again.");
+      } catch {
+        failPatentSearchRef.current();
+        setError("Patent search failed. Please try again later.");
+      } finally {
+        setStepLoadingMessage(null);
+      }
+    })();
+  }, [
+    autoStartPatentSearch,
+    config.channelCode,
+    patentQuery,
+    skipSourceStep,
+    sourceMode,
+  ]);
 
   function switchMissingPatentToUpload() {
     if (!selectedPatent) return;
@@ -769,6 +827,7 @@ export function NewRequestWizard({
               {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
               <WizardFooter
                 step={step}
+                minimumStep={isRestoredDraft ? 1 : 0}
                 nextLabel={
                   step === 1
                     ? "Generate Estimate"
@@ -783,7 +842,10 @@ export function NewRequestWizard({
                   !hasUsableAnalysis
                 }
                 onCancel={handleCancel}
-                onPrevious={() => setStep((current) => current - 1)}
+                onPrevious={() => setStep((current) => Math.max(
+                  current - 1,
+                  isRestoredDraft ? 1 : 0,
+                ))}
                 onNext={() => { void goNext(); }}
                 onSubmit={() => {
                   void persist(submitRequestFromWizard);
@@ -992,6 +1054,7 @@ function StepContent(props: {
 
 function WizardFooter(props: {
   step: number;
+  minimumStep?: number;
   nextLabel?: string;
   nextDisabled?: boolean;
   isPending: boolean;
@@ -1006,7 +1069,7 @@ function WizardFooter(props: {
     <div className="flex shrink-0 items-center justify-between">
       <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onCancel}>Cancel</Button>
       <div className="flex gap-2">
-        {props.step > 0 ? <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onPrevious}>Previous</Button> : null}
+        {props.step > (props.minimumStep ?? 0) ? <Button type="button" variant="outline" disabled={props.isPending} onClick={props.onPrevious}>Previous</Button> : null}
         {props.step < wizardSteps.length - 1 ? (
           <Button type="button" disabled={props.isPending || props.nextDisabled} onClick={props.onNext}>{props.nextLabel ?? "Next"}</Button>
         ) : (

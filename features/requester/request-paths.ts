@@ -180,6 +180,10 @@ export function usesEpoTargetLanguages(epServiceType?: string) {
     || epServiceType === "traditional_validation_unitary_patent";
 }
 
+export function usesSingleEpDelivery(epServiceType?: string | null) {
+  return epServiceType === "ep_granting" || epServiceType === "unitary_patent";
+}
+
 function resolveLegacyEpvSelection(
   channelCode: string,
   serviceTypes: string[],

@@ -1,6 +1,8 @@
 import { RequestQuoteSheet } from "@/features/requester/components/request-quote-sheet";
 export function PmQuoteSheet({
   quote,
+  isEpGranting = false,
+  translationRequired = true,
 }: {
   quote?: {
     currency?: string | null;
@@ -9,11 +11,15 @@ export function PmQuoteSheet({
     pricing_snapshot?: unknown;
     quote_items?: Array<{ label: string; amount: number | string }> | null;
   } | null;
+  isEpGranting?: boolean;
+  translationRequired?: boolean;
 }) {
   return (
     <RequestQuoteSheet
       quote={quote}
       showEditAction
+      isEpGranting={isEpGranting}
+      translationRequired={translationRequired}
     />
   );
 }

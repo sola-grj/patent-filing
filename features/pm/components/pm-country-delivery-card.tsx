@@ -21,7 +21,7 @@ export function PmCountryDeliveryCard({
   onFileChange,
   onUpload,
 }: {
-  code: string;
+  code?: string;
   deliverable?: CountryDeliverable | null;
   disabled: boolean;
   inputKey: number;
@@ -37,7 +37,7 @@ export function PmCountryDeliveryCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-medium">{label}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{code}</p>
+          {code ? <p className="mt-1 text-xs text-muted-foreground">{code}</p> : null}
         </div>
         <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
           {status === "delivered"
@@ -62,7 +62,7 @@ export function PmCountryDeliveryCard({
       <FileUploadField
         accept=".zip,.pdf,.doc,.docx,application/zip,application/x-zip-compressed,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         acceptedTypeLabel="ZIP, PDF, DOC, or DOCX"
-        description={`Choose the delivery file for ${label}.`}
+        description={`Choose the delivery file${code ? ` for ${label}` : ""}.`}
         disabled={disabled}
         inputKey={inputKey}
         label={`${label} delivery file`}

@@ -27,17 +27,13 @@ export async function getEligibleFilingRequest(
 ) {
   const { data, error } = await context.supabase
     .from("translation_requests")
-    .select("id, requester_id, pm_status, translation_requirements(service_types)")
+    .select("id, requester_id, pm_status")
     .eq("id", requestId)
     .eq("supplier_organization_id", context.organization!.id)
     .single();
   if (error) throw new Error(error.message);
-  const requirement = firstRelation(data.translation_requirements);
   if (data.pm_status !== "in_progress") {
     throw new Error("Signature documents are only available while the request is In progress.");
-  }
-  if (!(requirement?.service_types ?? []).includes("filing")) {
-    throw new Error("Signature documents are only available for Filing services.");
   }
   return data;
 }

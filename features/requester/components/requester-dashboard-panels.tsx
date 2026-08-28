@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { formatDate } from "@/features/requester/format";
 import type { getRequesterDashboard } from "@/features/requester/queries";
 import { RequestChannelBadge } from "@/features/requester/components/request-summary-badges";
+import { resolveServiceTypeSelection } from "@/features/requester/request-paths";
 import {
   getRequesterStatusMeta,
   RequesterStatusBadge,
@@ -86,11 +87,16 @@ function RecentRequestRow({
   const patent = Array.isArray(request.request_patents)
     ? request.request_patents[0]
     : request.request_patents;
-  const serviceCode = requirement?.service_types?.[0] ?? null;
-  const service =
-    serviceOptions.find((option) => option.value === serviceCode)?.label ??
-    serviceCode ??
-    "-";
+  const serviceTypes = requirement?.service_types ?? [];
+  const service = resolveServiceTypeSelection(
+    request.channel_code ?? "",
+    serviceTypes,
+    requirement?.epv_type_code ?? undefined,
+    requirement?.ep_service_type_code ?? undefined,
+  )?.label
+    ?? serviceOptions.find((option) => option.value === serviceTypes[0])?.label
+    ?? serviceTypes[0]
+    ?? "-";
   const channel = requestChannel(request);
 
   return (

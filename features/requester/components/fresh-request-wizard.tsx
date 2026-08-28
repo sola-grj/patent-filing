@@ -5,7 +5,7 @@ import { parseRequestPath } from "../requester-routes";
 export async function FreshRequestWizard({
   searchParams,
 }: {
-  searchParams: Promise<{ fresh?: string; q?: string; path?: string }>;
+  searchParams: Promise<{ fresh?: string; q?: string; path?: string; step?: string }>;
 }) {
   const params = await searchParams;
   const fresh = params.fresh;
@@ -13,6 +13,7 @@ export async function FreshRequestWizard({
   const dictionaries = await getRequesterDictionaries();
   const patentQuery = params.q?.trim();
   const initialPath = parseRequestPath(params.path);
+  const startAtConfigure = params.step === "configure" && Boolean(patentQuery);
 
   return (
     <NewRequestWizard
@@ -20,12 +21,13 @@ export async function FreshRequestWizard({
       dictionaries={dictionaries}
       initialPath={initialPath}
       autoStartPatentSearch={Boolean(patentQuery)}
+      skipSourceStep={startAtConfigure}
       initialPayload={
         patentQuery
           ? {
               sourceMode: "patent_search",
               patentQuery,
-              lastStep: "Source",
+              lastStep: startAtConfigure ? "Configure" : "Source",
             }
           : undefined
       }

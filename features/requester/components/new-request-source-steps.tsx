@@ -1,5 +1,6 @@
 "use client";
 
+import { LockKeyhole } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -19,23 +20,27 @@ import { FileList, StepShell } from "./new-request-wizard-shared";
 const searchEntryCards = [
   {
     id: "ep",
-    title: requestPathLabels.ep,
+    title: "EPV",
     className: "bg-[linear-gradient(135deg,#d946ef,#ec4899)] text-white",
+    available: true,
   },
   {
     id: "pct",
     title: requestPathLabels.pct,
     className: "bg-[linear-gradient(135deg,#1d4ed8,#1e3a8a)] text-white",
+    available: false,
   },
   {
     id: "paris_convention",
     title: requestPathLabels.paris_convention,
     className: "bg-[linear-gradient(135deg,#0f766e,#14b8a6)] text-white",
+    available: false,
   },
   {
     id: "upload_files",
     title: "Upload Files",
     className: "bg-[linear-gradient(135deg,#3f3f46,#52525b)] text-white",
+    available: false,
   },
 ] as const;
 
@@ -114,9 +119,12 @@ export function SourceStep(props: {
   return (
     <StepShell
       title="Create a request"
-      description="Choose the intake route first. FIling-Pairs Convention, Filing-PCT, and EP use patent number search. Upload switches the intake area to file staging."
+      description="Choose the intake path first. EPV uses patent number search."
     >
-      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-6 overflow-hidden">
+      <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-6 overflow-hidden">
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-sm text-emerald-700">
+          EPV is available now. Additional filing routes are coming soon.
+        </div>
         <div className="grid shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {searchEntryCards.map((card) => (
             <EntryModeCard
@@ -124,12 +132,8 @@ export function SourceStep(props: {
               card={card}
               active={activeCardId === card.id}
               onClick={() => {
+                if (!card.available) return;
                 setSearchError(null);
-                if (card.id === "upload_files") {
-                  props.onSourceModeChange("upload");
-                  return;
-                }
-
                 props.onSourceModeChange("patent_search");
                 props.onChannelChange(card.id);
               }}
@@ -242,15 +246,29 @@ function EntryModeCard({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-[22px] border p-[4px] text-left transition-all duration-200 ${
-        active
+      disabled={!card.available}
+      aria-label={card.available ? card.title : `${card.title} coming soon`}
+      className={`relative rounded-[22px] border p-[4px] text-left transition-all duration-200 ${
+        active && card.available
           ? "border-[#64748b] bg-[#64748b] shadow-[0_18px_44px_rgba(15,23,42,0.16)]"
-          : "border-border hover:border-foreground/15 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+          : "border-border"
+      } ${
+        card.available
+          ? "hover:border-foreground/15 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+          : "cursor-not-allowed opacity-45"
       }`}
     >
+      {!card.available ? (
+        <>
+          <LockKeyhole className="absolute left-4 top-4 z-10 h-4 w-4 text-white" aria-hidden="true" />
+          <span className="absolute right-4 top-3 z-10 rounded-md bg-white px-3 py-1 text-xs font-medium text-slate-600">
+            Coming soon
+          </span>
+        </>
+      ) : null}
       <div
         className={`flex min-h-[144px] items-center justify-center rounded-[18px] px-6 py-8 text-center transition-all duration-200 ${
-          active ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.92)]" : ""
+          active && card.available ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.92)]" : ""
         } ${card.className}`}
       >
         <p className="whitespace-nowrap text-[clamp(1.125rem,1.35vw,1.5rem)] font-semibold leading-[1.15] tracking-[-0.03em] max-[360px]:whitespace-normal">

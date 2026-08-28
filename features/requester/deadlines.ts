@@ -1,3 +1,5 @@
+import { resolveServiceTypeSelection } from "./request-paths.ts";
+
 export type PctChapterCode = "chapter_i" | "chapter_ii";
 
 export type DashboardDeadlineItem = {
@@ -279,6 +281,12 @@ function buildRequestDeadlines(
   const patent = first(request.request_patents);
   if (!requirement || !patent) return [];
   const services = requirement.service_types ?? [];
+  const serviceLabel = resolveServiceTypeSelection(
+    request.channel_code ?? "",
+    services,
+    requirement.epv_type_code ?? undefined,
+    requirement.ep_service_type_code ?? undefined,
+  )?.label;
   const detail = patent.publication_no
     || patent.patent_number
     || patent.application_no
@@ -292,7 +300,7 @@ function buildRequestDeadlines(
       today,
       title: "European Patent Granting deadline",
       detail,
-      service: "European Patent Granting",
+      service: serviceLabel ?? "European Patent Granting",
       type: "ep_granting",
     });
   }
@@ -306,7 +314,7 @@ function buildRequestDeadlines(
           today,
           title: "EP validation deadline",
           detail,
-          service: "EP Validation",
+          service: serviceLabel ?? "EP Validation",
           type: "ep_validation",
         }),
         ...singleDeadline(request, {
@@ -315,7 +323,7 @@ function buildRequestDeadlines(
           today,
           title: "Unitary Patent deadline",
           detail,
-          service: "Unitary Patent",
+          service: serviceLabel ?? "Unitary Patent",
           type: "unitary_patent",
         }),
       ];
@@ -329,7 +337,7 @@ function buildRequestDeadlines(
       today,
       title: unitary ? "Unitary Patent deadline" : "EP validation deadline",
       detail,
-      service: unitary ? "Unitary Patent" : "EP Validation",
+      service: serviceLabel ?? (unitary ? "Unitary Patent" : "EP Validation"),
       type: unitary ? "unitary_patent" : "ep_validation",
     });
   }
@@ -342,7 +350,7 @@ function buildRequestDeadlines(
       today,
       title: "12-month priority deadline",
       detail,
-      service: "Paris Convention",
+      service: serviceLabel ?? "Paris Convention",
       type: "paris_priority",
     });
   }
@@ -370,7 +378,7 @@ function buildRequestDeadlines(
     today,
     title: `PCT ${group.months}-month deadline`,
     detail: `${detail} · ${group.jurisdictions.join(", ")}`,
-    service: "National Phase Entry",
+    service: serviceLabel ?? "National Phase Entry",
     type: `pct_${chapter}`,
     jurisdictionCodes: group.jurisdictions,
   }));

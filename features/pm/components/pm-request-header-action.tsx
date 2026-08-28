@@ -24,6 +24,7 @@ type HeaderOrder = {
 export function PmRequestHeaderAction({
   epCountryIds,
   epCountries,
+  epServiceType,
   jurisdictionCodes,
   order,
   requestId,
@@ -31,6 +32,7 @@ export function PmRequestHeaderAction({
 }: {
   epCountryIds: number[];
   epCountries: Array<{ id: number; name: string; abbr: string }>;
+  epServiceType?: string;
   jurisdictionCodes: string[];
   order?: HeaderOrder | null;
   requestId: string;
@@ -45,6 +47,7 @@ export function PmRequestHeaderAction({
       <PmDeliveryDialog
         epCountryIds={epCountryIds}
         epCountries={epCountries}
+        epServiceType={epServiceType}
         jurisdictionCodes={jurisdictionCodes}
         requestId={requestId}
         order={order}

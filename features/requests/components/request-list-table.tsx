@@ -45,14 +45,35 @@ export function RequestListTable({
 }
 
 export function RequestListRow({
+  action,
   href,
+  leading,
   gridClassName,
   children,
 }: {
+  action?: ReactNode;
   href: string;
   gridClassName: string;
+  leading?: ReactNode;
   children: ReactNode;
 }) {
+  if (action || leading) {
+    return (
+      <div
+        className={cn(
+          gridClassName,
+          "items-center gap-5 px-7 py-4 text-sm transition-colors hover:bg-muted/50",
+        )}
+      >
+        {leading}
+        <Link href={href} className="contents">
+          {children}
+        </Link>
+        {action}
+      </div>
+    );
+  }
+
   return (
     <Link
       href={href}

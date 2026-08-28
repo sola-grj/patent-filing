@@ -35,12 +35,14 @@ type DeliveryOrder = {
 export function PmDeliveryDialog({
   epCountryIds,
   epCountries,
+  epServiceType,
   jurisdictionCodes,
   order,
   requestId,
 }: {
   epCountryIds: number[];
   epCountries: Array<{ id: number; name: string; abbr: string }>;
+  epServiceType?: string;
   jurisdictionCodes: string[];
   order?: DeliveryOrder | null;
   requestId: string;
@@ -54,15 +56,16 @@ export function PmDeliveryDialog({
         <DialogHeader className="shrink-0 px-6 pb-4 pt-6 pr-12">
           <DialogTitle>Delivery</DialogTitle>
           <DialogDescription>
-            Upload one ZIP, PDF, DOC, or DOCX file per jurisdiction. You can
-            deliver available countries now; the Request completes after every
-            configured jurisdiction has been delivered.
+            {epServiceType === "ep_granting" || epServiceType === "unitary_patent"
+              ? "Upload one ZIP, PDF, DOC, or DOCX file to deliver this Request."
+              : "Upload one ZIP, PDF, DOC, or DOCX file per jurisdiction. You can deliver available countries now; the Request completes after every configured jurisdiction has been delivered."}
           </DialogDescription>
         </DialogHeader>
         <PmDeliveryPanel
           embedded
           epCountryIds={epCountryIds}
           epCountries={epCountries}
+          epServiceType={epServiceType}
           jurisdictionCodes={jurisdictionCodes}
           requestId={requestId}
           order={order}

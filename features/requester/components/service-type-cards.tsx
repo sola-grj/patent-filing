@@ -18,12 +18,52 @@ import {
 } from "@/features/requester/request-paths";
 import { Field } from "./new-request-wizard-shared";
 
-const cardStyles: Partial<Record<ServiceTypeSelectionValue, string>> = {
-  ep_granting: "bg-[linear-gradient(135deg,#d946ef,#ec4899)] text-white",
-  ep_validation: "bg-[linear-gradient(135deg,#1d4ed8,#1e3a8a)] text-white",
-  unitary_patent: "bg-[linear-gradient(135deg,#0f766e,#14b8a6)] text-white",
+const serviceTypeDetails: Record<ServiceTypeSelectionValue, {
+  timing: string;
+  trigger: string;
+  description: string;
+}> = {
+  ep_granting: {
+    timing: "4 months",
+    trigger: "Rule 71(3)",
+    description: "Choose the target language and provide the verified TIFG clean copy before generating a quote.",
+  },
+  ep_validation: {
+    timing: "3 months",
+    trigger: "Grant publication",
+    description: "Select the required validation service items and target countries for the granted EP patent.",
+  },
+  unitary_patent: {
+    timing: "1 month",
+    trigger: "Grant publication",
+    description: "Choose the Unitary Patent service for the granted EP patent before its filing deadline.",
+  },
   traditional_validation_unitary_patent:
-    "bg-[linear-gradient(135deg,#3f3f46,#52525b)] text-white",
+    {
+      timing: "1 / 3 months",
+      trigger: "Earliest deadline applies",
+      description: "Combine Traditional Validation and Unitary Patent services; the earlier deadline applies.",
+    },
+  pct_national_phase: {
+    timing: "30 / 31 months",
+    trigger: "PCT filing or priority date",
+    description: "Choose the national-phase filing service for the selected jurisdiction.",
+  },
+  pct_national_phase_translation: {
+    timing: "30 / 31 months",
+    trigger: "PCT filing or priority date",
+    description: "Combine national-phase filing with the translation service required by the selected jurisdiction.",
+  },
+  paris_direct_filing: {
+    timing: "12 months",
+    trigger: "Earliest priority date",
+    description: "Choose direct filing under the Paris Convention for the selected jurisdiction.",
+  },
+  paris_direct_filing_translation: {
+    timing: "12 months",
+    trigger: "Earliest priority date",
+    description: "Combine direct filing under the Paris Convention with translation.",
+  },
 };
 
 export function ServiceTypeCards(props: {
@@ -54,6 +94,12 @@ export function ServiceTypeCards(props: {
     if (!defaultOption) return;
     onChange(defaultOption.value);
   }, [defaultOption, onChange]);
+  const selectedDetail = selectedOption
+    ? serviceTypeDetails[selectedOption.value]
+    : undefined;
+  const selectedAvailability = selectedOption
+    ? props.availability?.[selectedOption.value]
+    : undefined;
 
   return (
     <Field label="Service Type" required>
@@ -62,7 +108,7 @@ export function ServiceTypeCards(props: {
           role="radiogroup"
           aria-invalid={Boolean(props.error)}
           aria-required="true"
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          className="grid grid-cols-4 gap-3"
         >
           {getServiceTypeSelections(props.channelCode).map((option) => {
             const availability = props.availability?.[option.value];
@@ -71,12 +117,12 @@ export function ServiceTypeCards(props: {
             return (
               <div
                 key={option.value}
-                className={`relative rounded-[22px] border p-1 transition-all duration-200 ${
+                className={`relative min-w-0 rounded-xl border transition-all duration-200 ${
                   disabled && !selected
                     ? "cursor-not-allowed border-border bg-muted/40"
                     : selected
-                      ? "border-[#64748b] bg-[#64748b] shadow-[0_18px_44px_rgba(15,23,42,0.16)]"
-                      : "border-border hover:border-foreground/15 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+                      ? "border-brand bg-brand-soft shadow-sm"
+                      : "border-border bg-background hover:border-brand/50 hover:bg-muted/30"
                 }`}
               >
                 {disabled && availability?.reason ? (
@@ -101,29 +147,50 @@ export function ServiceTypeCards(props: {
                   aria-checked={selected}
                   disabled={disabled}
                   onClick={() => props.onChange(option.value)}
-                  className={`flex min-h-[124px] w-full flex-col items-center justify-center rounded-[18px] px-5 py-7 text-center transition-all duration-200 ${
+                  className={`flex min-h-[96px] w-full flex-col items-start justify-start rounded-xl px-3 py-3 text-left transition-colors ${
                     disabled && !selected
-                      ? "cursor-not-allowed bg-muted text-muted-foreground opacity-70"
-                      : cardStyles[option.value]
-                        ?? "bg-[linear-gradient(135deg,#334155,#475569)] text-white"
-                  } ${selected && !disabled
-                    ? "shadow-[inset_0_0_0_1px_rgba(255,255,255,0.92)]"
-                    : ""}`}
+                      ? "cursor-not-allowed text-muted-foreground opacity-70"
+                      : "text-foreground"
+                  }`}
                 >
-                  <span className="text-base font-semibold leading-snug tracking-[-0.02em]">
-                    {option.label}
-                  </span>
-                  {!disabled && availability?.deadline ? (
-                    <span className="mt-2 text-xs opacity-80">
-                      Available until {availability.deadline}
+                  <span className="flex w-full items-start gap-3">
+                    <span
+                      aria-hidden="true"
+                      className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border ${
+                        selected
+                          ? "border-brand bg-brand"
+                          : "border-muted-foreground/70"
+                      }`}
+                    >
+                      {selected ? <span className="size-2 rounded-full bg-brand-foreground" /> : null}
                     </span>
-                  ) : null}
+                    <span className="min-w-0 text-sm font-semibold leading-5">
+                      {option.label}
+                    </span>
+                  </span>
+                  <span className="mt-2 pl-8 text-xs leading-5 text-muted-foreground">
+                    <strong className="font-semibold text-foreground">
+                      {serviceTypeDetails[option.value].timing}
+                    </strong>
+                    {` · ${serviceTypeDetails[option.value].trigger}`}
+                  </span>
                 </button>
               </div>
             );
           })}
         </div>
       </TooltipProvider>
+      {selectedOption && selectedDetail ? (
+        <div className="grid gap-2 border-l-2 border-brand bg-brand-soft/70 px-4 py-3 text-sm text-brand-soft-foreground md:grid-cols-[max-content_minmax(0,1fr)_auto] md:items-center">
+          <span className="font-semibold whitespace-nowrap">{selectedOption.label}</span>
+          <span className="text-xs leading-5 text-brand-soft-foreground/70">
+            {selectedDetail.description}
+          </span>
+          <span className="font-semibold whitespace-nowrap">
+            Deadline: {selectedAvailability?.deadline ?? "-"}
+          </span>
+        </div>
+      ) : null}
       {props.error ? <p className="text-sm text-destructive">{props.error}</p> : null}
     </Field>
   );

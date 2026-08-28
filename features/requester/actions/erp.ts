@@ -28,12 +28,12 @@ export async function generateErpEstimate(
   try {
     const { organization, userId, supabase } = await getRequesterOrganization();
     if (!organization) throw new Error("Your account is not linked to a customer organization.");
-    const usesStoredTifg = await hasVerifiedStoredDraftTifg(
+    const usesStoredPatent = await hasVerifiedStoredDraftPatent(
       supabase,
       userId,
       payload,
     );
-    const verifiedPayload = usesStoredTifg
+    const verifiedPayload = usesStoredPatent
       ? payload
       : await verifyWizardPatentPayload(payload);
     const result = await quoteForOrganization(verifiedPayload, organization.id, userId);
@@ -43,7 +43,7 @@ export async function generateErpEstimate(
   }
 }
 
-async function hasVerifiedStoredDraftTifg(
+async function hasVerifiedStoredDraftPatent(
   supabase: Awaited<ReturnType<typeof getRequesterOrganization>>["supabase"],
   userId: string,
   payload: WizardPayload,
@@ -51,10 +51,8 @@ async function hasVerifiedStoredDraftTifg(
   if (
     !payload.requestId
     || payload.sourceMode !== "patent_search"
-    || !isEpGrantingTranslation(payload.config)
     || payload.selectedPatent?.lookupReceipt
     || payload.analysis?.analysis_receipt
-    || !isVerifiedCustomerTifg(payload.analysis)
   ) {
     return false;
   }
@@ -69,6 +67,30 @@ async function hasVerifiedStoredDraftTifg(
     .maybeSingle();
   if (requestError) throw new Error(requestError.message);
   if (!request) return false;
+
+  if (isEpGrantingTranslation(payload.config)) {
+    return hasVerifiedStoredDraftTifg(supabase, payload);
+  }
+
+  if (!payload.analysis || !["success", "partial"].includes(payload.analysis.status)) {
+    return false;
+  }
+
+  const { data: patent, error: patentError } = await supabase
+    .from("request_patents")
+    .select("patent_number")
+    .eq("request_id", payload.requestId)
+    .maybeSingle();
+  if (patentError) throw new Error(patentError.message);
+  return patent?.patent_number === payload.selectedPatent?.patentNumber
+    && payload.analysis.restored_from_storage === true;
+}
+
+async function hasVerifiedStoredDraftTifg(
+  supabase: Awaited<ReturnType<typeof getRequesterOrganization>>["supabase"],
+  payload: WizardPayload,
+) {
+  if (!isVerifiedCustomerTifg(payload.analysis)) return false;
 
   const { data: files, error: filesError } = await supabase
     .from("request_files")
