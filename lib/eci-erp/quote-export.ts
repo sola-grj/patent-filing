@@ -26,6 +26,7 @@ export type QuoteExportMetadata = {
     publicationLanguage?: string;
     grantDate?: string;
     rule713DispatchDate?: string;
+    legalDeadline?: string;
   };
 };
 
@@ -175,6 +176,7 @@ function caseDetailFields(quote: ErpQuotePreview, metadata: QuoteExportMetadata)
     ["First Priority Date", patent?.firstPriorityDate],
     ["Publication Language", patent?.publicationLanguage],
     additionalDate,
+    ["Legal Deadline", patent?.legalDeadline],
   ].filter((field): field is [string, string] => Boolean(field[1]));
 }
 
@@ -346,6 +348,13 @@ async function generateQuotePdf(
     page = addStandardQuotePage(document, layout, true);
     totalY = 680;
   }
+  const totals = summarizeFees(quote.rows);
+  drawQuoteSubtotal(page, "Official Fee Subtotal", totals.officialFee, quote.currency, totalY, bold, colors.navy);
+  totalY -= 22;
+  drawQuoteSubtotal(page, "Service Fee Subtotal", totals.serviceFee, quote.currency, totalY, bold, colors.navy);
+  totalY -= 22;
+  drawQuoteSubtotal(page, "Translation Fee Subtotal", totals.translationFee, quote.currency, totalY, bold, colors.navy);
+  totalY -= 24;
   drawRightAligned(page, "Quotation Total", 477, totalY, 10, bold, colors.navy);
   drawRightAligned(
     page,
@@ -358,6 +367,19 @@ async function generateQuotePdf(
   );
   appendTermsAndConditions(document, regular, bold, colors);
   return document.save();
+}
+
+function drawQuoteSubtotal(
+  page: PDFPage,
+  label: string,
+  amount: number,
+  currency: string,
+  y: number,
+  font: PDFFont,
+  color: ReturnType<typeof rgb>,
+) {
+  drawRightAligned(page, label, 477, y, 10, font, color);
+  drawRightAligned(page, money(amount, currency), traditionalQuoteColumns[5], y, 10, font, color);
 }
 
 function addStandardQuotePage(
@@ -556,12 +578,16 @@ async function generateQuoteXlsx(
 }
 
 function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
+  const patent = metadata.patentDetails;
   const rows: string[][] = [
     ["Pat Estimate Sheet"],
     ["Service", metadata.serviceName],
     ["Patent", metadata.patentNumber || "-"],
     ["Generated", formatDate(quote.quotedAt)],
     ["Currency", quote.currency],
+    ["Title", patent?.title || "-"],
+    ["Application No.", metadata.applicationNumber || metadata.patentNumber || "-"],
+    ["Legal Deadline", patent?.legalDeadline || "-"],
     [],
     ["Countries", "Official Fee", "Service Fee", "Translation Fee", "Translation Details", "Total"],
   ];
@@ -575,15 +601,19 @@ function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
       String(row.total),
     ]);
   }
-  rows.push(["", "", "", "", "Estimated Total", String(quote.total)]);
+  const totals = summarizeFees(quote.rows);
+  rows.push(["", "", "", "", "Official Fee Subtotal", String(totals.officialFee)]);
+  rows.push(["", "", "", "", "Service Fee Subtotal", String(totals.serviceFee)]);
+  rows.push(["", "", "", "", "Translation Fee Subtotal", String(totals.translationFee)]);
+  rows.push(["", "", "", "", "Quotation Total", String(quote.total)]);
 
   const sheetRows = rows.map((values, rowIndex) => {
     const rowNumber = rowIndex + 1;
     const cells = values.map((value, columnIndex) => {
       const reference = `${columnName(columnIndex + 1)}${rowNumber}`;
-      const isMoneyCell = rowNumber >= 8
+      const isMoneyCell = rowNumber >= 11
         && [2, 3, 4, 6].includes(columnIndex + 1);
-      const style = rowNumber === 1 ? 3 : rowNumber === 7 ? 1 : isMoneyCell ? 2 : 0;
+      const style = rowNumber === 1 ? 3 : rowNumber === 10 ? 1 : rowNumber > 10 + quote.rows.length ? 3 : isMoneyCell ? 2 : 0;
       return isMoneyCell
         ? `<c r="${reference}" s="${style}"><v>${Number(value)}</v></c>`
         : `<c r="${reference}" t="inlineStr" s="${style}"><is><t>${xml(value)}</t></is></c>`;
@@ -593,11 +623,19 @@ function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheetViews><sheetView workbookViewId="0"><pane ySplit="7" topLeftCell="A8" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="10" topLeftCell="A11" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
   <cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="4" width="16" customWidth="1"/><col min="5" max="5" width="55" customWidth="1"/><col min="6" max="6" width="16" customWidth="1"/></cols>
   <sheetData>${sheetRows}</sheetData>
   <mergeCells count="1"><mergeCell ref="A1:F1"/></mergeCells>
 </worksheet>`;
+}
+
+function summarizeFees(rows: ErpQuoteRow[]) {
+  return rows.reduce((totals, row) => ({
+    officialFee: totals.officialFee + row.officialFee,
+    serviceFee: totals.serviceFee + row.serviceFee,
+    translationFee: totals.translationFee + row.translationFee,
+  }), { officialFee: 0, serviceFee: 0, translationFee: 0 });
 }
 
 function contentTypesXml() {

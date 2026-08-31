@@ -22,6 +22,7 @@ import { EpGrantingQuotation } from "./ep-granting-quotation";
 import { optServiceStatusForCountry } from "@/lib/eci-erp/opt-service-status";
 import { PatentBasicInfo } from "./patent-basic-info";
 import { QuoteCurrencySelect } from "./quote-currency-select";
+import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 
 export function QuoteStepContent({
   payload,
@@ -44,6 +45,14 @@ export function QuoteStepContent({
 }) {
   const analysisReady = hasUsablePatentAnalysis(payload);
   const isEpGranting = payload.config.epServiceType === "ep_granting";
+  const deadline = payload.selectedPatent && payload.config.epServiceType
+    ? getEpoServiceAvailability(
+        payload.config.epServiceType,
+        payload.selectedPatent,
+        payload.analysis,
+      ).deadline
+    : undefined;
+  const feeTotals = estimate ? summarizeFeeTotals(estimate) : null;
   return (
     <StepShell
       title={isEpGranting ? "European Patent Granting Quotation" : "Estimate Sheet"}
@@ -60,10 +69,16 @@ export function QuoteStepContent({
               ? [{
                   label: "Rule 71(3) Dispatch Date",
                   value: formatPatentDate(payload.selectedPatent.rule713CommunicationDate),
+                }, {
+                  label: "Legal Deadline",
+                  value: formatPatentDate(deadline),
                 }]
               : [{
                   label: "Grant Date",
                   value: formatPatentDate(payload.selectedPatent.grantPublicationDate),
+                }, {
+                  label: "Legal Deadline",
+                  value: formatPatentDate(deadline),
                 }]}
           />
         ) : null}
@@ -160,6 +175,9 @@ export function QuoteStepContent({
                       </Table.Row>
                     );
                   })}
+                  <QuoteSubtotalRow label="Official Fee Subtotal" amount={feeTotals!.officialFee} currency={estimate.currency} />
+                  <QuoteSubtotalRow label="Service Fee Subtotal" amount={feeTotals!.serviceFee} currency={estimate.currency} />
+                  <QuoteSubtotalRow label="Translation Fee Subtotal" amount={feeTotals!.translationFee} currency={estimate.currency} />
                   <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
                     <Table.Cell
                       colSpan={4}
@@ -188,6 +206,31 @@ export function QuoteStepContent({
       </div>
     </StepShell>
   );
+}
+
+function QuoteSubtotalRow({ label, amount, currency }: {
+  label: string;
+  amount: number;
+  currency: ErpQuoteCurrencyCode;
+}) {
+  return (
+    <Table.Row className="[--table-row-box-shadow:none]">
+      <Table.Cell colSpan={4} justify="end" className="text-sm font-semibold text-muted-foreground">
+        {label}
+      </Table.Cell>
+      <Table.Cell justify="end" className="whitespace-nowrap text-sm font-semibold">
+        {erpQuoteCurrencySymbol(currency)}{formatAmount(amount)}
+      </Table.Cell>
+    </Table.Row>
+  );
+}
+
+function summarizeFeeTotals(estimate: ErpQuotePreview) {
+  return estimate.rows.reduce((totals, row) => ({
+    officialFee: totals.officialFee + row.officialFee,
+    serviceFee: totals.serviceFee + row.serviceFee,
+    translationFee: totals.translationFee + row.translationFee,
+  }), { officialFee: 0, serviceFee: 0, translationFee: 0 });
 }
 
 function UploadOverviewCard({

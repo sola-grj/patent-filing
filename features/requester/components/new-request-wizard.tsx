@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Loader2 } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
@@ -17,6 +17,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -108,6 +114,7 @@ export function NewRequestWizard({
   const analysisStatus = analysis.status;
   const startAnalysis = analysis.start;
   const [requestId, setRequestId] = useState<string | undefined>(initialDraft?.requestId);
+  const [referenceNo, setReferenceNo] = useState(initialPayload?.referenceNo ?? "");
   const [step, setStep] = useState(
     isRestoredDraft
       ? 1
@@ -148,7 +155,11 @@ export function NewRequestWizard({
     step === 1 && showConfigValidation
       ? validateWizardConfigFields(config, selectedPatent, analysis.result)
       : {};
+  const referenceNoError = step === 1 && showConfigValidation && !referenceNo.trim()
+    ? "Reference No. is required."
+    : undefined;
   const isDirty = step > 0
+    || referenceNo.trim().length > 0
     || patentQuery.trim().length > 0
     || selectedPatent !== undefined
     || selectedPatentFileIds.length > 0
@@ -383,6 +394,7 @@ export function NewRequestWizard({
   function buildPayload(): WizardPayload {
     return buildWizardPayload({
       requestId,
+      referenceNo,
       sourceMode,
       patentQuery,
       selectedPatent,
@@ -449,12 +461,12 @@ export function NewRequestWizard({
     }
   }
 
-  async function handleQuoteDownload() {
+  async function handleQuoteDownload(format: "pdf" | "xlsx") {
     if (!quotePreview || isBusy) return;
-    setStepLoadingMessage("Preparing PDF quotation");
+    setStepLoadingMessage(`Preparing ${format === "pdf" ? "PDF" : "Excel"} quotation`);
     setError(null);
     try {
-      const response = await fetch("/api/requester/quotes/export?format=pdf", {
+      const response = await fetch(`/api/requester/quotes/export?format=${format}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payload }),
@@ -468,7 +480,7 @@ export function NewRequestWizard({
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = responseFileName(response.headers.get("content-disposition"))
-        ?? "Pat-estimate.pdf";
+        ?? `Pat-estimate.${format}`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -594,6 +606,7 @@ export function NewRequestWizard({
     analysis.reset();
     setStepLoadingMessage(null);
     setRequestId(undefined);
+    setReferenceNo("");
     setStep(0);
     setSourceMode("patent_search");
     setPatentQuery("");
@@ -723,6 +736,7 @@ export function NewRequestWizard({
               <StepContent
                 step={step}
                 sourceMode={sourceMode}
+                referenceNo={referenceNo}
                 patentQuery={patentQuery}
                 autoStartPatentSearch={autoStartPatentSearch}
                 selectedPatent={selectedPatent}
@@ -731,6 +745,7 @@ export function NewRequestWizard({
                 uploadReference={uploadReference}
                 config={config}
                 configFieldErrors={configFieldErrors}
+                referenceNoError={referenceNoError}
                 payload={payload}
                 quotePreview={quotePreview}
                 quoteCurrency={quoteCurrency}
@@ -746,6 +761,10 @@ export function NewRequestWizard({
                 setPatentQuery={(value) => {
                   clearStepError(0);
                   setPatentQuery(value);
+                }}
+                setReferenceNo={(value) => {
+                  clearStepError(0);
+                  setReferenceNo(value);
                 }}
                 setPatentSearchResult={(value) => {
                   clearStepError(0);
@@ -778,17 +797,30 @@ export function NewRequestWizard({
                 }}
                 dictionaries={dictionaries}
                 quoteAction={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                    disabled={!quotePreview || isBusy}
-                    onClick={() => { void handleQuoteDownload(); }}
-                  >
-                    <Download className="h-4 w-4" />
-                    <span className="sr-only">Download PDF quotation</span>
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                        disabled={!quotePreview || isBusy}
+                      >
+                        <Download className="h-4 w-4" />
+                        <span className="sr-only">Download quotation</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => { void handleQuoteDownload("pdf"); }}>
+                        <FileText />
+                        PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => { void handleQuoteDownload("xlsx"); }}>
+                        <FileSpreadsheet />
+                        Excel
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 }
               />
             </div>
@@ -946,6 +978,7 @@ function resolvePatentSourceLanguage(candidate: WizardPatentCandidate) {
 function StepContent(props: {
   step: number;
   sourceMode: WizardSourceMode;
+  referenceNo: string;
   patentQuery: string;
   autoStartPatentSearch: boolean;
   selectedPatent?: WizardPatentCandidate;
@@ -955,6 +988,7 @@ function StepContent(props: {
   config: WizardConfig;
   dictionaries: WizardDictionaries;
   configFieldErrors: WizardConfigFieldErrors;
+  referenceNoError?: string;
   payload: WizardPayload;
   quotePreview: ErpQuotePreview | null;
   quoteCurrency: ErpQuoteCurrencyCode;
@@ -965,6 +999,7 @@ function StepContent(props: {
   quoteAction?: ReactNode;
   isPending: boolean;
   setSourceMode: (value: WizardSourceMode) => void;
+  setReferenceNo: (value: string) => void;
   setPatentQuery: (value: string) => void;
   setPatentSearchResult: (value: WizardPatentCandidate) => void;
   startPatentSearch: () => void;
@@ -1018,6 +1053,8 @@ function StepContent(props: {
   if (props.step === 1) {
     return (
       <ConfigStep
+        referenceNo={props.referenceNo}
+        referenceNoError={props.referenceNoError}
         config={props.config}
         configFieldErrors={props.configFieldErrors}
         sourceMode={props.sourceMode}
@@ -1033,6 +1070,7 @@ function StepContent(props: {
         analysisError={props.analysisError}
         onTifgFilesChange={props.setTifgFiles}
         onRemoveTifg={props.removeTifg}
+        onReferenceNoChange={props.setReferenceNo}
         onChange={props.setConfig}
         dictionaries={props.dictionaries}
       />

@@ -8,6 +8,7 @@ export function buildWizardDraftPayloadV2(
 ): WizardDraftPayloadV2 {
   return {
     schemaVersion: 2,
+    referenceNo: payload.referenceNo,
     sourceMode: payload.sourceMode,
     patentQuery: payload.patentQuery,
     selectedPatentFileIds: payload.selectedPatentFileIds,

@@ -349,6 +349,9 @@ function revalidateRequestPaths(requestId: string) {
 
 function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
+  if (!payload.referenceNo?.trim()) {
+    throw new Error("Reference No. is required.");
+  }
   if (requiresCustomerTifg({
     channelCode: config.channelCode,
     epServiceType: config.epServiceType,
@@ -560,6 +563,7 @@ async function upsertRequest(
     organization_id: organizationId,
     supplier_organization_id: supplierOrganizationId,
     requester_id: userId,
+    reference_no: payload.referenceNo?.trim() || null,
     source_mode: payload.sourceMode,
     channel_code: payload.config.channelCode,
     title: null,

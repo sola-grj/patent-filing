@@ -86,6 +86,7 @@ export type WizardConfigFieldErrors = Partial<Record<
 
 export function buildWizardPayload(input: {
   requestId?: string;
+  referenceNo?: string;
   sourceMode: WizardSourceMode;
   patentQuery: string;
   selectedPatent?: WizardPatentCandidate;
@@ -101,6 +102,7 @@ export function buildWizardPayload(input: {
   const normalizedConfig = normalizeWizardConfig(input.config);
   return {
     requestId: input.requestId,
+    referenceNo: input.referenceNo?.trim() || undefined,
     sourceMode: input.sourceMode,
     patentQuery: input.patentQuery,
     selectedPatent: input.selectedPatent,
@@ -128,6 +130,9 @@ export function validateWizardStep(step: number, payload: WizardPayload) {
     return "Upload at least one file before continuing.";
   }
   if (step === 1) {
+    if (!payload.referenceNo?.trim()) {
+      return "Reference No. is required.";
+    }
     const fieldErrors = validateWizardConfigFields(
       payload.config,
       payload.selectedPatent,

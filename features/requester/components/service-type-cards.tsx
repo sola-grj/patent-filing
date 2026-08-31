@@ -119,10 +119,10 @@ export function ServiceTypeCards(props: {
                 key={option.value}
                 className={`relative min-w-0 rounded-xl border transition-all duration-200 ${
                   disabled && !selected
-                    ? "cursor-not-allowed border-border bg-muted/40"
+                    ? "cursor-not-allowed border-border"
                     : selected
-                      ? "border-brand bg-brand-soft shadow-sm"
-                      : "border-border bg-background hover:border-brand/50 hover:bg-muted/30"
+                      ? "border-brand shadow-sm"
+                      : "border-border hover:border-brand/50"
                 }`}
               >
                 {disabled && availability?.reason ? (
@@ -181,9 +181,9 @@ export function ServiceTypeCards(props: {
         </div>
       </TooltipProvider>
       {selectedOption && selectedDetail ? (
-        <div className="grid gap-2 border-l-2 border-brand bg-brand-soft/70 px-4 py-3 text-sm text-brand-soft-foreground md:grid-cols-[max-content_minmax(0,1fr)_auto] md:items-center">
+        <div className="grid gap-2 border-l-2 border-brand px-4 py-3 text-sm text-foreground md:grid-cols-[max-content_minmax(0,1fr)_auto] md:items-center">
           <span className="font-semibold whitespace-nowrap">{selectedOption.label}</span>
-          <span className="text-xs leading-5 text-brand-soft-foreground/70">
+          <span className="text-xs leading-5 text-muted-foreground">
             {selectedDetail.description}
           </span>
           <span className="font-semibold whitespace-nowrap">

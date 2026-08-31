@@ -160,6 +160,7 @@ async function RequestsContent({
                 </span>
                 <span className="mt-1 block truncate text-xs text-muted-foreground">
                   {request.request_no}
+                  {request.reference_no ? ` · Ref ${request.reference_no}` : ""}
                   {" · "}
                   {request.request_files?.length ?? 0} files
                 </span>

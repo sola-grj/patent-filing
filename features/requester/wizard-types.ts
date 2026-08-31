@@ -253,6 +253,7 @@ export type WizardPatentAnalysisStatus = "idle" | "pending" | "complete" | "erro
 
 export type WizardPayload = {
   requestId?: string;
+  referenceNo?: string;
   sourceMode: WizardSourceMode;
   patentQuery?: string;
   selectedPatent?: WizardPatentCandidate;
@@ -267,6 +268,7 @@ export type WizardPayload = {
 
 export type WizardDraftPayloadV2 = {
   schemaVersion: 2;
+  referenceNo?: string;
   sourceMode: WizardSourceMode;
   patentQuery?: string;
   selectedPatentFileIds: string[];

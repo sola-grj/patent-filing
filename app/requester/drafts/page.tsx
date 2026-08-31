@@ -9,7 +9,6 @@ import {
 import { DraftFilterForm } from "@/features/requester/components/draft-filter-form";
 import {
   DraftBulkDeleteControl,
-  DraftDeleteButton,
   DraftSelectionCheckbox,
   DraftSelectionProvider,
 } from "@/features/requester/components/draft-list-actions";
@@ -32,7 +31,7 @@ type DraftSearchParams = {
 };
 
 const draftGridClassName =
-  "grid grid-cols-[2rem_minmax(17rem,1.4fr)_minmax(8rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.8fr)_minmax(9rem,0.75fr)_5rem]";
+  "grid grid-cols-[2rem_minmax(17rem,1.4fr)_minmax(8rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.8fr)_minmax(9rem,0.75fr)]";
 
 export default function RequesterDraftsPage({
   searchParams,
@@ -99,7 +98,6 @@ async function DraftsContent({
           "Service",
           "Resume from",
           <span key="updated" className="block text-right">Updated</span>,
-          <span key="actions" className="text-right">Actions</span>,
         ]}
         gridClassName={draftGridClassName}
         minWidthClassName="min-w-[900px]"
@@ -122,7 +120,6 @@ async function DraftsContent({
               href={`/requester/drafts/${draft.id}`}
               gridClassName={draftGridClassName}
               leading={<DraftSelectionCheckbox draftId={draft.id} />}
-              action={<span className="text-right"><DraftDeleteButton draftId={draft.id} /></span>}
             >
               <span className="min-w-0">
                 <strong className="block truncate text-base text-foreground">

@@ -183,6 +183,8 @@ export function ParsePreviewPanel({
 }
 
 export function ConfigStep({
+  referenceNo,
+  referenceNoError,
   config,
   configFieldErrors,
   sourceMode,
@@ -194,9 +196,12 @@ export function ConfigStep({
   analysisError,
   onTifgFilesChange,
   onRemoveTifg,
+  onReferenceNoChange,
   onChange,
   dictionaries,
 }: {
+  referenceNo: string;
+  referenceNoError?: string;
   config: WizardConfig;
   configFieldErrors: WizardConfigFieldErrors;
   sourceMode: WizardSourceMode;
@@ -208,6 +213,7 @@ export function ConfigStep({
   analysisError?: string;
   onTifgFilesChange: (files: File[]) => void;
   onRemoveTifg: () => void;
+  onReferenceNoChange: (value: string) => void;
   onChange: (config: WizardConfig) => void;
   dictionaries: WizardDictionaries;
 }) {
@@ -312,7 +318,7 @@ export function ConfigStep({
               <Field label="Service Items" required>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {traditionalServiceItemOptions.map((option) => (
-                    <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2.5 text-sm">
+                    <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2.5 text-sm">
                       <input
                         type="radio"
                         name="traditional-service-item"
@@ -341,7 +347,7 @@ export function ConfigStep({
           {config.channelCode === "ep" ? (
             <div>
               <Field label="Translation Service">
-                <label className="flex cursor-pointer items-center justify-between gap-4 rounded-md border bg-background px-3 py-2.5 text-sm transition-colors hover:bg-muted/30">
+                <label className="flex cursor-pointer items-center justify-between gap-4 rounded-md border bg-white px-3 py-2.5 text-sm">
                   <span>{config.translationRequired ? "Included" : "Not included"}</span>
                   <Checkbox
                     aria-label="Translation Service"
@@ -421,7 +427,7 @@ export function ConfigStep({
             </div>
           ) : null}
           {hasFilingService && config.channelCode === "pct" ? (
-            <label className="flex items-start gap-3 rounded-lg border bg-muted/20 p-3 text-sm md:col-span-2">
+            <label className="flex items-start gap-3 rounded-lg border bg-white p-3 text-sm md:col-span-2">
               <Checkbox
                 checked={config.pctChapter === "chapter_ii"}
                 onCheckedChange={(checked) =>
@@ -576,6 +582,20 @@ export function ConfigStep({
               }
             />
           ) : null}
+          <div className="md:col-span-2">
+            <Field label="Reference No." required>
+              <Input
+                className={requesterFieldClassName}
+                value={referenceNo}
+                onChange={(event) => onReferenceNoChange(event.target.value)}
+                aria-invalid={Boolean(referenceNoError)}
+                placeholder="Your internal matter reference"
+              />
+              {referenceNoError ? (
+                <p className="text-sm text-destructive">{referenceNoError}</p>
+              ) : null}
+            </Field>
+          </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="customScope">
               Custom pages / paragraphs or special requirements
@@ -847,7 +867,7 @@ function filterOptions<T extends { value: string; label: string }>(
 }
 
 const requesterFieldClassName =
-  "focus-visible:ring-0 focus-visible:border-border focus:ring-0 focus:border-border data-[state=open]:border-border";
+  "bg-white focus-visible:ring-0 focus-visible:border-border focus:ring-0 focus:border-border data-[state=open]:border-border";
 
 function getFieldClassName(invalid: boolean, baseClassName = "") {
   return `${requesterFieldClassName} ${baseClassName} rounded-md border ${invalid ? "border-destructive focus-visible:border-destructive focus:border-destructive data-[state=open]:border-destructive" : ""}`.trim();

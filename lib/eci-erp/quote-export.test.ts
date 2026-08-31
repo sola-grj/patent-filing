@@ -54,6 +54,7 @@ const metadata = {
     firstPriorityDate: "2013-02-14",
     publicationLanguage: "English",
     grantDate: "2026-04-29",
+    legalDeadline: "2026-07-29",
   },
 };
 
@@ -108,6 +109,9 @@ test("generates a readable PDF estimate", async () => {
   assert.match(content, /Quotation Details/);
   assert.match(content, /Fall protection device on roofs/);
   assert.match(content, /Grant Date/);
+  assert.match(content, /Official Fee Subtotal/);
+  assert.match(content, /Service Fee Subtotal/);
+  assert.match(content, /Translation Fee Subtotal/);
   assert.match(content, /Country \/ Service State/);
   assert.match(content, /Quotation Date/);
   assert.match(content, /Aug 25, 2026/);
@@ -122,7 +126,6 @@ test("generates a readable PDF estimate", async () => {
   assert.doesNotMatch(content, /German \(Germany\)/);
   assert.doesNotMatch(content, /Pre-tax/);
   assert.doesNotMatch(content, /Notes/);
-  assert.doesNotMatch(content, /USD 0\.00/);
   assert.doesNotMatch(content, /German \(Germany\): USD/);
   assert.equal(
     quoteExportFileName("pdf", quote, metadata),
@@ -137,6 +140,10 @@ test("generates an XLSX estimate with totals and language details", async () => 
   const sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
   assert.match(sheet, /Pat Estimate Sheet/);
   assert.match(sheet, /German \(Germany\): USD 500\.00/);
+  assert.match(sheet, /Legal Deadline/);
+  assert.match(sheet, /Official Fee Subtotal/);
+  assert.match(sheet, /Service Fee Subtotal/);
+  assert.match(sheet, /Translation Fee Subtotal/);
   assert.match(sheet, /<v>1807\.76<\/v>/);
   assert.equal(
     quoteExportFileName("xlsx", quote, metadata),

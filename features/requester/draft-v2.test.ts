@@ -6,6 +6,7 @@ import type { WizardPayload } from "./wizard-types.ts";
 
 test("Draft v2 excludes lookup receipts, analysis receipts, and artifacts", () => {
   const payload = {
+    referenceNo: "CLIENT-REF-001",
     sourceMode: "patent_search",
     patentQuery: "EP4132368A1",
     selectedPatent: {
@@ -37,7 +38,7 @@ test("Draft v2 excludes lookup receipts, analysis receipts, and artifacts", () =
       deliveryOption: "standard",
       isUrgent: false,
     },
-    lastStep: "Configure",
+    lastStep: "Quote",
   } as unknown as WizardPayload;
 
   const draft = buildWizardDraftPayloadV2(payload);
@@ -45,6 +46,8 @@ test("Draft v2 excludes lookup receipts, analysis receipts, and artifacts", () =
 
   assert.equal(draft.schemaVersion, 2);
   assert.equal(draft.patentQuery, "EP4132368A1");
+  assert.equal(draft.referenceNo, "CLIENT-REF-001");
+  assert.equal(draft.lastStep, "Quote");
   assert.equal(serialized.includes("lookup-secret"), false);
   assert.equal(serialized.includes("analysis-secret"), false);
   assert.equal(serialized.includes("temporary-artifact"), false);

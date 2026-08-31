@@ -162,6 +162,7 @@ type Order = {
 type RequestDetail = {
   id: string;
   request_no: string;
+  reference_no?: string | null;
   requester_id?: string | null;
   channel_code?: string | null;
   title?: string | null;
@@ -269,6 +270,9 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
   const signatureRequests = request.filing_signature_requests ?? [];
   const leftColumnItems: DetailItem[] = [
     { label: "Organization", value: organization?.name ?? "-" },
+    ...(request.reference_no
+      ? [{ label: "Reference No.", value: request.reference_no }]
+      : []),
     { label: "Updated", value: formatDate(request.updated_at) },
     {
       label: "Source Language",
@@ -444,9 +448,13 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
                     flushBibliographic
                     plainBibliographic
                     useParentScroll
-                    additionalMetadata={entityLabel
-                      ? [{ label: "Entity", value: entityLabel }]
-                      : []}
+                    additionalMetadata={[
+                      ...(entityLabel ? [{ label: "Entity", value: entityLabel }] : []),
+                      ...deadlineItems.map((item) => ({
+                        label: item.title,
+                        value: formatDate(item.dueOn),
+                      })),
+                    ]}
                   />
                 ) : (
                   <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">

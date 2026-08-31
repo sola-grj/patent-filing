@@ -66,6 +66,10 @@ export function EpCountrySelector({
     setOpen(false);
   }
 
+  function selectAllOptions() {
+    setPendingValues(options.map((option) => option.id));
+  }
+
   return (
     <section className={`flex h-full flex-col gap-3 ${className ?? "md:col-span-2"}`}>
       <div>
@@ -82,7 +86,7 @@ export function EpCountrySelector({
         type="button"
         disabled={disabled}
         onClick={() => handleOpenChange(true)}
-        className="flex w-full flex-1 flex-col items-stretch gap-2 rounded-lg border border-brand-border/30 bg-brand-soft/40 px-4 py-3 text-left text-sm transition-colors hover:border-brand-border hover:bg-brand-soft/70 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full flex-1 flex-col items-stretch gap-2 rounded-lg border border-brand-border/30 bg-white px-4 py-3 text-left text-sm transition-colors hover:border-brand-border disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="flex items-center justify-between gap-3">
           <span className="font-medium">
@@ -125,6 +129,14 @@ export function EpCountrySelector({
             {description ? <DialogDescription>{description}</DialogDescription> : null}
           </DialogHeader>
           <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={disabled || !options.length} onClick={selectAllOptions}>
+                Select all countries
+              </Button>
+              <Button type="button" variant="ghost" size="sm" disabled={disabled || !pendingValues.length} onClick={() => setPendingValues([])}>
+                Clear selection
+              </Button>
+            </div>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input

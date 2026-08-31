@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 
 import { validateWizardPayload } from "@/features/requester/components/new-request-wizard-utils";
 import { verifyWizardPatentPayload } from "@/features/requester/actions/patent-service";
+import { getRequesterDraft } from "@/features/requester/queries";
 import type { WizardPayload } from "@/features/requester/wizard-types";
 import { quoteForOrganization, publicQuote } from "@/lib/eci-erp/pricing";
+import {
+  isErpQuoteCurrencyCode,
+  type ErpQuotePreview,
+} from "@/lib/eci-erp/types";
 import {
   generateQuoteExport,
   quoteExportFileName,
@@ -11,6 +16,7 @@ import {
   type QuoteExportFormat,
 } from "@/lib/eci-erp/quote-export";
 import { createClient } from "@/lib/supabase/server";
+import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 
 const MAX_EXPORT_BODY_BYTES = 2_000_000;
 
@@ -48,34 +54,83 @@ export async function POST(request: Request) {
 
     const body = await request.json() as unknown;
     const payload = exportPayload(body);
-    const validationError = validateWizardPayload(payload);
-    if (validationError) {
-      return NextResponse.json({ error: validationError }, { status: 400 });
+    const savedDraft = payload.requestId
+      ? await getRequesterDraft(payload.requestId)
+      : null;
+    const savedPayload = savedDraft?.payload;
+    const exportableSavedPayload = isWizardPayload(savedPayload)
+      ? savedPayload
+      : null;
+    const savedQuote = exportableSavedPayload?.quotePreview;
+
+    if (payload.requestId && !savedQuote) {
+      return NextResponse.json(
+        { error: "This saved draft no longer has an exportable quotation." },
+        { status: 404 },
+      );
     }
 
-    const verifiedPayload = await verifyWizardPatentPayload(payload);
-    const result = await quoteForOrganization(
-      verifiedPayload,
-      membership.organization_id,
-      userId,
-    );
-    const quote = publicQuote(result);
-    const patent = verifiedPayload.selectedPatent;
+    let exportablePayload: WizardPayload;
+    let quote: ErpQuotePreview;
+    if (exportableSavedPayload && savedQuote) {
+      if (!isErpQuoteCurrencyCode(payload.quoteCurrency)) {
+        return NextResponse.json(
+          { error: "The selected quote currency is not supported." },
+          { status: 400 },
+        );
+      }
+
+      // Drafts deliberately omit transient lookup receipts. Use the persisted
+      // request data, but preserve the currently selected currency from the
+      // browser and recalculate the export with the ERP pricing service.
+      exportablePayload = {
+        ...exportableSavedPayload,
+        quoteCurrency: payload.quoteCurrency,
+      };
+      const result = await quoteForOrganization(
+        exportablePayload,
+        membership.organization_id,
+        userId,
+      );
+      quote = publicQuote(result);
+    } else {
+      const validationError = validateWizardPayload(payload);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+
+      exportablePayload = await verifyWizardPatentPayload(payload);
+      const result = await quoteForOrganization(
+        exportablePayload,
+        membership.organization_id,
+        userId,
+      );
+      quote = publicQuote(result);
+    }
+
+    const patent = exportablePayload.selectedPatent;
+    const legalDeadline = patent && exportablePayload.config.epServiceType
+      ? getEpoServiceAvailability(
+          exportablePayload.config.epServiceType,
+          patent,
+          exportablePayload.analysis,
+        ).deadline
+      : undefined;
     const metadata: QuoteExportMetadata = {
-      serviceName: serviceNames[verifiedPayload.config.epServiceType]
-        ?? verifiedPayload.config.epServiceType
+      serviceName: serviceNames[exportablePayload.config.epServiceType]
+        ?? exportablePayload.config.epServiceType
         ?? "Patent service",
-      serviceType: verifiedPayload.config.epServiceType,
-      serviceItem: verifiedPayload.config.serviceItem || undefined,
-      optOutCountryIds: verifiedPayload.config.optOutCountryIds,
+      serviceType: exportablePayload.config.epServiceType,
+      serviceItem: exportablePayload.config.serviceItem || undefined,
+      optOutCountryIds: exportablePayload.config.optOutCountryIds,
       patentNumber: patent?.patentNumber
-        ?? verifiedPayload.patentQuery
+        ?? exportablePayload.patentQuery
         ?? "patent",
       applicationNumber: patent?.applicationNo
         || patent?.patentNumber
-        || verifiedPayload.patentQuery
+        || exportablePayload.patentQuery
         || "patent",
-      translationRequired: verifiedPayload.config.translationRequired,
+      translationRequired: exportablePayload.config.translationRequired,
       patentDetails: patent ? {
         title: patent.title,
         source: patent.source === "wipo" ? "wipo" : "epo",
@@ -88,6 +143,7 @@ export async function POST(request: Request) {
         publicationLanguage: patent.publicationLanguage || patent.language,
         grantDate: patent.grantPublicationDate,
         rule713DispatchDate: patent.rule713CommunicationDate,
+        legalDeadline,
       } : undefined,
     };
     const file = await generateQuoteExport(format, quote, metadata);
@@ -117,10 +173,15 @@ function exportFormat(value: string | null): QuoteExportFormat {
 }
 
 function exportPayload(value: unknown): WizardPayload {
-  if (!isRecord(value) || !isRecord(value.payload)) {
+  if (!isRecord(value) || !isWizardPayload(value.payload)) {
     throw new Error("The estimate payload is invalid.");
   }
-  const payload = value.payload;
+  return value.payload;
+}
+
+function isWizardPayload(value: unknown): value is WizardPayload {
+  if (!isRecord(value)) return false;
+  const payload = value;
   if (
     !isRecord(payload.config)
     || !Array.isArray(payload.config.serviceTypes)
@@ -130,9 +191,9 @@ function exportPayload(value: unknown): WizardPayload {
     || !Array.isArray(payload.selectedPatentFileIds)
     || !Array.isArray(payload.uploadedFiles)
   ) {
-    throw new Error("The estimate payload is invalid.");
+    return false;
   }
-  return payload as WizardPayload;
+  return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

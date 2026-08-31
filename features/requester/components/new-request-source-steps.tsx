@@ -142,7 +142,7 @@ export function SourceStep(props: {
         </div>
 
         {patentSearchMode ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <form
               className="flex flex-col gap-3 md:flex-row"
               onSubmit={(event) => {

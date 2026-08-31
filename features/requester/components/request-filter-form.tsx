@@ -16,7 +16,7 @@ export function RequestFilterForm({
     <RequestListFilterForm
       basePath="/requester/requests"
       query={query}
-      searchPlaceholder="Search request, patent or matter"
+      searchPlaceholder="Search request, reference no., patent or matter"
       className="lg:grid-cols-[minmax(20rem,2fr)_minmax(12rem,0.95fr)_minmax(12rem,0.95fr)_auto]"
       filters={[
         {
