@@ -53,7 +53,7 @@ export function HeroSection({
           name="q"
           required
           aria-label="Search requests"
-          placeholder="Search by patent, application or request number"
+          placeholder="Search by reference, patent, application or request number"
           className="h-[52px] w-full rounded-xl border bg-card py-3.5 pl-12 pr-4 text-sm shadow-sm outline-none transition focus:border-brand-border focus:ring-2 focus:ring-brand-ring/15"
         />
       </form>

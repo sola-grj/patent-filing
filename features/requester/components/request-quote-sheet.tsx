@@ -30,17 +30,22 @@ type SavedErpRow = {
 export function RequestQuoteSheet({
   quote,
   showEditAction = false,
+  showHeader = true,
   isEpGranting = false,
   translationRequired = true,
 }: {
   quote?: SavedQuote | null;
   showEditAction?: boolean;
+  showHeader?: boolean;
   isEpGranting?: boolean;
   translationRequired?: boolean;
 }) {
   const currency = quote?.currency || "USD";
   const rows = savedRows(quote);
   const total = finiteAmount(quote?.total_amount) ?? rows.reduce((sum, row) => sum + row.total, 0);
+  const officialFeeSubtotal = rows.reduce((sum, row) => sum + (row.officialFee ?? 0), 0);
+  const serviceFeeSubtotal = rows.reduce((sum, row) => sum + (row.serviceFee ?? 0), 0);
+  const translationFeeSubtotal = rows.reduce((sum, row) => sum + (row.translationFee ?? 0), 0);
   const epGrantingQuote = isEpGranting ? savedErpQuote(quote) : null;
 
   if (epGrantingQuote) {
@@ -60,18 +65,18 @@ export function RequestQuoteSheet({
 
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b">
+      {showHeader ? <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b">
         <div>
           <CardTitle className="flex items-center gap-2"><ReceiptText className="size-5" />Quotation</CardTitle>
-          <p className="mt-2 text-sm text-muted-foreground">Saved quote · {formatCurrency(total, currency)}</p>
+          <p className="mt-2 text-sm text-muted-foreground">Saved quote</p>
         </div>
         {showEditAction ? (
           <Button type="button" variant="ghost" size="icon" disabled aria-label="Edit quotation amounts" title="Quotation amounts are read-only">
             <Pencil className="h-4 w-4" />
           </Button>
         ) : null}
-      </CardHeader>
-      <CardContent className="px-6 pb-6 pt-0">
+      </CardHeader> : null}
+      <CardContent className={showHeader ? "px-6 pb-6 pt-0" : "p-6"}>
         {rows.length ? (
           <div className="overflow-x-auto">
             <Table.Root size="2" variant="ghost" layout="fixed" className="min-w-[680px] table-fixed text-xs">
@@ -91,13 +96,17 @@ export function RequestQuoteSheet({
                     <Table.Cell justify="end">{formatOptionalAmount(row.officialFee)}</Table.Cell>
                     <Table.Cell justify="end">{formatOptionalAmount(row.serviceFee)}</Table.Cell>
                     <Table.Cell justify="end">{formatOptionalAmount(row.translationFee)}</Table.Cell>
-                    <Table.Cell justify="end" className="font-semibold">{formatCurrency(row.total, currency)}</Table.Cell>
+                    <Table.Cell justify="end" className="font-semibold">{formatAmount(row.total)}</Table.Cell>
                   </Table.Row>
                 ))}
-                <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
-                  <Table.Cell colSpan={4} justify="end" className="text-sm font-semibold">Estimated Total</Table.Cell>
-                  <Table.Cell justify="end" className="text-base font-semibold">{formatCurrency(total, currency)}</Table.Cell>
-                </Table.Row>
+                <QuoteSummaryRow label="Official Fee Subtotal" value={formatAmount(officialFeeSubtotal)} />
+                <QuoteSummaryRow label="Service Fee Subtotal" value={formatAmount(serviceFeeSubtotal)} />
+                <QuoteSummaryRow label="Translation Fee Subtotal" value={formatAmount(translationFeeSubtotal)} />
+                <QuoteSummaryRow
+                  label="Quotation Total"
+                  value={formatCurrency(total, currency)}
+                  final
+                />
               </Table.Body>
             </Table.Root>
           </div>
@@ -106,6 +115,27 @@ export function RequestQuoteSheet({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function QuoteSummaryRow({
+  label,
+  value,
+  final = false,
+}: {
+  label: string;
+  value: string;
+  final?: boolean;
+}) {
+  return (
+    <Table.Row className="font-semibold [--table-row-box-shadow:none]">
+      <Table.Cell colSpan={4} justify="end" className="py-3 text-sm">
+        {label}
+      </Table.Cell>
+      <Table.Cell justify="end" className={final ? "whitespace-nowrap py-3 text-base" : "whitespace-nowrap py-3 text-sm"}>
+        {value}
+      </Table.Cell>
+    </Table.Row>
   );
 }
 

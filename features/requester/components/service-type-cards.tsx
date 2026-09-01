@@ -121,7 +121,7 @@ export function ServiceTypeCards(props: {
                   disabled && !selected
                     ? "cursor-not-allowed border-border"
                     : selected
-                      ? "border-brand shadow-sm"
+                      ? "border-brand-border bg-brand-soft shadow-sm"
                       : "border-border hover:border-brand/50"
                 }`}
               >
@@ -150,7 +150,9 @@ export function ServiceTypeCards(props: {
                   className={`flex min-h-[96px] w-full flex-col items-start justify-start rounded-xl px-3 py-3 text-left transition-colors ${
                     disabled && !selected
                       ? "cursor-not-allowed text-muted-foreground opacity-70"
-                      : "text-foreground"
+                      : selected
+                        ? "text-brand-soft-foreground"
+                        : "text-foreground"
                   }`}
                 >
                   <span className="flex w-full items-start gap-3">
@@ -169,7 +171,7 @@ export function ServiceTypeCards(props: {
                     </span>
                   </span>
                   <span className="mt-2 pl-8 text-xs leading-5 text-muted-foreground">
-                    <strong className="font-semibold text-foreground">
+                    <strong className={`font-semibold ${selected ? "text-brand-soft-foreground" : "text-foreground"}`}>
                       {serviceTypeDetails[option.value].timing}
                     </strong>
                     {` · ${serviceTypeDetails[option.value].trigger}`}
@@ -181,7 +183,7 @@ export function ServiceTypeCards(props: {
         </div>
       </TooltipProvider>
       {selectedOption && selectedDetail ? (
-        <div className="grid gap-2 border-l-2 border-brand px-4 py-3 text-sm text-foreground md:grid-cols-[max-content_minmax(0,1fr)_auto] md:items-center">
+        <div className="grid gap-2 border-l-2 border-brand bg-brand-soft/50 px-4 py-3 text-sm text-foreground md:grid-cols-[max-content_minmax(0,1fr)_auto] md:items-center">
           <span className="font-semibold whitespace-nowrap">{selectedOption.label}</span>
           <span className="text-xs leading-5 text-muted-foreground">
             {selectedDetail.description}

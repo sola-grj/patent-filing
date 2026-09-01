@@ -40,10 +40,12 @@ export function PmSignaturePanel({
   canManage,
   requestId,
   signatureRequests,
+  showHeader = true,
 }: {
   canManage: boolean;
   requestId: string;
   signatureRequests: FilingSignatureRequest[];
+  showHeader?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -132,7 +134,7 @@ export function PmSignaturePanel({
 
   return (
     <Card id="signature-documents">
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+      {showHeader ? <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2">
             <FileSignature className="size-5" />
@@ -159,8 +161,8 @@ export function PmSignaturePanel({
           </p>
         </div>
         {active ? <Badge variant="outline">{statusLabel(active.status)}</Badge> : null}
-      </CardHeader>
-      <CardContent className="space-y-6">
+      </CardHeader> : null}
+      <CardContent className={`space-y-6 ${showHeader ? "" : "pt-6"}`}>
         <section
           aria-label="Current signature package"
           className="rounded-xl border bg-background p-5 shadow-sm"

@@ -184,7 +184,6 @@ export function ParsePreviewPanel({
 
 export function ConfigStep({
   referenceNo,
-  referenceNoError,
   config,
   configFieldErrors,
   sourceMode,
@@ -201,7 +200,6 @@ export function ConfigStep({
   dictionaries,
 }: {
   referenceNo: string;
-  referenceNoError?: string;
   config: WizardConfig;
   configFieldErrors: WizardConfigFieldErrors;
   sourceMode: WizardSourceMode;
@@ -301,7 +299,7 @@ export function ConfigStep({
         </div>
       </div>
       <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-5 md:[&>*:not(:first-child)]:w-3/4">
           <div className="md:col-span-2">
             <ServiceTypeCards
               channelCode={config.channelCode}
@@ -314,11 +312,18 @@ export function ConfigStep({
             />
           </div>
           {showTraditionalItems ? (
-            <div className="md:col-span-2">
+            <div className="md:col-start-1">
               <Field label="Service Items" required>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2">
                   {traditionalServiceItemOptions.map((option) => (
-                    <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2.5 text-sm">
+                    <label
+                      key={option.value}
+                      className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2.5 text-sm transition-colors ${
+                        config.serviceItem === option.value
+                          ? "border-brand-border bg-brand-soft text-brand-soft-foreground"
+                          : "border-border bg-white hover:border-brand-border/50 hover:bg-brand-soft/40"
+                      }`}
+                    >
                       <input
                         type="radio"
                         name="traditional-service-item"
@@ -345,7 +350,7 @@ export function ConfigStep({
             </div>
           ) : null}
           {config.channelCode === "ep" ? (
-            <div>
+            <div className="md:col-start-1">
               <Field label="Translation Service">
                 <label className="flex cursor-pointer items-center justify-between gap-4 rounded-md border bg-white px-3 py-2.5 text-sm">
                   <span>{config.translationRequired ? "Included" : "Not included"}</span>
@@ -390,7 +395,7 @@ export function ConfigStep({
             />
           ) : null}
           {hasFilingService ? (
-            <div className="grid gap-4 md:contents">
+            <div className="grid gap-5">
               <SelectField
                 label="Filing Type"
                 value={config.filingType ?? ""}
@@ -438,7 +443,7 @@ export function ConfigStep({
                 }
               />
               <span>
-                <span className="block font-medium">
+                <span className="block font-semibold">
                   Has a PCT Chapter II Demand been filed?
                 </span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -453,26 +458,28 @@ export function ConfigStep({
             </label>
           ) : null}
           {showSourceLanguage ? (
-            <SearchableSingleSelectField
-              label="Source Language"
-              value={config.sourceLanguage}
-              placeholder="Choose a source language"
-              options={config.channelCode === "ep" ? epoSourceLanguageOptions : sourceLanguageOptions}
-              error={configFieldErrors.sourceLanguage}
-              required
-              onChange={(sourceLanguage) => onChange({
-                ...config,
-                sourceLanguage,
-                targetLanguages: config.channelCode === "ep"
-                  ? normalizeEpoTargetLanguages(
-                      config.epServiceType,
-                      config.translationRequired,
-                      sourceLanguage,
-                      config.targetLanguages,
-                    )
-                  : config.targetLanguages,
-              })}
-            />
+            <div className={config.channelCode === "ep" ? "md:col-start-1" : undefined}>
+              <SearchableSingleSelectField
+                label="Source Language"
+                value={config.sourceLanguage}
+                placeholder="Choose a source language"
+                options={config.channelCode === "ep" ? epoSourceLanguageOptions : sourceLanguageOptions}
+                error={configFieldErrors.sourceLanguage}
+                required
+                onChange={(sourceLanguage) => onChange({
+                  ...config,
+                  sourceLanguage,
+                  targetLanguages: config.channelCode === "ep"
+                    ? normalizeEpoTargetLanguages(
+                        config.epServiceType,
+                        config.translationRequired,
+                        sourceLanguage,
+                        config.targetLanguages,
+                      )
+                    : config.targetLanguages,
+                })}
+              />
+            </div>
           ) : null}
           {config.channelCode === "ep"
             && config.translationRequired
@@ -505,7 +512,7 @@ export function ConfigStep({
           ) : null}
           {showEpCountries ? (
             config.serviceItem === "traditional_validation_opt_out" ? (
-              <div className="grid gap-4 md:col-span-2 md:grid-cols-2 md:items-stretch">
+              <div className="grid gap-5">
                 <EpCountrySelector
                   className="h-full min-w-0"
                   title="EP countries"
@@ -543,6 +550,7 @@ export function ConfigStep({
               </div>
             ) : (
               <EpCountrySelector
+                className="min-w-0 md:col-start-1"
                 title="EP countries"
                 description="Select the countries covered by this service."
                 values={config.epCountryIds}
@@ -582,22 +590,18 @@ export function ConfigStep({
               }
             />
           ) : null}
-          <div className="md:col-span-2">
-            <Field label="Reference No." required>
+          <div className="md:col-start-1">
+            <Field label="Reference No.">
               <Input
                 className={requesterFieldClassName}
                 value={referenceNo}
                 onChange={(event) => onReferenceNoChange(event.target.value)}
-                aria-invalid={Boolean(referenceNoError)}
                 placeholder="Your internal matter reference"
               />
-              {referenceNoError ? (
-                <p className="text-sm text-destructive">{referenceNoError}</p>
-              ) : null}
             </Field>
           </div>
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="customScope">
+            <Label className="font-semibold" htmlFor="customScope">
               Custom pages / paragraphs or special requirements
             </Label>
             <Textarea
@@ -610,15 +614,6 @@ export function ConfigStep({
               placeholder="Pages 1-20, claim set A, paragraph-specific instructions..."
             />
           </div>
-          <label className="flex items-center gap-2 text-sm md:col-span-2">
-            <Checkbox
-              checked={config.isUrgent}
-              onCheckedChange={(checked) =>
-                onChange({ ...config, isUrgent: checked === true })
-              }
-            />
-            Urgent
-          </label>
         </div>
       </div>
     </div>

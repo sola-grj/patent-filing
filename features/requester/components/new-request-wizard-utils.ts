@@ -130,9 +130,6 @@ export function validateWizardStep(step: number, payload: WizardPayload) {
     return "Upload at least one file before continuing.";
   }
   if (step === 1) {
-    if (!payload.referenceNo?.trim()) {
-      return "Reference No. is required.";
-    }
     const fieldErrors = validateWizardConfigFields(
       payload.config,
       payload.selectedPatent,

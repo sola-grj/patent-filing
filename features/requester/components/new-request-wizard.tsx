@@ -155,9 +155,6 @@ export function NewRequestWizard({
     step === 1 && showConfigValidation
       ? validateWizardConfigFields(config, selectedPatent, analysis.result)
       : {};
-  const referenceNoError = step === 1 && showConfigValidation && !referenceNo.trim()
-    ? "Reference No. is required."
-    : undefined;
   const isDirty = step > 0
     || referenceNo.trim().length > 0
     || patentQuery.trim().length > 0
@@ -745,7 +742,6 @@ export function NewRequestWizard({
                 uploadReference={uploadReference}
                 config={config}
                 configFieldErrors={configFieldErrors}
-                referenceNoError={referenceNoError}
                 payload={payload}
                 quotePreview={quotePreview}
                 quoteCurrency={quoteCurrency}
@@ -988,7 +984,6 @@ function StepContent(props: {
   config: WizardConfig;
   dictionaries: WizardDictionaries;
   configFieldErrors: WizardConfigFieldErrors;
-  referenceNoError?: string;
   payload: WizardPayload;
   quotePreview: ErpQuotePreview | null;
   quoteCurrency: ErpQuoteCurrencyCode;
@@ -1054,7 +1049,6 @@ function StepContent(props: {
     return (
       <ConfigStep
         referenceNo={props.referenceNo}
-        referenceNoError={props.referenceNoError}
         config={props.config}
         configFieldErrors={props.configFieldErrors}
         sourceMode={props.sourceMode}

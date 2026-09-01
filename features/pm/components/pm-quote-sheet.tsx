@@ -3,6 +3,7 @@ export function PmQuoteSheet({
   quote,
   isEpGranting = false,
   translationRequired = true,
+  showHeader = true,
 }: {
   quote?: {
     currency?: string | null;
@@ -13,11 +14,13 @@ export function PmQuoteSheet({
   } | null;
   isEpGranting?: boolean;
   translationRequired?: boolean;
+  showHeader?: boolean;
 }) {
   return (
     <RequestQuoteSheet
       quote={quote}
       showEditAction
+      showHeader={showHeader}
       isEpGranting={isEpGranting}
       translationRequired={translationRequired}
     />

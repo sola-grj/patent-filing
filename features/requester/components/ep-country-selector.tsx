@@ -73,7 +73,7 @@ export function EpCountrySelector({
   return (
     <section className={`flex h-full flex-col gap-3 ${className ?? "md:col-span-2"}`}>
       <div>
-        <Label>
+        <Label className="font-semibold">
           <span className="text-destructive" aria-hidden="true">*</span>{" "}
           {title}
         </Label>

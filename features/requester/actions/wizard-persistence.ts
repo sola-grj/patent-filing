@@ -349,9 +349,6 @@ function revalidateRequestPaths(requestId: string) {
 
 function validateCommercialFields(payload: WizardPayload) {
   const config = payload.config;
-  if (!payload.referenceNo?.trim()) {
-    throw new Error("Reference No. is required.");
-  }
   if (requiresCustomerTifg({
     channelCode: config.channelCode,
     epServiceType: config.epServiceType,

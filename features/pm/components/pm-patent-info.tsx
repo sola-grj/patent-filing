@@ -40,23 +40,25 @@ export function PmPatentInfo({
   action,
   candidate,
   patent,
+  showHeader = true,
 }: {
   action?: ReactNode;
   candidate?: WizardPatentCandidate | null;
   patent?: PmRequestPatent | null;
+  showHeader?: boolean;
 }) {
   const resolvedPatent = patent ? toPatentCandidate(patent) : candidate;
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+      {showHeader ? <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2">
           <FileSearch className="size-5" />
           Patent Information
         </CardTitle>
         {action}
-      </CardHeader>
-      <CardContent>
+      </CardHeader> : null}
+      <CardContent className={showHeader ? undefined : "pt-6"}>
         {resolvedPatent ? (
           <PatentDetailStep
             patent={resolvedPatent}

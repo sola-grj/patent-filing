@@ -30,6 +30,7 @@ export function PmRequestOverview({
   deadlinePendingMessage,
   organizationName,
   request,
+  showHeader = true,
 }: {
   config: WizardConfig;
   epCountries: Array<{ id: number; name: string }>;
@@ -41,6 +42,7 @@ export function PmRequestOverview({
     submitted_at?: string | null;
     updated_at?: string | null;
   };
+  showHeader?: boolean;
 }) {
   const serviceTypes = config.serviceTypes ?? [];
   const showFilingFields = serviceTypes.includes("filing");
@@ -116,13 +118,13 @@ export function PmRequestOverview({
 
   return (
     <Card>
-      <CardHeader>
+      {showHeader ? <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ClipboardList className="size-5" />
           Request overview
         </CardTitle>
-      </CardHeader>
-      <CardContent>
+      </CardHeader> : null}
+      <CardContent className={showHeader ? undefined : "pt-6"}>
         {deadlineItems.length || deadlinePendingMessage ? (
           <RequestDeadlinePanel
             items={deadlineItems}
@@ -131,7 +133,7 @@ export function PmRequestOverview({
         ) : null}
         <section
           aria-label="Basic info"
-          className={`rounded-lg border border-border/70 bg-background p-4 ${deadlineItems.length || deadlinePendingMessage ? "mt-6" : ""}`}
+          className={`border-b border-border/70 pb-6 ${deadlineItems.length || deadlinePendingMessage ? "mt-6" : ""}`}
         >
           <h3 className="text-sm font-semibold">Basic info</h3>
           <dl className="mt-4 grid gap-x-10 gap-y-6 md:grid-cols-2">

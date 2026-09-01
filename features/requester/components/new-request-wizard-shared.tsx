@@ -43,7 +43,7 @@ export function Field({
 }) {
   return (
     <div className="space-y-2">
-      <Label>
+      <Label className="font-semibold">
         {required ? (
           <span className="text-destructive" aria-hidden="true">
             *

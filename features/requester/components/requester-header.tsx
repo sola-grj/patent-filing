@@ -5,20 +5,24 @@ export function RequesterHeader({
   description,
   action,
   status,
+  showEyebrow = true,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
   status?: ReactNode;
+  showEyebrow?: boolean;
 }) {
   return (
     <div className="border-b pb-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Requester
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-3">
+          {showEyebrow ? (
+            <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Requester
+            </p>
+          ) : null}
+          <div className={`${showEyebrow ? "mt-2 " : ""}flex flex-wrap items-center gap-3`}>
             <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
             {status}
           </div>

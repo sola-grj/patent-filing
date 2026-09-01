@@ -19,9 +19,11 @@ import { SignatureHistory } from "./signature-history";
 export function RequesterSignaturePanel({
   signatureRequests,
   canSubmit = true,
+  showHeader = true,
 }: {
   signatureRequests: FilingSignatureRequest[];
   canSubmit?: boolean;
+  showHeader?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -63,7 +65,7 @@ export function RequesterSignaturePanel({
 
   return (
     <Card id="signature-documents" className={active ? "border-amber-300 dark:border-amber-900" : undefined}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+      {showHeader ? <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2">
             <FileSignature className="size-5" />
@@ -74,8 +76,8 @@ export function RequesterSignaturePanel({
           </p>
         </div>
         {active ? <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-200">Action required</Badge> : null}
-      </CardHeader>
-      <CardContent className="space-y-6">
+      </CardHeader> : null}
+      <CardContent className={`space-y-6 ${showHeader ? "" : "pt-6"}`}>
         {active ? (
           <div className="space-y-5">
             <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/30">

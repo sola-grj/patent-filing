@@ -1,9 +1,10 @@
-import { ArrowLeft, ClipboardList, FileSearch } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RequestDetailTabs } from "@/features/requests/components/request-detail-tabs";
 import { latestPublishedDeliverables } from "@/features/deliverables/delivery-progress";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
@@ -363,10 +364,11 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     },
   ];
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-col gap-6 min-[1920px]:w-[calc(100vw-13rem)] min-[1920px]:self-center">
       <RequesterHeader
         title={patentNumber ?? request.request_no}
         description={`Request ${request.request_no}`}
+        showEyebrow={false}
         status={
           <RequesterStatusBadge
             status={request.requester_status}
@@ -406,89 +408,92 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
               This Request is shared by your organization. You have read-only access.
             </p>
           ) : null}
-          <Section
-            title="Request overview"
-            icon={<ClipboardList className="size-5" />}
-          >
-            {deadlineItems.length || deadlinePendingMessage ? (
-              <RequestDeadlinePanel
-                items={deadlineItems}
-                pendingMessage={deadlinePendingMessage}
-              />
-            ) : null}
-            <section
-              aria-label="Basic info"
-              className="rounded-lg border border-border/70 bg-background p-4"
-            >
-              <h3 className="text-sm font-semibold">Basic info</h3>
-              <div className="mt-4 grid items-start gap-5 md:grid-cols-2">
-                <DetailsGrid items={leftColumnItems} columns="single" />
-                <DetailsGrid items={rightColumnItems} columns="single" />
-              </div>
-            </section>
-          </Section>
-          {signatureRequests.length ? (
-            <RequesterSignaturePanel signatureRequests={signatureRequests} canSubmit={!isReadOnly} />
-          ) : null}
-          {isPatentSearch ? (
-            <>
-              <Section
-                title="Patent Information"
-                icon={<FileSearch className="size-5" />}
-              >
-                <PatentCacheStatus
-                  requestId={request.id}
-                  status={patentFile?.status}
-                  updatedAt={patentFile?.updated_at}
-                  canRetry={!isReadOnly}
-                />
-                {patentCandidate ? (
-                  <PatentDetailStep
-                    patent={patentCandidate}
-                    flushBibliographic
-                    plainBibliographic
-                    useParentScroll
-                    additionalMetadata={[
-                      ...(entityLabel ? [{ label: "Entity", value: entityLabel }] : []),
-                      ...deadlineItems.map((item) => ({
-                        label: item.title,
-                        value: formatDate(item.dueOn),
-                      })),
-                    ]}
+          <RequestDetailTabs
+            requestOverview={(
+              <Section showHeader={false}>
+                {deadlineItems.length || deadlinePendingMessage ? (
+                  <RequestDeadlinePanel
+                    items={deadlineItems}
+                    pendingMessage={deadlinePendingMessage}
                   />
-                ) : (
-                  <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                    No patent information is associated with this request.
-                  </p>
-                )}
+                ) : null}
+                <section
+                  aria-label="Basic info"
+                  className="border-b border-border/70 pb-6"
+                >
+                  <h3 className="text-sm font-semibold">Basic info</h3>
+                  <div className="mt-4 grid items-start gap-5 md:grid-cols-2">
+                    <DetailsGrid items={leftColumnItems} columns="single" />
+                    <DetailsGrid items={rightColumnItems} columns="single" />
+                  </div>
+                </section>
               </Section>
-              {showFileInformation ? (
-                <RequestFileInformation
-                  files={files}
-                  action={
-                    uploadedFiles.length ? (
-                      <RequestFilesDownloadButton
-                        href={`/requester/requests/${request.id}/download`}
+            )}
+            quotation={(
+              <RequestQuoteSheet
+                quote={latestQuote}
+                showHeader={false}
+                isEpGranting={config.epServiceType === "ep_granting"}
+                translationRequired={config.translationRequired}
+              />
+            )}
+            signatureDocuments={signatureRequests.length ? (
+              <RequesterSignaturePanel
+                signatureRequests={signatureRequests}
+                canSubmit={!isReadOnly}
+                showHeader={false}
+              />
+            ) : (
+              <EmptyDetailPanel message="No signature documents are available for this request." />
+            )}
+            patentInformation={(
+              <div className="flex flex-col gap-6">
+                {isPatentSearch ? (
+                  <Section showHeader={false}>
+                    <PatentCacheStatus
+                      requestId={request.id}
+                      status={patentFile?.status}
+                      updatedAt={patentFile?.updated_at}
+                      canRetry={!isReadOnly}
+                    />
+                    {patentCandidate ? (
+                      <PatentDetailStep
+                        patent={patentCandidate}
+                        flushBibliographic
+                        plainBibliographic
+                        useParentScroll
+                        additionalMetadata={[
+                          ...(entityLabel ? [{ label: "Entity", value: entityLabel }] : []),
+                          ...deadlineItems.map((item) => ({
+                            label: item.title,
+                            value: formatDate(item.dueOn),
+                          })),
+                        ]}
                       />
-                    ) : undefined
-                  }
-                />
-              ) : null}
-            </>
-          ) : showFileInformation ? (
-            <RequestFileInformation
-              files={uploadedFiles}
-              action={
-                <RequestFilesDownloadButton
-                  href={`/requester/requests/${request.id}/download`}
-                />
-              }
-            />
-          ) : null}
-          <RequestQuoteSheet
-            quote={latestQuote}
-            isEpGranting={config.epServiceType === "ep_granting"}
-            translationRequired={config.translationRequired}
+                    ) : (
+                      <p className="rounded-lg border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                        No patent information is associated with this request.
+                      </p>
+                    )}
+                  </Section>
+                ) : null}
+                {showFileInformation ? (
+                  <RequestFileInformation
+                    files={isPatentSearch ? files : uploadedFiles}
+                    action={
+                      uploadedFiles.length ? (
+                        <RequestFilesDownloadButton
+                          href={`/requester/requests/${request.id}/download`}
+                        />
+                      ) : undefined
+                    }
+                  />
+                ) : null}
+                {!isPatentSearch && !showFileInformation ? (
+                  <EmptyDetailPanel message="No patent information is associated with this request." />
+                ) : null}
+              </div>
+            )}
           />
         </div>
       </div>
@@ -656,25 +661,37 @@ function Section({
   cardClassName,
   contentClassName,
   children,
+  showHeader = true,
 }: {
-  title: string;
+  title?: string;
   icon?: ReactNode;
   action?: ReactNode;
   cardClassName?: string;
   contentClassName?: string;
   children: ReactNode;
+  showHeader?: boolean;
 }) {
   return (
     <Card className={cardClassName ?? "h-full"}>
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+      {showHeader ? <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
         <CardTitle className="flex items-center gap-2">
           {icon}
           {title}
         </CardTitle>
         {action}
-      </CardHeader>
-      <CardContent className={contentClassName ?? "space-y-6"}>
+      </CardHeader> : null}
+      <CardContent className={`${showHeader ? "" : "pt-6 "}${contentClassName ?? "space-y-6"}`}>
         {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyDetailPanel({ message }: { message: string }) {
+  return (
+    <Card>
+      <CardContent className="p-6 text-sm text-muted-foreground">
+        {message}
       </CardContent>
     </Card>
   );

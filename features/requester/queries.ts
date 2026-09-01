@@ -390,6 +390,10 @@ export async function getRequesterRequests(filters?: {
             normalizedKeyword
             && patentSearchValue.includes(normalizedKeyword),
           );
+      }).sort((left, right) => {
+        const leftExactReference = left.reference_no?.trim().toLowerCase() === keyword;
+        const rightExactReference = right.reference_no?.trim().toLowerCase() === keyword;
+        return Number(rightExactReference) - Number(leftExactReference);
       })
     : data ?? [];
 

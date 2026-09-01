@@ -46,11 +46,7 @@ export function EpGrantingQuotation({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {readOnly ? (
-              <span className="text-sm font-medium">
-                {erpQuoteCurrencySymbol(currency)} {currency}
-              </span>
-            ) : onCurrencyChange ? (
+            {!readOnly && onCurrencyChange ? (
               <QuoteCurrencySelect
                 value={currency}
                 onChange={onCurrencyChange}
@@ -102,16 +98,14 @@ function QuotationTable({
           <SubtotalRow
             label="Base Fee Subtotal"
             amount={table.baseFeeSubtotal}
-            currency={currency}
           />
           {table.translationFees.length ? (
             <SubtotalRow
               label="Translation Fee Subtotal"
               amount={table.translationFeeSubtotal}
-              currency={currency}
             />
           ) : null}
-          <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
+          <Table.Row className="font-semibold [--table-row-box-shadow:none]">
             <Table.Cell
               colSpan={4}
               className="py-3 text-right text-sm font-semibold"
@@ -154,19 +148,16 @@ function FeeRow({ line }: { line: EpGrantingFeeLine }) {
 function SubtotalRow({
   label,
   amount,
-  currency,
 }: {
   label: string;
   amount: number;
-  currency: ErpQuoteCurrencyCode;
 }) {
   return (
-    <Table.Row className="bg-muted/20 font-semibold [--table-row-box-shadow:none]">
+    <Table.Row className="font-semibold [--table-row-box-shadow:none]">
       <Table.Cell colSpan={4} className="text-right">
         {label}
       </Table.Cell>
       <Table.Cell justify="end" className="whitespace-nowrap">
-        {erpQuoteCurrencySymbol(currency)}
         {formatAmount(amount)}
       </Table.Cell>
     </Table.Row>

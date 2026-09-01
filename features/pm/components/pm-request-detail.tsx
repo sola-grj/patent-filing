@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RequestDetailTabs } from "@/features/requests/components/request-detail-tabs";
 import {
   generatePmQuote,
   respondToNegotiation,
@@ -274,11 +275,12 @@ export function PmRequestDetail({
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-8 overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-col gap-6 min-[1920px]:w-[calc(100vw-13rem)] min-[1920px]:self-center">
       <div className="shrink-0">
         <PmHeader
           title={headerTitle}
           description={`Request ${request.request_no} · ${organization?.name ?? "Customer organization"}`}
+          showEyebrow={false}
           status={<RequesterStatusBadge status={request.pm_status} size="compact" />}
           action={
             <PmRequestHeaderAction
@@ -295,114 +297,134 @@ export function PmRequestDetail({
       </div>
       <div className="hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="flex flex-col gap-6 pr-1">
-            <PmRequestOverview
-              config={config}
-              epCountries={request.ep_countries ?? []}
-              deadlineItems={deadlineItems}
-              deadlinePendingMessage={deadlinePendingMessage}
-              organizationName={organization?.name ?? "-"}
-              request={request}
-            />
-            {showSignaturePanel ? (
+          <RequestDetailTabs
+            requestOverview={(
+              <div className="flex flex-col gap-6">
+                <PmRequestOverview
+                  config={config}
+                  epCountries={request.ep_countries ?? []}
+                  deadlineItems={deadlineItems}
+                  deadlinePendingMessage={deadlinePendingMessage}
+                  organizationName={organization?.name ?? "-"}
+                  request={request}
+                  showHeader={false}
+                />
+                <Section
+                  title="Event timeline"
+                  icon={<History className="size-5" />}
+                  cardClassName="flex min-h-0 max-h-[24rem] flex-col overflow-hidden"
+                  headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+                  contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
+                >
+                  {events.length ? (
+                    <div className="divide-y rounded-md border">
+                      {events.map((event) => (
+                        <div key={event.id} className="flex items-center justify-between gap-4 p-3 text-sm">
+                          <span>
+                            <span className="font-medium">
+                              {formatRequestEventTitle(event.event_type, event.payload)}
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {formatRequestEventTransition(event.from_status, event.to_status)}
+                            </span>
+                          </span>
+                          <span className="text-muted-foreground">{formatEventDateTime(event.created_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState>No events recorded.</EmptyState>
+                  )}
+                </Section>
+              </div>
+            )}
+            quotation={(
+              <div className="flex flex-col gap-6">
+                <PmQuoteSheet
+                  quote={latestQuote}
+                  showHeader={false}
+                  isEpGranting={config.epServiceType === "ep_granting"}
+                  translationRequired={config.translationRequired}
+                />
+                {SHOW_NEGOTIATION_HISTORY ? (
+                  negotiationHistory.length ? (
+                    <QuoteNegotiationHistory
+                      cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
+                      contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
+                      currency={latestQuote?.currency ?? "USD"}
+                      headerClassName="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+                      items={negotiationHistory}
+                    />
+                  ) : (
+                    <Section
+                      title="Negotiation history"
+                      icon={<MessageSquareMore className="size-5" />}
+                      cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
+                      headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
+                    >
+                      <EmptyState>No negotiation rounds yet.</EmptyState>
+                    </Section>
+                  )
+                ) : null}
+                {SHOW_QUOTE_PANEL ? (
+                  <QuotePanel
+                    quote={latestQuote}
+                    sourceQuote={activeSourceQuote}
+                    latestNegotiation={latestOpenNegotiation}
+                    latestNegotiationHistory={latestNegotiationHistory}
+                    negotiationHistory={negotiationHistory}
+                    currentUserId={currentUserId}
+                    requestId={request.id}
+                    requestStatus={request.pm_status}
+                  />
+                ) : null}
+              </div>
+            )}
+            signatureDocuments={showSignaturePanel ? (
               <PmSignaturePanel
                 key={signatureRequests.find((item) => ["draft", "sent"].includes(item.status))?.id ?? "new"}
                 canManage={request.pm_status === "in_progress"}
                 requestId={request.id}
                 signatureRequests={signatureRequests}
+                showHeader={false}
               />
-            ) : null}
-            {isPatentSearch ? (
-              <>
-                <PmPatentInfo
-                  patent={patent}
-                  candidate={patentCandidate}
-                />
-                {showFileInformation ? (
-                  <RequestFileInformation
-                    files={files}
-                    action={
-                      <RequestFilesDownloadButton href={`/pm/${request.id}/download`} />
-                    }
+            ) : (
+              <EmptyDetailPanel message="No signature documents are available for this request." />
+            )}
+            patentInformation={(
+              <div className="flex flex-col gap-6">
+                {isPatentSearch ? (
+                  <PmPatentInfo
+                    patent={patent}
+                    candidate={patentCandidate}
+                    showHeader={false}
                   />
                 ) : null}
-              </>
-            ) : showFileInformation ? (
-              <RequestFileInformation
-                files={uploadedFiles}
-                action={
-                  <RequestFilesDownloadButton
-                    href={`/pm/${request.id}/download`}
+                {showFileInformation ? (
+                  <RequestFileInformation
+                    files={isPatentSearch ? files : uploadedFiles}
+                    action={<RequestFilesDownloadButton href={`/pm/${request.id}/download`} />}
                   />
-                }
-              />
-            ) : null}
-            <PmQuoteSheet
-              quote={latestQuote}
-              isEpGranting={config.epServiceType === "ep_granting"}
-              translationRequired={config.translationRequired}
-            />
-            {SHOW_NEGOTIATION_HISTORY ? (
-              negotiationHistory.length ? (
-                <QuoteNegotiationHistory
-                  cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
-                  contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-                  currency={latestQuote?.currency ?? "USD"}
-                  headerClassName="sticky top-0 z-10 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-                  items={negotiationHistory}
-                />
-              ) : (
-                <Section
-                  title="Negotiation history"
-                  icon={<MessageSquareMore className="size-5" />}
-                  cardClassName="flex min-h-0 max-h-[30rem] flex-col overflow-hidden"
-                  headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-                >
-                  <EmptyState>No negotiation rounds yet.</EmptyState>
-                </Section>
-              )
-            ) : null}
-            <Section
-              title="Event timeline"
-              icon={<History className="size-5" />}
-              cardClassName="flex min-h-0 max-h-[24rem] flex-col overflow-hidden"
-              headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-              contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-            >
-              {events.length ? (
-                <div className="divide-y rounded-md border">
-                  {events.map((event) => (
-                    <div key={event.id} className="flex items-center justify-between gap-4 p-3 text-sm">
-                      <span>
-                        <span className="font-medium">
-                          {formatRequestEventTitle(event.event_type, event.payload)}
-                        </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {formatRequestEventTransition(event.from_status, event.to_status)}
-                        </span>
-                      </span>
-                      <span className="text-muted-foreground">{formatEventDateTime(event.created_at)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState>No events recorded.</EmptyState>
-              )}
-            </Section>
-            {SHOW_QUOTE_PANEL ? (
-              <QuotePanel
-                quote={latestQuote}
-                sourceQuote={activeSourceQuote}
-                latestNegotiation={latestOpenNegotiation}
-                latestNegotiationHistory={latestNegotiationHistory}
-                negotiationHistory={negotiationHistory}
-                currentUserId={currentUserId}
-                requestId={request.id}
-                requestStatus={request.pm_status}
-              />
-            ) : null}
+                ) : null}
+                {!isPatentSearch && !showFileInformation ? (
+                  <EmptyDetailPanel message="No patent information is available for this request." />
+                ) : null}
+              </div>
+            )}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+function EmptyDetailPanel({ message }: { message: string }) {
+  return (
+    <Card>
+      <CardContent className="p-6 text-sm text-muted-foreground">
+        {message}
+      </CardContent>
+    </Card>
   );
 }
 
