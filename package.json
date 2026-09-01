@@ -10,6 +10,7 @@
     "test:deliverables": "node --experimental-strip-types --test features/deliverables/delivery-progress.test.ts",
     "test:drafts": "node --experimental-strip-types --test features/requester/draft-v2.test.ts",
     "test:organization-access": "node --experimental-strip-types --test features/requester/request-scope.test.ts",
+    "test:notifications": "node --experimental-strip-types --test features/requester/notifications.test.ts",
     "test:erp": "node --experimental-strip-types --test lib/eci-erp/eci-erp.test.ts",
     "test:quote-export": "node --experimental-strip-types --test lib/eci-erp/quote-export.test.ts",
     "backfill:deadlines": "node --env-file=.env.local scripts/backfill-deadline-basis.mjs",

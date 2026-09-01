@@ -21,8 +21,8 @@ export default function RequesterLayout({
   return (
     <RequestWizardControllerProvider>
       <main className="fixed inset-0 grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background">
-        <Suspense fallback={<AppTopNavFallback links={requesterNavLinks} />}>
-          <AppTopNav links={requesterNavLinks} />
+        <Suspense fallback={<AppTopNavFallback links={requesterNavLinks} notificationHref="/requester/messages" />}>
+          <AppTopNav links={requesterNavLinks} notificationHref="/requester/messages" />
         </Suspense>
         <div className="mx-auto flex min-h-0 w-full max-w-[1760px] flex-col overflow-visible px-6 py-7">
           {children}

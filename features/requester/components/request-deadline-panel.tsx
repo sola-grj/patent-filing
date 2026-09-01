@@ -12,6 +12,7 @@ export function RequestDeadlinePanel({
 }) {
   return (
     <section
+      id="request-deadline"
       aria-label="Legal deadlines"
       className="rounded-lg border border-border/70 bg-muted/20 p-4"
     >

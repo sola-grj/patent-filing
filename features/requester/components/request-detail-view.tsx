@@ -388,15 +388,17 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
               </Link>
             </Button>
             {order?.id && deliverables.length ? (
-              <RequesterDeliverablesDialog
-                deliverables={deliverables}
-                orderId={order.id}
-                requestId={request.id}
-                totalJurisdictionCount={config.epCountryIds.length
-                  ? config.epCountryIds.length
-                  : jurisdictionCodes.length}
-                epCountries={epCountries}
-              />
+              <div id="deliverables">
+                <RequesterDeliverablesDialog
+                  deliverables={deliverables}
+                  orderId={order.id}
+                  requestId={request.id}
+                  totalJurisdictionCount={config.epCountryIds.length
+                    ? config.epCountryIds.length
+                    : jurisdictionCodes.length}
+                  epCountries={epCountries}
+                />
+              </div>
             ) : null}
           </div>
         }

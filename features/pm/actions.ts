@@ -21,6 +21,7 @@ import {
 } from "@/features/deliverables/delivery-progress";
 import { safeFileName } from "@/features/requester/server-utils";
 import { usesSingleEpDelivery } from "@/features/requester/request-paths";
+import { ensureCompletedRequestNotification } from "@/features/requester/notification-reconciliation";
 
 import { requirePmContext, toPmErrorMessage } from "./server-utils";
 
@@ -721,6 +722,12 @@ export async function deliverPmOrder(
         })
         .eq("id", requestId);
       if (requestUpdateError) throw new Error(requestUpdateError.message);
+
+      try {
+        await ensureCompletedRequestNotification(requestId);
+      } catch (notificationError) {
+        console.error("Unable to create completed Request notification", notificationError);
+      }
     }
 
     await writeRequestEvent(
@@ -752,6 +759,10 @@ export async function deliverPmOrder(
     revalidatePmRequest(requestId);
     revalidatePath(`/requester/orders/${orderId}`);
     revalidatePath("/requester/orders");
+    if (completesRequest) {
+      revalidatePath("/requester", "layout");
+      revalidatePath("/requester/messages");
+    }
     return { success: true };
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };

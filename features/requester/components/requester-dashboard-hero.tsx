@@ -1,96 +1,70 @@
 import Link from "next/link";
-import { ArrowRight, Plus, Search } from "lucide-react";
+import { History, Search } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { TimeAwareGreeting } from "@/components/time-aware-greeting";
-import {
-  getRequesterStatusMeta,
-  RequesterStatusBadge,
-  type RequesterLifecycleStatus,
-} from "@/features/requester/requester-status";
-import { RequesterCreateRequestButton } from "./requester-create-request-button";
 
 export function HeroSection({
   email,
   organizationName,
+  recentSearches,
 }: {
   email: string | null;
   organizationName: string;
+  recentSearches: string[];
 }) {
   const displayName = getDisplayName(email, organizationName);
-  const organizationInitials = getInitials(organizationName);
 
   return (
-    <section className="space-y-5">
-      <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="flex items-center gap-5">
-          <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-brand text-xl font-semibold text-brand-foreground shadow-sm">
-            {organizationInitials}
-          </span>
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              <TimeAwareGreeting displayName={displayName} />
-            </h1>
-            <p className="mt-1 text-base text-muted-foreground">
-              Here&apos;s what needs your attention today.
-            </p>
-          </div>
-        </div>
+    <section className="w-full max-w-[980px] text-center">
+      <p className="text-base font-medium text-muted-foreground sm:text-lg">
+        <TimeAwareGreeting displayName={displayName} />
+      </p>
+      <h1 className="mt-5 text-4xl font-bold tracking-[-0.035em] text-foreground sm:text-5xl">
+        Pat&apos;s on the case.
+      </h1>
+      <p className="mt-5 text-base text-muted-foreground sm:text-lg">
+        Find patent records, applications, references, and service requests in one place.
+      </p>
 
-        <RequesterCreateRequestButton
-          size="lg"
-          label="New request"
-          icon={<Plus className="size-5" />}
-          className="h-14 w-full rounded-lg bg-brand text-base text-brand-foreground shadow-sm hover:bg-brand-hover"
-        />
-      </div>
-
-      <form action="/requester/requests" className="relative w-full">
+      <form
+        action="/requester/requests"
+        className="mt-8 flex flex-col gap-2 rounded-xl border bg-card p-2 text-left shadow-[0_10px_35px_rgba(31,41,55,0.09)] sm:flex-row"
+      >
         <input type="hidden" name="from" value="dashboard" />
-        <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="search"
-          name="q"
-          required
-          aria-label="Search requests"
-          placeholder="Search by reference, patent, application or request number"
-          className="h-[52px] w-full rounded-xl border bg-card py-3.5 pl-12 pr-4 text-sm shadow-sm outline-none transition focus:border-brand-border focus:ring-2 focus:ring-brand-ring/15"
-        />
+        <label className="relative min-w-0 flex-1">
+          <span className="sr-only">Search patents and requests</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-6 -translate-y-1/2 text-muted-foreground/70 sm:left-2" />
+          <input
+            type="search"
+            name="q"
+            required
+            placeholder="Search by publication no., application no., reference no., or request no."
+            className="h-14 w-full bg-transparent pl-12 pr-3 text-base outline-none placeholder:text-muted-foreground/75"
+          />
+        </label>
+        <button
+          type="submit"
+          className="h-14 rounded-lg bg-brand px-10 text-base font-semibold text-brand-foreground shadow-sm transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring sm:min-w-36"
+        >
+          Search
+        </button>
       </form>
-    </section>
-  );
-}
 
-export function MetricCard({
-  status,
-  value,
-  href,
-}: {
-  status: RequesterLifecycleStatus;
-  value: number;
-  href: string;
-}) {
-  const meta = getRequesterStatusMeta(status);
-
-  return (
-    <Link
-      href={href}
-      className="group rounded-2xl border bg-card/90 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <RequesterStatusBadge status={status} size="compact" width="fixed" />
-        <span className={cn("rounded-full border p-2", meta.toneClassName)}>
-          <meta.icon className="h-4 w-4" />
-        </span>
-      </div>
-      <div className="mt-7 flex items-end justify-between gap-4">
-        <div>
-          <p className="text-3xl font-semibold tracking-tight">{value}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{meta.label}</p>
+      {recentSearches.length ? (
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          {recentSearches.map((query) => (
+            <Link
+              key={query}
+              href={`/requester/requests?${new URLSearchParams({ from: "dashboard", q: query })}`}
+              className="inline-flex h-10 items-center gap-2 rounded-full border bg-background/70 px-4 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-card"
+            >
+              <History className="size-4" />
+              {query}
+            </Link>
+          ))}
         </div>
-        <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
-      </div>
-    </Link>
+      ) : null}
+    </section>
   );
 }
 
@@ -103,15 +77,4 @@ function getDisplayName(email: string | null, fallback: string) {
     .filter(Boolean)
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
-}
-
-function getInitials(value: string) {
-  const initials = value
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-
-  return initials || "P";
 }

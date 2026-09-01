@@ -1,8 +1,7 @@
 import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
 import { resolveRequesterRequestScope } from "./request-scope";
-import { buildDashboardAttentionItems } from "./dashboard-attention";
-import { buildDashboardDeadlineItems } from "./deadlines";
 import { isEpGrantingTranslation } from "./epo-tifg-upload";
+import { recentDistinctSearches } from "./notifications";
 import { normalizeRequestSearchTerm } from "./requester-routes";
 import type {
   DictionaryOption,
@@ -257,63 +256,21 @@ export async function getRequesterDashboard() {
     return {
       organization: null,
       email: accountLabel,
-      stats: null,
-      recentRequests: [],
-      recentDrafts: [],
-      draftCount: 0,
-      attentionItems: [],
-      deadlineItems: [],
-      orders: [],
-      dictionaries: null,
+      recentSearches: [],
     };
   }
 
-  const [
-    { data: requests, error: requestsError },
-    { data: orders, error: ordersError },
-    dictionaries,
-  ] = await Promise.all([
-    supabase
-      .from("translation_requests")
-      .select("id, request_no, title, source_mode, channel_code, requester_status, workflow_stage, submitted_at, updated_at, last_draft_step, draft_payload, translation_requirements(is_urgent, service_types, epv_type_code, ep_service_type_code, jurisdiction_codes, pct_chapter_code), request_patents(patent_number, application_no, publication_no, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date), filing_signature_requests(id, status, due_at, sent_at, filing_signature_files(id, direction))")
-      .eq("requester_id", userId)
-      .order("updated_at", { ascending: false }),
-    supabase
-      .from("orders")
-      .select("id, request_id, completed_at, updated_at, translation_tasks(id, task_deliverables(id, status, created_at, ep_country_id, jurisdiction_code, version_no))")
-      .eq("requester_id", userId)
-      .order("updated_at", { ascending: false }),
-    getRequesterDictionaries(),
-  ]);
-
-  if (requestsError) {
-    throw new Error(requestsError.message);
-  }
-  if (ordersError) {
-    throw new Error(ordersError.message);
-  }
-
-  const requestRows = requests ?? [];
-  const activeRequests = requestRows.filter((request) => request.workflow_stage !== "draft");
-  const drafts = requestRows.filter((request) => request.workflow_stage === "draft");
+  const { data: requests, error } = await supabase
+    .from("translation_requests")
+    .select("patent_searches(query, created_at)")
+    .eq("requester_id", userId);
+  if (error) throw new Error(error.message);
+  const searches = (requests ?? []).flatMap((request) => request.patent_searches ?? []);
 
   return {
     organization,
     email: accountLabel,
-    stats: {
-      responding: activeRequests.filter((request) => request.requester_status === "responding").length,
-      negotiating: activeRequests.filter((request) => request.requester_status === "negotiation").length,
-      inProgress: activeRequests.filter((request) => request.requester_status === "in_progress").length,
-      rejected: activeRequests.filter((request) => request.requester_status === "rejected").length,
-      completed: activeRequests.filter((request) => request.requester_status === "completed").length,
-    },
-    recentRequests: activeRequests.slice(0, 3),
-    recentDrafts: drafts.slice(0, 8),
-    draftCount: drafts.length,
-    attentionItems: buildDashboardAttentionItems(requestRows, orders ?? []),
-    deadlineItems: buildDashboardDeadlineItems(requestRows),
-    orders: orders ?? [],
-    dictionaries,
+    recentSearches: recentDistinctSearches(searches),
   };
 }
 

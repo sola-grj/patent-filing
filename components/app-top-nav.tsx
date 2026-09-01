@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Bell } from "lucide-react";
 
 import { getOptionalAuthenticatedUser } from "@/lib/auth/user-routing";
 import { UserAccountMenu } from "@/components/user-account-menu";
@@ -7,11 +8,14 @@ import {
   AppTopNavLinks,
   type AppTopNavLink,
 } from "@/components/app-top-nav-links";
+import { countRequesterUnreadNotifications } from "@/features/requester/notification-queries";
 
 export async function AppTopNav({
   links = [],
+  notificationHref,
 }: {
   links?: AppTopNavLink[];
+  notificationHref?: string;
 }) {
   const user = await getOptionalAuthenticatedUser();
   const { data: profile } = user
@@ -22,6 +26,9 @@ export async function AppTopNav({
         .maybeSingle()
     : { data: null };
   const accountLabel = profile?.display_name || user?.email || null;
+  const unreadCount = user && notificationHref
+    ? await countRequesterUnreadNotifications(user.supabase, user.userId)
+    : 0;
 
   return (
     <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -45,7 +52,10 @@ export async function AppTopNav({
             <AppTopNavLinks links={links} />
           ) : null}
         </div>
-        <div className="min-w-0 shrink-0">
+        <div className="flex min-w-0 shrink-0 items-center gap-7">
+          {notificationHref ? (
+            <NotificationBell href={notificationHref} unreadCount={unreadCount} />
+          ) : null}
           <UserAccountMenu email={accountLabel} />
         </div>
       </nav>
@@ -55,8 +65,10 @@ export async function AppTopNav({
 
 export function AppTopNavFallback({
   links = [],
+  notificationHref,
 }: {
   links?: AppTopNavLink[];
+  notificationHref?: string;
 }) {
   return (
     <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -90,7 +102,27 @@ export function AppTopNavFallback({
             </div>
           ) : null}
         </div>
+        {notificationHref ? (
+          <NotificationBell href={notificationHref} unreadCount={0} />
+        ) : null}
       </nav>
     </div>
+  );
+}
+
+function NotificationBell({ href, unreadCount }: { href: string; unreadCount: number }) {
+  return (
+    <Link
+      href={href}
+      aria-label={unreadCount ? `${unreadCount} unread messages` : "Messages"}
+      className="relative flex size-10 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted"
+    >
+      <Bell className="size-6" strokeWidth={1.8} />
+      {unreadCount ? (
+        <span className="absolute right-0 top-0 flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-semibold leading-5 text-white ring-2 ring-background">
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      ) : null}
+    </Link>
   );
 }

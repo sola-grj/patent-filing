@@ -4,6 +4,7 @@ import { hasEnvVars } from "../utils";
 
 const REQUESTER_HOME_PATH = "/requester";
 const ERP_CUSTOMER_SYNC_PATH = "/api/cron/sync-erp-clients";
+const REQUESTER_NOTIFICATION_SYNC_PATH = "/api/cron/reconcile-requester-notifications";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -13,7 +14,10 @@ export async function updateSession(request: NextRequest) {
   // This server-to-server route authenticates with CRON_SECRET in its own
   // handler. Requiring a Portal session here would redirect Vercel Cron to the
   // login page before the Bearer secret can be checked.
-  if (request.nextUrl.pathname === ERP_CUSTOMER_SYNC_PATH) {
+  if (
+    request.nextUrl.pathname === ERP_CUSTOMER_SYNC_PATH
+    || request.nextUrl.pathname === REQUESTER_NOTIFICATION_SYNC_PATH
+  ) {
     return supabaseResponse;
   }
 
