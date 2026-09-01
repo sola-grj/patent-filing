@@ -15,12 +15,13 @@ import {
   RequestServiceBadge,
 } from "@/features/requester/components/request-summary-badges";
 import { UrgentBadge } from "@/features/requester/components/urgent-badge";
+import { buildRequestDeadlineItems } from "@/features/requester/deadlines";
 import { formatCurrency, formatDate } from "@/features/requester/format";
 import { buildFreshRequestHref } from "@/features/requester/requester-routes";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
 const requestGridClassName =
-  "grid grid-cols-[minmax(15rem,1.6fr)_minmax(12rem,1.15fr)_minmax(7rem,0.7fr)_minmax(11rem,1.1fr)_minmax(10rem,0.9fr)_minmax(7rem,0.65fr)_minmax(9rem,0.75fr)]";
+  "grid grid-cols-[minmax(15rem,1.6fr)_minmax(12rem,1.15fr)_minmax(7rem,0.7fr)_minmax(11rem,1.1fr)_minmax(10rem,0.9fr)_minmax(7rem,0.65fr)_minmax(9rem,0.75fr)_minmax(9rem,0.75fr)]";
 
 type PmHomeSearchParams = {
   status?: string;
@@ -94,10 +95,11 @@ async function PmDashboardContent({
           "Service",
           "PM Status",
           "Quote",
+          "Deadline",
           "Updated",
         ]}
         gridClassName={requestGridClassName}
-        minWidthClassName="min-w-[1180px]"
+        minWidthClassName="min-w-[1320px]"
         hasRows={result.requests.length > 0}
         emptyState={<RequestListEmptyState actionHref={buildFreshRequestHref()} />}
       >
@@ -110,6 +112,7 @@ async function PmDashboardContent({
             result.dictionaries.channels,
             request.channel_code,
           );
+          const deadline = buildRequestDeadlineItems(request)[0];
 
           return (
             <RequestListRow
@@ -151,6 +154,9 @@ async function PmDashboardContent({
                 {quote
                   ? formatCurrency(quote.total_amount, quote.currency ?? "USD")
                   : "-"}
+              </span>
+              <span className="whitespace-nowrap" title={deadline?.title}>
+                {deadline ? formatDate(deadline.dueOn) : "-"}
               </span>
               <span className="whitespace-nowrap text-muted-foreground">
                 {formatDate(request.updated_at)}

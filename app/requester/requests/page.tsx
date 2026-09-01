@@ -15,13 +15,14 @@ import {
 } from "@/features/requester/components/request-summary-badges";
 import { RequesterHeader } from "@/features/requester/components/requester-header";
 import { UrgentBadge } from "@/features/requester/components/urgent-badge";
+import { buildRequestDeadlineItems } from "@/features/requester/deadlines";
 import { formatCurrency, formatDate } from "@/features/requester/format";
 import { getRequesterRequests } from "@/features/requester/queries";
 import { buildFreshRequestHref } from "@/features/requester/requester-routes";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
 const requestGridClassName =
-  "grid grid-cols-[minmax(17rem,1.7fr)_minmax(7rem,0.7fr)_minmax(11rem,1.1fr)_minmax(10rem,0.9fr)_minmax(7rem,0.65fr)_minmax(9rem,0.75fr)]";
+  "grid grid-cols-[minmax(17rem,1.7fr)_minmax(7rem,0.7fr)_minmax(11rem,1.1fr)_minmax(10rem,0.9fr)_minmax(7rem,0.65fr)_minmax(9rem,0.75fr)_minmax(9rem,0.75fr)]";
 
 export default async function RequesterRequestsPage({
   searchParams,
@@ -123,10 +124,11 @@ async function RequestsContent({
           "Service",
           "Status",
           "Quote",
+          "Deadline",
           "Updated",
         ]}
         gridClassName={requestGridClassName}
-        minWidthClassName="min-w-[980px]"
+        minWidthClassName="min-w-[1120px]"
         hasRows={requests.length > 0}
         emptyState={scope === "organization" ? <p className="py-12 text-center text-sm text-muted-foreground">No shared organization Requests are available.</p> : <RequestListEmptyState actionHref={buildFreshRequestHref()} />}
       >
@@ -144,6 +146,7 @@ async function RequestsContent({
             dictionaries?.channels ?? [],
             request.channel_code,
           );
+          const deadline = buildRequestDeadlineItems(request)[0];
 
           return (
             <RequestListRow
@@ -183,6 +186,9 @@ async function RequestsContent({
                 {latestQuote
                   ? formatCurrency(latestQuote.total_amount, latestQuote.currency ?? "USD")
                   : "-"}
+              </span>
+              <span className="whitespace-nowrap" title={deadline?.title}>
+                {deadline ? formatDate(deadline.dueOn) : "-"}
               </span>
               <span className="whitespace-nowrap text-muted-foreground">
                 {formatDate(request.updated_at)}

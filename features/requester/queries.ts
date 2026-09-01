@@ -338,7 +338,7 @@ export async function getRequesterRequests(filters?: {
   let query = supabase
     .from("translation_requests")
     .select(
-      "id, request_no, reference_no, requester_id, title, channel_code, requester_status, updated_at, request_files(id), translation_requirements(source_language, target_language, target_languages, jurisdiction_codes, service_types, is_urgent), request_patents(patent_number), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
+      "id, request_no, reference_no, requester_id, title, channel_code, requester_status, workflow_stage, submitted_at, updated_at, request_files(id), translation_requirements(source_language, target_language, target_languages, jurisdiction_codes, service_types, is_urgent, epv_type_code, ep_service_type_code, pct_chapter_code), request_patents(patent_number, application_no, publication_no, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
     )
     .neq("workflow_stage", "draft")
     .order("updated_at", { ascending: false });

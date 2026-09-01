@@ -56,7 +56,7 @@ export async function getPmRequests(filters?: {
     context.supabase
       .from("translation_requests")
       .select(
-        "id, request_no, requester_id, title, channel_code, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(id), request_patents(patent_number), translation_requirements(source_language, target_language, target_languages, service_types, is_urgent), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
+        "id, request_no, requester_id, title, channel_code, workflow_stage, pm_status, requester_status, updated_at, submitted_at, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(id), request_patents(patent_number, application_no, publication_no, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date), translation_requirements(source_language, target_language, target_languages, service_types, is_urgent, jurisdiction_codes, epv_type_code, ep_service_type_code, pct_chapter_code), quotes(id, total_amount, currency, status, created_at), quote_negotiations(id, status, pm_decision, created_at), orders(id, status, offline_confirmation_status)",
       )
       .eq("supplier_organization_id", context.organization!.id)
       .neq("workflow_stage", "draft")
