@@ -16,6 +16,9 @@ import {
   traditionalServiceItemOptions,
 } from "@/features/requester/options";
 import {
+  requiresSourceLanguage,
+} from "@/features/requester/components/new-request-wizard-utils";
+import {
   isTraditionalValidation,
   requiresEpCountries,
   resolveServiceTypeSelection,
@@ -66,7 +69,9 @@ export function PmRequestOverview({
     },
     { label: "Service type", value: serviceTypeLabel },
     { label: "Translation", value: config.translationRequired ? "Required" : "Not required" },
-    { label: "Source Language", value: labelFor(sourceLanguageOptions, config.sourceLanguage) },
+    ...(requiresSourceLanguage(config)
+      ? [{ label: "Source Language", value: labelFor(sourceLanguageOptions, config.sourceLanguage) }]
+      : []),
     ...(config.targetLanguages.length ? [{
       label: "Target language(s)",
       value: labelForMany(

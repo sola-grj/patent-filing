@@ -28,6 +28,25 @@ export function signatureFilesFromFormData(formData: FormData, field: string) {
     .filter((entry): entry is File => entry instanceof File && entry.size > 0);
 }
 
+export function signatureUploadsFromFormData(
+  formData: FormData,
+  fileField = "files",
+  countryField = "fileCountryIds",
+) {
+  const files = signatureFilesFromFormData(formData, fileField);
+  const countries = formData.getAll(countryField);
+  return files.map((file, index) => {
+    const value = countries[index];
+    const epCountryId = typeof value === "string" && value.trim()
+      ? Number(value)
+      : null;
+    if (epCountryId !== null && (!Number.isInteger(epCountryId) || epCountryId <= 0)) {
+      throw new Error("A signature file has an invalid EP country.");
+    }
+    return { file, epCountryId };
+  });
+}
+
 export function validateSignatureFiles(
   files: readonly File[],
   existingCount = 0,

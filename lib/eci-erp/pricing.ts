@@ -13,6 +13,7 @@ import { getErpCountries, getErpPrice } from "./client";
 import { erpQuoteCurrency } from "./types";
 import { sumMoney } from "./money.ts";
 import {
+  applyTranslationSelection,
   buildErpPriceRequest,
   categoryForConfig,
   quoteAvailabilityError,
@@ -84,7 +85,7 @@ export async function availableErpCountries(
     const { data, error } = ids.length
       ? await service
           .from("ep_countries")
-          .select("id, name, cname, is_distinguish_entry, official_currency")
+          .select("id, name, cname, is_distinguish_entry, epv_trans_requirement, official_currency")
           .eq("enabled", true)
           .in("id", ids)
       : { data: [], error: null };
@@ -92,32 +93,41 @@ export async function availableErpCountries(
     const localById = new Map((data ?? []).map((country) => [country.id, country]));
     const unknownIds = ids.filter((id) => !localById.has(id));
     await recordUnknownCountries(categoryId, unknownIds);
+    const mismatches: Array<{ id: number; remote: number; local: number }> = [];
 
-    return {
-      success: true,
-      data: remoteCountries.flatMap((remote) => {
+    const normalizedCountries = remoteCountries.flatMap((remote) => {
         const local = localById.get(remote.id);
+        const requirement = epvTranslationRequirement(remote, remote.name);
+        if (local && local.epv_trans_requirement !== requirement) {
+          mismatches.push({
+            id: remote.id,
+            remote: requirement,
+            local: local.epv_trans_requirement,
+          });
+        }
         return local ? [{
           id: local.id,
           name: local.name,
           cname: local.cname,
+          epvTransRequirement: requirement,
           isDistinguishEntry: remote.isDistinguishEntry
             ?? local.is_distinguish_entry,
           officialCurrency: remote.officialCurrency
             ?? local.official_currency,
         }] : [];
-      }),
-    };
+      });
+    await recordCountryRequirementMismatches(categoryId, mismatches);
+    return { success: true, data: normalizedCountries };
   } catch (error) {
     return { success: false, error: publicErpError(error) };
   }
 }
 
-export async function quoteForOrganization(
+export async function prepareQuoteForOrganization(
   payload: WizardPayload,
   organizationId: string,
   authUserId: string,
-): Promise<ErpQuoteResult> {
+) {
   const serviceAvailability = getEpoServiceAvailability(
     payload.config.epServiceType,
     payload.selectedPatent,
@@ -136,7 +146,13 @@ export async function quoteForOrganization(
   const requiresCountries = [82, 8283].includes(categoryId);
   const requiresTargets = payload.config.translationRequired
     && [83, 84, 8283].includes(categoryId);
-  const [{ data: customerAccounts, error: customerError }, sourceLangId, targetLangIds, remoteCountries] =
+  const [
+    { data: customerAccounts, error: customerError },
+    sourceLangId,
+    targetLangIds,
+    remoteCountries,
+    localCountryRequirements,
+  ] =
     await Promise.all([
       service
         .from("eci_erp_customers")
@@ -146,17 +162,37 @@ export async function quoteForOrganization(
         .eq("is_black", false),
       resolveSourceLangId(payload.config.sourceLanguage),
       requiresTargets ? resolveTargetLangIds(payload.config.targetLanguages) : [],
-      requiresCountries ? getErpCountries(categoryId) : [],
+      requiresCountries ? getCachedErpCountries(categoryId) : [],
+      requiresCountries
+        ? resolveLocalCountryRequirements(payload.config.epCountryIds)
+        : new Map<number, number>(),
     ]);
   const customer = customerAccounts?.find((account) => account.auth_user_id === authUserId)
     ?? (customerAccounts?.length === 1 ? customerAccounts[0] : null);
   if (customerError || !customer) {
     throw new Error("Your organization is not linked to an active customer account.");
   }
-  const availableIds = new Set(remoteCountries.map((country) => country.id));
+  const remoteById = new Map(remoteCountries.map((country) => [country.id, country]));
+  const availableIds = new Set(remoteById.keys());
   if (requiresCountries && payload.config.epCountryIds.some((id) => !availableIds.has(id))) {
     throw new Error("One or more selected countries are not available for this service category.");
   }
+  const countryRequirements: Record<number, 0 | 1 | 2> = {};
+  const requirementMismatches: Array<{ id: number; remote: number; local: number }> = [];
+  for (const countryId of payload.config.epCountryIds) {
+    const remote = remoteById.get(countryId)!;
+    const requirement = epvTranslationRequirement(remote, remote.name);
+    countryRequirements[countryId] = requirement;
+    const localRequirement = localCountryRequirements.get(countryId);
+    if (localRequirement !== undefined && localRequirement !== requirement) {
+      requirementMismatches.push({
+        id: countryId,
+        remote: requirement,
+        local: localRequirement,
+      });
+    }
+  }
+  await recordCountryRequirementMismatches(categoryId, requirementMismatches);
 
   const metrics = verifiedPatentMetrics(payload, categoryId);
   const currency = erpQuoteCurrency(payload.quoteCurrency);
@@ -168,25 +204,46 @@ export async function quoteForOrganization(
     optOutCountryIds: payload.config.optOutCountryIds,
     serviceItem: payload.config.serviceItem,
     translationRequired: payload.config.translationRequired,
+    countryRequirements,
     clientId: safeInteger(customer.client_id, "Client ID"),
     priceCurrencyId: currency.id,
     metrics,
   });
+  return {
+    request,
+    currency: currency.code,
+    customerName: customer.client_name,
+    ...(payload.config.epServiceType === "ep_granting" && serviceAvailability.deadline
+      ? { validUntil: serviceAvailability.deadline }
+      : {}),
+  };
+}
+
+export async function executeErpQuote(input: {
+  request: ErpPriceRequest;
+  currency: ErpQuotePreview["currency"];
+  customerName: string;
+  translationRequired: boolean;
+  validUntil?: string;
+}): Promise<ErpQuoteResult> {
+  const { request } = input;
+  const categoryId = request.categoryId;
   const response = await getErpPrice(request);
   const validatedRows = validatePriceRows({
     categoryId,
     requestedCountryIds: request.countryIdList ?? [],
     requestedTargetLangIds: request.targetLangIds ?? [],
   }, response);
-  const responseCountryIds = uniqueIntegers(validatedRows.map((row) => row.countryId));
-  const responseLanguageIds = uniqueIntegers(validatedRows.flatMap((row) =>
+  const quoteRows = applyTranslationSelection(validatedRows, input.translationRequired);
+  const responseCountryIds = uniqueIntegers(quoteRows.map((row) => row.countryId));
+  const responseLanguageIds = uniqueIntegers(quoteRows.flatMap((row) =>
     Object.keys(row.translationFees).map(Number)
   ));
   const [countries, languageNames] = await Promise.all([
     resolveCountryNames(responseCountryIds),
     resolveLanguageNames(responseLanguageIds),
   ]);
-  const rows = validatedRows.map((row) => {
+  const rows = quoteRows.map((row) => {
     const translationFeeDetails = Object.entries(row.translationFees).map(
       ([languageIdValue, amount]) => {
         const languageId = Number(languageIdValue);
@@ -210,13 +267,12 @@ export async function quoteForOrganization(
   });
   return {
     source: "eci_erp",
-    currency: currency.code,
+    currency: input.currency,
     quotedAt: new Date().toISOString(),
-    customerName: customer.client_name,
-    ...(payload.config.epServiceType === "ep_granting" && serviceAvailability.deadline
-      ? { validUntil: serviceAvailability.deadline }
-      : {}),
+    customerName: input.customerName,
+    ...(input.validUntil ? { validUntil: input.validUntil } : {}),
     request,
+    response: quoteRows,
     rows,
     total: sumMoney(rows.map((row) => row.total)),
   };
@@ -229,6 +285,8 @@ export function publicQuote(result: ErpQuoteResult): ErpQuotePreview {
     quotedAt: result.quotedAt,
     customerName: result.customerName,
     ...(result.validUntil ? { validUntil: result.validUntil } : {}),
+    request: result.request,
+    response: result.response,
     rows: result.rows,
     total: result.total,
   };
@@ -236,7 +294,7 @@ export function publicQuote(result: ErpQuoteResult): ErpQuotePreview {
 
 function verifiedPatentMetrics(payload: WizardPayload, categoryId: number) {
   if (categoryId === 84 && !payload.config.translationRequired) {
-    return { patClaims: 0, patClaimWords: 0 };
+    return {};
   }
   const analysis = payload.analysis;
   if (
@@ -260,7 +318,9 @@ function verifiedPatentMetrics(payload: WizardPayload, categoryId: number) {
     payload.selectedPatentFileIds.includes(file.id)
   ) ?? [];
   const claimMetrics = verifiedClaimMetrics(analysis.aggregate);
-  if (categoryId === 84) return claimMetrics;
+  if (categoryId === 84) {
+    return { patClaimWords: claimMetrics.patClaimWords };
+  }
 
   const pageCount = patent?.totalPages
     ?? selectedFiles.reduce((sum, file) => sum + file.pageCount, 0);
@@ -329,6 +389,21 @@ async function resolveCountryNames(ids: number[]) {
   return result;
 }
 
+async function resolveLocalCountryRequirements(ids: number[]) {
+  if (!ids.length) return new Map<number, number>();
+  const service = createServiceClient();
+  const { data, error } = await service
+    .from("ep_countries")
+    .select("id, epv_trans_requirement")
+    .eq("enabled", true)
+    .in("id", ids);
+  if (error) throw new Error("Unable to validate EPV translation requirements locally.");
+  return new Map((data ?? []).map((country) => [
+    country.id,
+    country.epv_trans_requirement,
+  ]));
+}
+
 async function resolveLanguageNames(ids: number[]) {
   if (!ids.length) return new Map<number, string>();
   const service = createServiceClient();
@@ -358,6 +433,35 @@ async function recordUnknownCountries(categoryId: number, ids: number[]) {
     error_code: "unknown_country_id",
     detail: { categoryId },
   })));
+}
+
+async function recordCountryRequirementMismatches(
+  categoryId: number,
+  mismatches: Array<{ id: number; remote: number; local: number }>,
+) {
+  if (!mismatches.length) return;
+  const service = createServiceClient();
+  await service.from("eci_erp_integration_errors").insert(mismatches.map((item) => ({
+    operation: "countries",
+    external_identifier: String(item.id),
+    error_code: "epv_translation_requirement_mismatch",
+    detail: {
+      categoryId,
+      remoteRequirement: item.remote,
+      localRequirement: item.local,
+    },
+  })));
+}
+
+function epvTranslationRequirement(
+  country: Pick<ErpCountry, "id" | "name"> & Partial<ErpCountry>,
+  label: string,
+): 0 | 1 | 2 {
+  const value = country.epvTransRequirement;
+  if (value !== 0 && value !== 1 && value !== 2) {
+    throw new Error(`${label || `Country ${country.id}`} returned an invalid EPV translation requirement.`);
+  }
+  return value;
 }
 
 function uniqueIntegers(values: number[]) {

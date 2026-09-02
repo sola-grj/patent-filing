@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyTranslationSelection,
   buildErpPriceRequest,
   categoryForConfig,
   normalizeLogin,
@@ -47,6 +48,12 @@ test("validates every country and reproduces the documented total", () => {
   assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189] }, [{ ...sampleRows[0], translationFees: { "15": -1 } }]), /invalid translation fee/);
 });
 
+test("excludes translation fees from the quote total when translation is not selected", () => {
+  const rows = applyTranslationSelection(sampleRows, false);
+  assert.deepEqual(rows.map((row) => row.translationFees), [{}, {}, {}]);
+  assert.equal(priceTotal(rows), 9600);
+});
+
 test("maps selectable quote currencies to ERP currency IDs", () => {
   assert.deepEqual(erpQuoteCurrency(), {
     id: 1,
@@ -88,6 +95,7 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
     countryIds: [133, 135, 157],
     optOutCountryIds: [135, 157],
     translationRequired: true,
+    countryRequirements: { 133: 0, 135: 1, 157: 2 } as Record<number, 0 | 1 | 2>,
     clientId: 20031901,
     priceCurrencyId: 2,
     metrics: { patClaims: 45, patTotalPages: 16, patTotalWords: 1000, patClaimWords: 500 },
@@ -96,6 +104,7 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
     categoryId: 82,
     sourceLangId: 12,
     countryIdList: [133, 135, 157],
+    patFilingRouteId: 1,
     patFilingTypeId: 1,
     clientId: 20031901,
     priceCurrencyId: 2,
@@ -110,6 +119,7 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
     categoryId: 83,
     sourceLangId: 12,
     targetLangIds: [17, 15, 58],
+    patFilingRouteId: 1,
     patFilingTypeId: 1,
     clientId: 20031901,
     priceCurrencyId: 2,
@@ -149,15 +159,77 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 84, translationRequired: false }), {
     categoryId: 84,
     sourceLangId: 12,
+    patFilingRouteId: 1,
     patFilingTypeId: 1,
     clientId: 20031901,
     priceCurrencyId: 2,
-    patClaims: 45,
+  });
+  assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 84 }), {
+    categoryId: 84,
+    sourceLangId: 12,
+    targetLangIds: [17, 15, 58],
+    patFilingRouteId: 1,
+    patFilingTypeId: 1,
+    clientId: 20031901,
+    priceCurrencyId: 2,
     patClaimWords: 500,
-    patTotalWords: 600,
   });
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 8283, serviceItem: "opt_out_only" }).optType, 3);
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 8283, serviceItem: "opt_in_only" }).optType, 4);
+});
+
+test("uses the union of traditional-validation country translation requirements", () => {
+  const common = {
+    categoryId: 82,
+    sourceLangId: 12,
+    targetLangIds: [] as number[],
+    optOutCountryIds: [] as number[],
+    serviceItem: "traditional_validation",
+    translationRequired: false,
+    clientId: 318,
+    priceCurrencyId: 1,
+    metrics: { patClaims: 45, patTotalPages: 16, patTotalWords: 1000, patClaimWords: 500 },
+  };
+  const none = buildErpPriceRequest({
+    ...common,
+    countryIds: [133],
+    countryRequirements: { 133: 0 },
+  });
+  assert.equal(none.patClaims, undefined);
+  assert.equal(none.patClaimWords, undefined);
+  assert.equal(none.patTotalWords, undefined);
+
+  const claims = buildErpPriceRequest({
+    ...common,
+    countryIds: [135],
+    countryRequirements: { 135: 1 },
+  });
+  assert.equal(claims.patClaims, 45);
+  assert.equal(claims.patClaimWords, 500);
+  assert.equal(claims.patTotalWords, undefined);
+
+  const fullText = buildErpPriceRequest({
+    ...common,
+    countryIds: [157],
+    countryRequirements: { 157: 2 },
+  });
+  assert.equal(fullText.patClaims, undefined);
+  assert.equal(fullText.patClaimWords, undefined);
+  assert.equal(fullText.patTotalWords, 1000);
+
+  const mixed = buildErpPriceRequest({
+    ...common,
+    categoryId: 8283,
+    countryIds: [133, 135, 157],
+    countryRequirements: { 133: 0, 135: 1, 157: 2 },
+  });
+  assert.equal(mixed.patClaims, 45);
+  assert.equal(mixed.patClaimWords, 500);
+  assert.equal(mixed.patTotalWords, 1000);
+  assert.throws(
+    () => buildErpPriceRequest({ ...common, countryIds: [999], countryRequirements: {} }),
+    /Country 999 returned an invalid EPV translation requirement/,
+  );
 });
 
 test("normalizes the documented combined quote response", () => {

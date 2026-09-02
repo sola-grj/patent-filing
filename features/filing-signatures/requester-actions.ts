@@ -8,7 +8,13 @@ import { requiredString, type ActionResult } from "@/lib/validators/requester";
 
 import { cleanupSignatureFiles, uploadSignatureFiles } from "./storage";
 import type { FilingSignatureFile } from "./types";
-import { signatureFilesFromFormData, validateSignatureFiles } from "./validation";
+import {
+  missingReturnCountryIds,
+  requiredReturnCountryIds,
+  signatureCountryScope,
+  validateSignatureUploadCountries,
+} from "./country-scope";
+import { signatureUploadsFromFormData, validateSignatureFiles } from "./validation";
 
 export async function submitRequesterSignatureFiles(
   formData: FormData,
@@ -21,7 +27,8 @@ export async function submitRequesterSignatureFiles(
       formData.get("signatureRequestId"),
       "Signature request",
     );
-    const files = signatureFilesFromFormData(formData, "files");
+    const uploads = signatureUploadsFromFormData(formData);
+    const files = uploads.map((upload) => upload.file);
     if (!files.length) {
       throw new Error("Choose at least one signed file to upload.");
     }
@@ -30,7 +37,7 @@ export async function submitRequesterSignatureFiles(
     const { data: signatureRequest, error: requestError } = await supabase
       .from("filing_signature_requests")
       .select(
-        "id, request_id, recipient_id, status, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
+        "id, request_id, recipient_id, status, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at), translation_requests(translation_requirements(ep_service_type_code, ep_country_ids))",
       )
       .eq("id", signatureRequestId)
       .single();
@@ -39,19 +46,46 @@ export async function submitRequesterSignatureFiles(
       throw new Error("This signature request is not available for submission.");
     }
 
-    const existingReturns = ((signatureRequest.filing_signature_files ?? []) as FilingSignatureFile[])
+    const request = firstRelation(signatureRequest.translation_requests);
+    const requirement = firstRelation(request?.translation_requirements);
+    const countryScope = signatureCountryScope(requirement);
+
+    const packageFiles = (signatureRequest.filing_signature_files ?? []) as FilingSignatureFile[];
+    const sourceFiles = packageFiles.filter((file) => file.direction === "pm_to_requester");
+    const legacyOnlyPackage = countryScope.countryScoped
+      && sourceFiles.length > 0
+      && sourceFiles.every((file) => file.ep_country_id == null);
+    validateSignatureUploadCountries(
+      uploads,
+      legacyOnlyPackage
+        ? { countryScoped: false, countryIds: [] }
+        : countryScope,
+    );
+    const existingReturns = packageFiles
       .filter((file) => file.direction === "requester_to_pm");
     if (existingReturns.length) {
       throw new Error("Signed files have already been submitted for this request.");
     }
+    const requiredCountries = requiredReturnCountryIds(sourceFiles);
+    if (
+      requiredCountries.length
+      && uploads.some((upload) => !requiredCountries.includes(upload.epCountryId ?? -1))
+    ) {
+      throw new Error("Signed files may only be returned for countries included in this package.");
+    }
 
     uploaded = await uploadSignatureFiles(supabase, {
-      files,
+      uploads,
       requestId: signatureRequest.request_id,
       signatureRequestId,
       direction: "requester_to_pm",
       userId,
     });
+
+    const missingCountries = missingReturnCountryIds(sourceFiles, uploaded);
+    if (missingCountries.length) {
+      throw new Error(`Upload at least one signed file for country ${missingCountries.join(", ")}.`);
+    }
 
     await completeSignatureRequest({
       signatureRequestId,
@@ -70,6 +104,11 @@ export async function submitRequesterSignatureFiles(
     }
     return { success: false, error: toErrorMessage(error) };
   }
+}
+
+function firstRelation<T>(value?: T | T[] | null) {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
 async function completeSignatureRequest(input: {

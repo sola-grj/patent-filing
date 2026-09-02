@@ -61,6 +61,7 @@ export function buildErpPriceRequest(input: {
   optOutCountryIds: number[];
   serviceItem?: string;
   translationRequired: boolean;
+  countryRequirements: Record<number, 0 | 1 | 2>;
   clientId: number;
   priceCurrencyId: number;
   metrics: Pick<
@@ -71,29 +72,58 @@ export function buildErpPriceRequest(input: {
   const request: ErpPriceRequest = {
     categoryId: input.categoryId,
     sourceLangId: input.sourceLangId,
+    patFilingRouteId: 1,
     patFilingTypeId: 1,
     clientId: input.clientId,
     priceCurrencyId: input.priceCurrencyId,
-    patClaims: input.metrics.patClaims,
-    patClaimWords: input.metrics.patClaimWords,
   };
   if (input.categoryId === 84) {
-    // TODO: Remove this temporary placeholder when the category 84 backend no longer requires it.
-    request.patTotalWords = 600;
-  } else {
-    if (input.metrics.patTotalWords === undefined) {
-      throw new Error("Verified patent total word metric is required.");
+    if (input.translationRequired) {
+      request.patClaimWords = requiredMetric(
+        input.metrics.patClaimWords,
+        "claim word count",
+      );
     }
+  } else if ([82, 8283].includes(input.categoryId)) {
+    if (input.metrics.patTotalPages !== undefined) {
+      request.patTotalPages = input.metrics.patTotalPages;
+    }
+    const requiredMetrics = requiredMetricsForCountries(
+      input.countryIds,
+      input.countryRequirements,
+    );
+    if (requiredMetrics.claims) {
+      request.patClaims = requiredMetric(input.metrics.patClaims, "claim count");
+      request.patClaimWords = requiredMetric(
+        input.metrics.patClaimWords,
+        "claim word count",
+      );
+    }
+    if (requiredMetrics.fullText) {
+      request.patTotalWords = requiredMetric(
+        input.metrics.patTotalWords,
+        "patent total word count",
+      );
+    }
+  } else {
+    request.patClaims = requiredMetric(input.metrics.patClaims, "claim count");
+    request.patClaimWords = requiredMetric(
+      input.metrics.patClaimWords,
+      "claim word count",
+    );
     if (
       input.metrics.patTotalPages === undefined
-      && ![82, 83, 8283].includes(input.categoryId)
+      && input.categoryId !== 83
     ) {
       throw new Error("Verified patent page metric is required.");
     }
     if (input.metrics.patTotalPages !== undefined) {
       request.patTotalPages = input.metrics.patTotalPages;
     }
-    request.patTotalWords = input.metrics.patTotalWords;
+    request.patTotalWords = requiredMetric(
+      input.metrics.patTotalWords,
+      "patent total word count",
+    );
   }
   if ([82, 8283].includes(input.categoryId)) {
     if (!input.countryIds.length) throw new Error("Select at least one supported country.");
@@ -119,6 +149,30 @@ export function buildErpPriceRequest(input: {
     request.targetLangIds = [...input.targetLangIds];
   }
   return request;
+}
+
+export function requiredMetricsForCountries(
+  countryIds: number[],
+  countryRequirements: Record<number, 0 | 1 | 2>,
+) {
+  let claims = false;
+  let fullText = false;
+  for (const countryId of countryIds) {
+    const requirement = countryRequirements[countryId];
+    if (requirement !== 0 && requirement !== 1 && requirement !== 2) {
+      throw new Error(`Country ${countryId} returned an invalid EPV translation requirement.`);
+    }
+    claims ||= requirement === 1;
+    fullText ||= requirement === 2;
+  }
+  return { claims, fullText };
+}
+
+function requiredMetric(value: number | undefined, label: string) {
+  if (!Number.isInteger(value) || (value ?? -1) < 0) {
+    throw new Error(`Verified ${label} is required.`);
+  }
+  return value!;
 }
 
 export function validatePriceRows(input: {
@@ -195,6 +249,14 @@ export function priceTotal(rows: ErpPriceRow[]) {
     row.serviceFee,
     ...Object.values(row.translationFees),
   ]));
+}
+
+export function applyTranslationSelection(
+  rows: ErpPriceRow[],
+  translationRequired: boolean,
+) {
+  if (translationRequired) return rows;
+  return rows.map((row) => ({ ...row, translationFees: {} }));
 }
 
 export function normalizeLogin(value: string) {

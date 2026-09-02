@@ -38,11 +38,11 @@ import { sourceLanguageOptions } from "@/features/requester/options";
 import { validateUploadFiles } from "@/lib/validators/requester";
 import {
   saveRequestDraft,
-  generateErpEstimate,
   lookupPatentForWizard,
   submitNegotiationFromWizard,
   submitRequestFromWizard,
 } from "@/features/requester/actions";
+import { requestErpEstimate } from "@/features/requester/erp-browser";
 import {
   isErpQuoteCurrencyCode,
   type ErpQuoteCurrencyCode,
@@ -282,7 +282,7 @@ export function NewRequestWizard({
   function retryCurrentAnalysis() {
     if (
       sourceMode === "patent_search"
-      && config.epServiceType === "ep_granting"
+      && isEpGrantingTranslation(config)
     ) {
       if (uploadedFiles.length) {
         applyTifgFiles(uploadedFiles);
@@ -312,6 +312,7 @@ export function NewRequestWizard({
     if (shouldStartAutomaticPatentAnalysis({
       channelCode: config.channelCode,
       epServiceType: config.epServiceType,
+      translationRequired: config.translationRequired,
     })) {
       analysis.start({
         sourceMode: "patent_search",
@@ -449,7 +450,7 @@ export function NewRequestWizard({
     setStepLoadingMessage(`Recalculating estimate in ${nextCurrency}`);
     setError(null);
     try {
-      const result = await generateErpEstimate({
+      const result = await requestErpEstimate({
         ...payload,
         quoteCurrency: nextCurrency,
       });
@@ -542,7 +543,7 @@ export function NewRequestWizard({
 
       setStepLoadingMessage("Requesting live estimate");
       try {
-        const result = await generateErpEstimate(payload);
+        const result = await requestErpEstimate(payload);
         if (!result.success) {
           setError(result.error);
           return;
@@ -668,7 +669,7 @@ export function NewRequestWizard({
           && (result.code === "QUOTE_ESTIMATE_EXPIRED" || result.code === "QUOTE_ESTIMATE_INVALID")
         ) {
           setStepLoadingMessage("Revalidating price");
-          const refreshed = await generateErpEstimate(payload);
+          const refreshed = await requestErpEstimate(payload);
           if (refreshed.success) {
             setQuotePreview(refreshed.data.quote);
             setQuoteReceipt(refreshed.data.receipt);
@@ -715,6 +716,7 @@ export function NewRequestWizard({
       && shouldStartAutomaticPatentAnalysis({
         channelCode: config.channelCode,
         epServiceType: config.epServiceType,
+        translationRequired: config.translationRequired,
       })
     ) {
       startAnalysis({
@@ -728,6 +730,7 @@ export function NewRequestWizard({
     analysisStatus,
     config.channelCode,
     config.epServiceType,
+    config.translationRequired,
     selectedPatent,
     isRestoredDraft,
     sourceMode,
@@ -1106,9 +1109,6 @@ function StepContent(props: {
       currency={props.quoteCurrency}
       onCurrencyChange={props.onQuoteCurrencyChange}
       action={props.quoteAction}
-      analysisStatus={props.analysisStatus}
-      analysisError={props.analysisError}
-      onAnalysisRetry={props.onAnalysisRetry}
     />
   );
 }

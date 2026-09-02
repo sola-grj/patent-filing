@@ -7,27 +7,32 @@ import { FileSignature } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { submitRequesterSignatureFiles } from "@/features/filing-signatures/requester-actions";
-import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
+import type {
+  FilingSignatureRequest,
+  SignatureCountry,
+  SignatureUpload,
+} from "@/features/filing-signatures/types";
+import { appendSignatureUploads } from "@/features/filing-signatures/types";
 import { signatureFilesByDirection } from "@/features/filing-signatures/types";
-import { FileList } from "@/features/requester/components/new-request-wizard-shared";
-
-import { SignatureFileLinks, SignatureZipLink } from "./signature-file-links";
+import { CountrySignatureFilePicker } from "./country-signature-file-picker";
+import { CountrySignatureFileLinks, SignatureZipLink } from "./signature-file-links";
 import { SignatureHistory } from "./signature-history";
 
 export function RequesterSignaturePanel({
+  countries = [],
   signatureRequests,
   canSubmit = true,
   showHeader = true,
 }: {
+  countries?: SignatureCountry[];
   signatureRequests: FilingSignatureRequest[];
   canSubmit?: boolean;
   showHeader?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [files, setFiles] = useState<File[]>([]);
+  const [uploads, setUploads] = useState<SignatureUpload[]>([]);
   const [inputKey, setInputKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const sorted = useMemo(
@@ -45,7 +50,7 @@ export function RequesterSignaturePanel({
     if (!active) return;
     const formData = new FormData();
     formData.set("signatureRequestId", active.id);
-    files.forEach((file) => formData.append("files", file));
+    appendSignatureUploads(formData, uploads);
     setError(null);
     startTransition(async () => {
       const result = await submitRequesterSignatureFiles(formData);
@@ -53,7 +58,7 @@ export function RequesterSignaturePanel({
         setError(result.error ?? "Signed files could not be submitted.");
         return;
       }
-      setFiles([]);
+      setUploads([]);
       setInputKey((value) => value + 1);
       router.refresh();
     });
@@ -62,6 +67,18 @@ export function RequesterSignaturePanel({
   const sourceFiles = active
     ? signatureFilesByDirection(active, "pm_to_requester")
     : [];
+  const requiredCountryIds = [...new Set(
+    sourceFiles
+      .map((file) => file.ep_country_id)
+      .filter((countryId): countryId is number => Number.isInteger(countryId)),
+  )];
+  const uploadCountries = requiredCountryIds.map((countryId) =>
+    countries.find((country) => country.id === countryId)
+      ?? { id: countryId, name: `EP country ${countryId}` },
+  );
+  const hasCountryCoverage = requiredCountryIds.every((countryId) =>
+    uploads.some((upload) => upload.epCountryId === countryId),
+  );
 
   return (
     <Card id="signature-documents" className={active ? "border-amber-300 dark:border-amber-900" : undefined}>
@@ -115,37 +132,34 @@ export function RequesterSignaturePanel({
                 <p className="text-sm font-medium">Documents to sign</p>
                 {sourceFiles.length > 1 ? <SignatureZipLink direction="pm_to_requester" signatureRequestId={active.id} /> : null}
               </div>
-              <SignatureFileLinks files={sourceFiles} />
+              <CountrySignatureFileLinks countries={countries} files={sourceFiles} />
             </div>
             {canSubmit ? <div className="space-y-2">
-              <FileUploadDropzone
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
+              <CountrySignatureFilePicker
+                countries={uploadCountries}
                 disabled={isPending}
                 inputKey={inputKey}
                 label="Upload signed files"
-                onFilesChange={setFiles}
+                onChange={setUploads}
+                uploads={uploads}
               />
               <p className="text-xs text-muted-foreground">
                 PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
               </p>
-              <div className="h-32 overflow-y-auto overscroll-contain pr-1">
-                <FileList
-                  files={files}
-                  onRemove={(index) =>
-                    setFiles(files.filter((_, fileIndex) => fileIndex !== index))
-                  }
-                />
-              </div>
             </div> : <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">Only the designated signature recipient can upload signed files.</p>}
             {canSubmit && error ? <p className="text-sm text-destructive">{error}</p> : null}
             {canSubmit ? <div className="flex justify-end">
-              <Button type="button" disabled={isPending || !files.length} onClick={submit}>
+              <Button
+                type="button"
+                disabled={isPending || !uploads.length || !hasCountryCoverage}
+                onClick={submit}
+              >
                 {isPending ? "Submitting..." : "Submit signed files"}
               </Button>
             </div> : null}
           </div>
         ) : null}
-        <SignatureHistory requests={history} viewer="requester" />
+        <SignatureHistory countries={countries} requests={history} viewer="requester" />
       </CardContent>
     </Card>
   );

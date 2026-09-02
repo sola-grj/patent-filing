@@ -13,35 +13,39 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
-import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
+import type {
+  FilingSignatureRequest,
+  SignatureCountry,
+  SignatureUpload,
+} from "@/features/filing-signatures/types";
 import { signatureFilesByDirection } from "@/features/filing-signatures/types";
-import { FileList } from "@/features/requester/components/new-request-wizard-shared";
-
-import { SignatureFileLinks, SignatureZipLink } from "./signature-file-links";
+import { CountrySignatureFilePicker } from "./country-signature-file-picker";
+import { CountrySignatureFileLinks, SignatureZipLink } from "./signature-file-links";
 
 export function PmPendingSignaturePackage({
   canAppend,
+  countries,
   disabled,
-  files: selectedFiles,
+  uploads,
   inputKey,
   message,
   onAppend,
   onCancel,
-  onFileChange,
+  onUploadChange,
   onOpenChange,
   onRetry,
   open,
   request,
 }: {
   canAppend: boolean;
+  countries: SignatureCountry[];
   disabled: boolean;
-  files: File[];
+  uploads: SignatureUpload[];
   inputKey: number;
   message: string | null;
   onAppend: () => void;
   onCancel: () => void;
-  onFileChange: (files: File[]) => void;
+  onUploadChange: (uploads: SignatureUpload[]) => void;
   onOpenChange: (open: boolean) => void;
   onRetry: () => void;
   open: boolean;
@@ -68,7 +72,7 @@ export function PmPendingSignaturePackage({
           />
         ) : null}
       </div>
-      <SignatureFileLinks files={files} />
+      <CountrySignatureFileLinks countries={countries} files={files} />
       {canAppend ? (
         <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3">
           <div>
@@ -91,22 +95,17 @@ export function PmPendingSignaturePackage({
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
-                <FileUploadDropzone
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
+                <CountrySignatureFilePicker
+                  countries={countries}
                   disabled={disabled}
                   inputKey={inputKey}
                   label="Add signature documents"
-                  onFilesChange={onFileChange}
+                  onChange={onUploadChange}
+                  uploads={uploads}
                 />
                 <p className="text-xs text-muted-foreground">
                   PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total for the package
                 </p>
-                <FileList
-                  files={selectedFiles}
-                  onRemove={(index) =>
-                    onFileChange(selectedFiles.filter((_, fileIndex) => fileIndex !== index))
-                  }
-                />
                 {message ? <p className="text-sm text-destructive">{message}</p> : null}
               </div>
               <DialogFooter>
@@ -117,7 +116,7 @@ export function PmPendingSignaturePackage({
                 </DialogClose>
                 <Button
                   type="button"
-                  disabled={disabled || !selectedFiles.length}
+                  disabled={disabled || !uploads.length}
                   onClick={onAppend}
                 >
                   <Send /> {disabled ? "Sending..." : "Send documents"}

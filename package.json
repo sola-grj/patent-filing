@@ -12,6 +12,8 @@
     "test:organization-access": "node --experimental-strip-types --test features/requester/request-scope.test.ts",
     "test:notifications": "node --experimental-strip-types --test features/requester/notifications.test.ts",
     "test:erp": "node --experimental-strip-types --test lib/eci-erp/eci-erp.test.ts",
+    "test:erp-receipt": "node --experimental-strip-types --test features/requester/actions/erp-request-receipt.test.ts",
+    "test:filing-signatures": "node --experimental-strip-types --test features/filing-signatures/country-scope.test.ts",
     "test:quote-export": "node --experimental-strip-types --test lib/eci-erp/quote-export.test.ts",
     "backfill:deadlines": "node --env-file=.env.local scripts/backfill-deadline-basis.mjs",
     "cleanup:drafts": "node --env-file=.env.local scripts/cleanup-drafts-v1.mjs",

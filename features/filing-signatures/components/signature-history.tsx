@@ -1,13 +1,15 @@
 import { Badge } from "@/components/ui/badge";
 
-import type { FilingSignatureRequest } from "../types";
+import type { FilingSignatureRequest, SignatureCountry } from "../types";
 import { signatureFilesByDirection } from "../types";
-import { SignatureFileLinks, SignatureZipLink } from "./signature-file-links";
+import { CountrySignatureFileLinks, SignatureZipLink } from "./signature-file-links";
 
 export function SignatureHistory({
+  countries = [],
   requests,
   viewer,
 }: {
+  countries?: SignatureCountry[];
   requests: FilingSignatureRequest[];
   viewer: "pm" | "requester";
 }) {
@@ -32,6 +34,7 @@ export function SignatureHistory({
             <div className="mt-4 space-y-4">
               <FileGroup
                 title="Documents sent for signature"
+                countries={countries}
                 files={sourceFiles}
                 signatureRequestId={request.id}
                 direction="pm_to_requester"
@@ -39,6 +42,7 @@ export function SignatureHistory({
               {returnedFiles.length ? (
                 <FileGroup
                   title={viewer === "pm" ? "Signed files returned" : "Signed files submitted"}
+                  countries={countries}
                   files={returnedFiles}
                   signatureRequestId={request.id}
                   direction="requester_to_pm"
@@ -53,11 +57,13 @@ export function SignatureHistory({
 }
 
 function FileGroup({
+  countries,
   direction,
   files,
   signatureRequestId,
   title,
 }: {
+  countries: SignatureCountry[];
   direction: "pm_to_requester" | "requester_to_pm";
   files: ReturnType<typeof signatureFilesByDirection>;
   signatureRequestId: string;
@@ -73,7 +79,7 @@ function FileGroup({
           <SignatureZipLink direction={direction} signatureRequestId={signatureRequestId} />
         ) : null}
       </div>
-      <SignatureFileLinks files={files} />
+      <CountrySignatureFileLinks countries={countries} files={files} />
     </div>
   );
 }

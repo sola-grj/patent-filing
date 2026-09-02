@@ -3,7 +3,11 @@ import "server-only";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { safeFileName } from "@/features/requester/server-utils";
 
-import type { FilingSignatureDirection, FilingSignatureFile } from "./types";
+import type {
+  FilingSignatureDirection,
+  FilingSignatureFile,
+  SignatureUpload,
+} from "./types";
 import { signatureFileContentType } from "./validation";
 
 export const SIGNATURE_BUCKET = "filing-signature-files";
@@ -13,7 +17,7 @@ type AuthenticatedClient = Awaited<ReturnType<typeof createClient>>;
 export async function uploadSignatureFiles(
   supabase: AuthenticatedClient,
   input: {
-    files: File[];
+    uploads: SignatureUpload[];
     requestId: string;
     signatureRequestId: string;
     direction: FilingSignatureDirection;
@@ -21,10 +25,12 @@ export async function uploadSignatureFiles(
   },
 ) {
   const service = createServiceClient();
-  const uploaded: FilingSignatureFile[] = [];
+  const storedPaths: string[] = [];
 
   try {
-    for (const file of input.files) {
+    const rows = [];
+    for (const upload of input.uploads) {
+      const { file } = upload;
       const contentType = signatureFileContentType(file);
       const folder = input.direction === "pm_to_requester" ? "source" : "return";
       const path = [
@@ -32,6 +38,7 @@ export async function uploadSignatureFiles(
         input.requestId,
         input.signatureRequestId,
         folder,
+        ...(upload.epCountryId === null ? [] : [`country-${upload.epCountryId}`]),
         `${crypto.randomUUID()}-${safeFileName(file.name)}`,
       ].join("/");
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -41,35 +48,32 @@ export async function uploadSignatureFiles(
       if (uploadError) {
         throw new Error(uploadError.message);
       }
-
-      const { data, error: insertError } = await supabase
-        .from("filing_signature_files")
-        .insert({
-          signature_request_id: input.signatureRequestId,
-          direction: input.direction,
-          storage_bucket: SIGNATURE_BUCKET,
-          storage_path: path,
-          original_filename: file.name,
-          mime_type: contentType,
-          file_size: file.size,
-          uploaded_by: input.userId,
-        })
-        .select(
-          "id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at",
-        )
-        .single();
-
-      if (insertError) {
-        await service.storage.from(SIGNATURE_BUCKET).remove([path]);
-        throw new Error(insertError.message);
-      }
-
-      uploaded.push(data as FilingSignatureFile);
+      storedPaths.push(path);
+      rows.push({
+        signature_request_id: input.signatureRequestId,
+        direction: input.direction,
+        ep_country_id: upload.epCountryId,
+        storage_bucket: SIGNATURE_BUCKET,
+        storage_path: path,
+        original_filename: file.name,
+        mime_type: contentType,
+        file_size: file.size,
+        uploaded_by: input.userId,
+      });
     }
 
-    return uploaded;
+    const { data, error: insertError } = await supabase
+      .from("filing_signature_files")
+      .insert(rows)
+      .select(
+        "id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at",
+      );
+    if (insertError) throw new Error(insertError.message);
+    return (data ?? []) as FilingSignatureFile[];
   } catch (error) {
-    await cleanupSignatureFiles(uploaded);
+    if (storedPaths.length) {
+      await service.storage.from(SIGNATURE_BUCKET).remove(storedPaths);
+    }
     throw error;
   }
 }

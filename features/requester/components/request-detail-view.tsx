@@ -40,6 +40,9 @@ import {
   traditionalServiceItemOptions,
 } from "@/features/requester/options";
 import {
+  requiresSourceLanguage,
+} from "@/features/requester/components/new-request-wizard-utils";
+import {
   isTraditionalValidation,
   requiresEpCountries,
   resolveServiceTypeSelection,
@@ -269,19 +272,24 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
     request_patents: patent,
   });
   const signatureRequests = request.filing_signature_requests ?? [];
+  const signatureCountries = isTraditionalValidation(config.epServiceType)
+    ? epCountries.filter((country) => config.epCountryIds.includes(country.id))
+    : [];
   const leftColumnItems: DetailItem[] = [
     { label: "Organization", value: organization?.name ?? "-" },
     ...(request.reference_no
       ? [{ label: "Reference No.", value: request.reference_no }]
       : []),
     { label: "Updated", value: formatDate(request.updated_at) },
-    {
-      label: "Source Language",
-      value: formatConfigLabel(
-        sourceLanguageOptions,
-        config.sourceLanguage,
-      ),
-    },
+    ...(requiresSourceLanguage(config)
+      ? [{
+          label: "Source Language",
+          value: formatConfigLabel(
+            sourceLanguageOptions,
+            config.sourceLanguage,
+          ),
+        }]
+      : []),
     {
       label: "Service type",
       value: serviceTypeLabel,
@@ -441,6 +449,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             )}
             signatureDocuments={signatureRequests.length ? (
               <RequesterSignaturePanel
+                countries={signatureCountries}
                 signatureRequests={signatureRequests}
                 canSubmit={!isReadOnly}
                 showHeader={false}

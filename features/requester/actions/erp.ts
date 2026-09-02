@@ -3,10 +3,9 @@
 import type { WizardConfig, WizardPayload } from "@/features/requester/wizard-types";
 import {
   availableErpCountries,
-  publicQuote,
-  quoteForOrganization,
+  prepareQuoteForOrganization,
 } from "@/lib/eci-erp/pricing";
-import type { ErpActionResult, ErpCountry, SignedQuoteEstimate } from "@/lib/eci-erp/types";
+import type { ErpActionResult, ErpCountry, PreparedErpEstimate } from "@/lib/eci-erp/types";
 
 import { getRequesterOrganization, toErrorMessage } from "../server-utils";
 import { verifyWizardPatentPayload } from "./patent-service";
@@ -14,7 +13,7 @@ import {
   isEpGrantingTranslation,
   isVerifiedCustomerTifg,
 } from "../epo-tifg-upload";
-import { signQuoteEstimate } from "./quote-receipt";
+import { signPreparedErpEstimate } from "./erp-request-receipt";
 
 export async function loadErpCountriesForWizard(
   config: Pick<WizardConfig, "channelCode" | "serviceTypes" | "epvType" | "epServiceType">,
@@ -23,9 +22,9 @@ export async function loadErpCountriesForWizard(
   return availableErpCountries(config);
 }
 
-export async function generateErpEstimate(
+export async function prepareErpEstimate(
   payload: WizardPayload,
-): Promise<ErpActionResult<SignedQuoteEstimate>> {
+): Promise<ErpActionResult<PreparedErpEstimate>> {
   try {
     const { organization, userId, supabase } = await getRequesterOrganization();
     if (!organization) throw new Error("Your account is not linked to a customer organization.");
@@ -37,15 +36,19 @@ export async function generateErpEstimate(
     const verifiedPayload = usesStoredPatent
       ? payload
       : await verifyWizardPatentPayload(payload);
-    const result = await quoteForOrganization(verifiedPayload, organization.id, userId);
-    const quote = publicQuote(result);
+    const prepared = await prepareQuoteForOrganization(
+      verifiedPayload,
+      organization.id,
+      userId,
+    );
     return {
       success: true,
-      data: signQuoteEstimate({
+      data: signPreparedErpEstimate({
         userId,
         organizationId: organization.id,
         payload,
-        quote,
+        translationRequired: verifiedPayload.config.translationRequired,
+        ...prepared,
       }),
     };
   } catch (error) {

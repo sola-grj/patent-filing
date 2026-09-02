@@ -14,6 +14,20 @@ All user-visible component copy must be English. Do not expose browser-native lo
 ## Next.js App Router Rules
 Default to Server Components. Add `"use client"` only for interactivity, browser APIs, local state, effects, or client-only libraries. Keep `app/**/page.tsx` and `layout.tsx` focused on route-level data assembly and composition; move business UI into `components/` and shared logic into `lib/`. Prefer server-side data reads in Server Components or server-only helpers. Do not duplicate Supabase client setup outside `lib/supabase/`.
 
+## Performance and Data-Fetching Rules
+Treat these as mandatory review rules for every new feature and refactor:
+
+- List endpoints must search, filter, sort, count, and paginate in the database with a bounded page size. Never load every row and then use Node.js `filter`, `sort`, `length`, or `slice` as pagination.
+- List queries must select only fields rendered by that screen. Do not use `select("*")` or load detail-page relationship graphs in list views.
+- Run independent Supabase, dictionary, and external-service reads in parallel. Do not introduce avoidable Server Component, RSC, or Server Action waterfalls.
+- Pages, layouts, and navigation must reuse `getOptionalPortalContext` / `requirePortalContext`; do not separately refetch Auth, profiles, organization memberships, and unread notification counts.
+- Only stable, cross-user dictionaries may use global caches with explicit TTLs/tags. Never globally cache user-specific, organization-specific, or RLS-protected data.
+- Do not query database rows in a loop or call ERP, EPO, or WIPO repeatedly for one interaction. Validate parent context once, batch database writes, and keep only unavoidable bounded Storage calls per file.
+- Do not add an index merely because a plan contains a Seq Scan. Before changing indexes, RLS, or RPCs, map browser waterfalls, Server Timing, `EXPLAIN (ANALYZE, BUFFERS)`, and `pg_stat_statements` query shapes to the real code call site.
+- Inspect existing policies before adding RLS rules and avoid overlapping permissive policies. High-traffic aggregate RPCs using `SECURITY DEFINER` must authenticate explicitly, return a fixed shape, set an empty `search_path`, and revoke execution from `public` and `anon`.
+- Changes to lists, portal bootstrap, navigation, detail aggregation, or external-service flows must record before/after request counts, returned rows/payload, server timing, and database execution timing. Lint and build results do not prove runtime performance.
+- Preserve the current database pagination RPCs, Portal Context aggregation, dictionary caching, and Server Timing instrumentation as the performance baseline. Do not regress to full-table reads, repeated auth/context queries, or detail-level overfetching.
+
 ## Component Size & Decomposition
 Use these as review limits, not compile-time rules. A single React component should stay under 200 lines. A `page.tsx` or `layout.tsx` should stay under 250 lines. A single function should stay under 60 lines. A source file should stay under 300 lines. When a limit is exceeded, split by responsibility: form, list, details panel, status badge, action group, hook, server helper, or business rule module.
 

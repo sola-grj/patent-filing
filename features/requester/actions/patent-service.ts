@@ -6,10 +6,8 @@ import type {
 import {
   isEpGrantingTranslation,
   isVerifiedCustomerTifg,
-  requiresPatentDocumentAnalysis,
 } from "@/features/requester/epo-tifg-upload";
 import {
-  lookupPatent,
   mapPatentLookupResponse,
   type PatentLookupResponse,
 } from "./patent-lookup";
@@ -57,15 +55,6 @@ export async function verifyWizardPatentPayload(
     throw new Error(
       "Patent lookup verification is missing. Search the patent again before continuing.",
     );
-  }
-
-  if (!requiresPatentDocumentAnalysis(payload.config)) {
-    const verifiedPatent = await lookupPatent(patent.patentNumber, "epo");
-    return {
-      ...payload,
-      selectedPatent: verifiedPatent,
-      analysis: undefined,
-    };
   }
 
   const analysisReceipt = payload.analysis?.analysis_receipt;

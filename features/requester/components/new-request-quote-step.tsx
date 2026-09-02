@@ -6,7 +6,6 @@ import { Table } from "@radix-ui/themes";
 
 import type {
   WizardPatentAnalysisFile,
-  WizardPatentAnalysisStatus,
   WizardPayload,
   WizardUploadedFile,
 } from "@/features/requester/wizard-types";
@@ -16,7 +15,6 @@ import {
   type ErpQuotePreview,
 } from "@/lib/eci-erp/types";
 import { StepShell } from "./new-request-wizard-shared";
-import { PatentProcessingNotice } from "./patent-processing-notice";
 import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
 import { EpGrantingQuotation } from "./ep-granting-quotation";
 import { optServiceStatusForCountry } from "@/lib/eci-erp/opt-service-status";
@@ -27,24 +25,21 @@ import { getEpoServiceAvailability } from "@/features/requester/deadlines";
 export function QuoteStepContent({
   payload,
   action,
-  analysisStatus = payload.analysis ? "complete" : "idle",
-  analysisError,
-  onAnalysisRetry,
   estimate,
   currency,
   onCurrencyChange,
 }: {
   payload: WizardPayload;
   action?: ReactNode;
-  analysisStatus?: WizardPatentAnalysisStatus;
-  analysisError?: string;
-  onAnalysisRetry?: () => void;
   estimate: ErpQuotePreview | null;
   currency: ErpQuoteCurrencyCode;
   onCurrencyChange: (currency: ErpQuoteCurrencyCode) => void;
 }) {
   const analysisReady = hasUsablePatentAnalysis(payload);
   const isEpGranting = payload.config.epServiceType === "ep_granting";
+  const showTranslationFee = payload.config.translationRequired;
+  const showSubtotals = (estimate?.rows.length ?? 0) > 1;
+  const summaryColSpan = showTranslationFee ? 4 : 3;
   const deadline = payload.selectedPatent && payload.config.epServiceType
     ? getEpoServiceAvailability(
         payload.config.epServiceType,
@@ -80,14 +75,6 @@ export function QuoteStepContent({
                   label: "Legal Deadline",
                   value: formatPatentDate(deadline),
                 }]}
-          />
-        ) : null}
-        {payload.sourceMode === "patent_search" ? (
-          <PatentProcessingNotice
-            status={analysisStatus}
-            result={payload.analysis}
-            error={analysisError}
-            onRetry={onAnalysisRetry}
           />
         ) : null}
         {payload.sourceMode === "upload" ? (
@@ -139,7 +126,9 @@ export function QuoteStepContent({
                     <Table.ColumnHeaderCell>Country</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell justify="end">Official Fee</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell justify="end">Service Fee</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Translation Fee</Table.ColumnHeaderCell>
+                    {showTranslationFee ? (
+                      <Table.ColumnHeaderCell justify="end">Translation Fee</Table.ColumnHeaderCell>
+                    ) : null}
                     <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
                   </Table.Row>
                 </Table.Header>
@@ -166,21 +155,44 @@ export function QuoteStepContent({
                         <Table.Cell className="whitespace-nowrap" justify="end">
                           {formatAmount(row.serviceFee)}
                         </Table.Cell>
-                        <Table.Cell className="whitespace-nowrap" justify="end">
-                          {formatAmount(row.translationFee)}
-                        </Table.Cell>
+                        {showTranslationFee ? (
+                          <Table.Cell className="whitespace-nowrap" justify="end">
+                            {formatAmount(row.translationFee)}
+                          </Table.Cell>
+                        ) : null}
                         <Table.Cell justify="end" className="whitespace-nowrap font-semibold">
                           {formatAmount(row.total)}
                         </Table.Cell>
                       </Table.Row>
                     );
                   })}
-                  <QuoteSubtotalRow label="Official Fee Subtotal" amount={feeTotals!.officialFee} currency={estimate.currency} />
-                  <QuoteSubtotalRow label="Service Fee Subtotal" amount={feeTotals!.serviceFee} currency={estimate.currency} />
-                  <QuoteSubtotalRow label="Translation Fee Subtotal" amount={feeTotals!.translationFee} currency={estimate.currency} />
+                  {showSubtotals ? (
+                    <>
+                      <QuoteSubtotalRow
+                        label="Official Fee Subtotal"
+                        amount={feeTotals!.officialFee}
+                        currency={estimate.currency}
+                        colSpan={summaryColSpan}
+                      />
+                      <QuoteSubtotalRow
+                        label="Service Fee Subtotal"
+                        amount={feeTotals!.serviceFee}
+                        currency={estimate.currency}
+                        colSpan={summaryColSpan}
+                      />
+                      {showTranslationFee ? (
+                        <QuoteSubtotalRow
+                          label="Translation Fee Subtotal"
+                          amount={feeTotals!.translationFee}
+                          currency={estimate.currency}
+                          colSpan={summaryColSpan}
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
                   <Table.Row className="bg-muted/20 [--table-row-box-shadow:none]">
                     <Table.Cell
-                      colSpan={4}
+                      colSpan={summaryColSpan}
                       justify="end"
                       className="text-sm font-semibold"
                     >
@@ -208,14 +220,15 @@ export function QuoteStepContent({
   );
 }
 
-function QuoteSubtotalRow({ label, amount, currency }: {
+function QuoteSubtotalRow({ label, amount, currency, colSpan }: {
   label: string;
   amount: number;
   currency: ErpQuoteCurrencyCode;
+  colSpan: number;
 }) {
   return (
     <Table.Row className="[--table-row-box-shadow:none]">
-      <Table.Cell colSpan={4} justify="end" className="text-sm font-semibold text-muted-foreground">
+      <Table.Cell colSpan={colSpan} justify="end" className="text-sm font-semibold text-muted-foreground">
         {label}
       </Table.Cell>
       <Table.Cell justify="end" className="whitespace-nowrap text-sm font-semibold">

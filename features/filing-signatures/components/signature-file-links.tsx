@@ -5,6 +5,43 @@ import { Download, FileText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import type { FilingSignatureFile } from "../types";
+import type { SignatureCountry } from "../types";
+
+export function CountrySignatureFileLinks({
+  countries,
+  files,
+  onRemove,
+  removeDisabled = false,
+}: {
+  countries: SignatureCountry[];
+  files: FilingSignatureFile[];
+  onRemove?: (fileId: string) => void;
+  removeDisabled?: boolean;
+}) {
+  if (!countries.length) {
+    return <SignatureFileLinks files={files} onRemove={onRemove} removeDisabled={removeDisabled} />;
+  }
+  const countryById = new Map(countries.map((country) => [country.id, country.name]));
+  const grouped = Map.groupBy(files, (file) => file.ep_country_id ?? "legacy");
+  return (
+    <div className="space-y-4">
+      {[...grouped.entries()].map(([countryId, countryFiles]) => (
+        <div key={countryId} className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            {countryId === "legacy"
+              ? "Legacy / General documents"
+              : countryById.get(countryId) ?? `EP country ${countryId}`}
+          </p>
+          <SignatureFileLinks
+            files={countryFiles}
+            onRemove={onRemove}
+            removeDisabled={removeDisabled}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function SignatureFileLinks({
   files,

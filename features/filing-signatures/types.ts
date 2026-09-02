@@ -11,8 +11,30 @@ export type FilingSignatureFile = {
   mime_type: string;
   file_size: number;
   uploaded_by: string;
+  ep_country_id?: number | null;
   created_at: string;
 };
+
+export type SignatureCountry = {
+  id: number;
+  name: string;
+  abbr?: string;
+};
+
+export type SignatureUpload = {
+  file: File;
+  epCountryId: number | null;
+};
+
+export function appendSignatureUploads(
+  formData: FormData,
+  uploads: readonly SignatureUpload[],
+) {
+  for (const upload of uploads) {
+    formData.append("files", upload.file);
+    formData.append("fileCountryIds", upload.epCountryId?.toString() ?? "");
+  }
+}
 
 export type FilingSignatureStatus =
   | "draft"

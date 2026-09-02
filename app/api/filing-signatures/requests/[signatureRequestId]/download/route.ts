@@ -19,7 +19,7 @@ export async function GET(
   const { data: signatureRequest, error } = await supabase
     .from("filing_signature_requests")
     .select(
-      "id, request_id, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
+      "id, request_id, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at, ep_countries(name, abbr)), translation_requests(translation_requirements(ep_service_type_code))",
     )
     .eq("id", signatureRequestId)
     .maybeSingle();
@@ -34,6 +34,12 @@ export async function GET(
   }
 
   const zip = new JSZip();
+  const parentRequest = firstRelation(signatureRequest.translation_requests);
+  const requirement = firstRelation(parentRequest?.translation_requirements);
+  const countryScoped = [
+    "traditional_validation",
+    "traditional_validation_unitary_patent",
+  ].includes(requirement?.ep_service_type_code ?? "");
   for (const file of files) {
     const { data, error: downloadError } = await supabase.storage
       .from(file.storage_bucket)
@@ -41,7 +47,16 @@ export async function GET(
     if (downloadError) {
       return new Response("One or more files could not be downloaded.", { status: 500 });
     }
-    zip.file(uniqueZipName(zip, file.original_filename), await data.arrayBuffer());
+    const country = firstRelation(file.ep_countries);
+    const countryFolder = country
+      ? safeFolderName(`${country.abbr}-${country.name}`)
+      : file.ep_country_id
+        ? `EP-country-${file.ep_country_id}`
+        : "Legacy-General";
+    const target = countryScoped
+      ? zip.folder(countryFolder)!
+      : zip;
+    target.file(uniqueZipName(target, file.original_filename), await data.arrayBuffer());
   }
 
   const archive = await zip.generateAsync({ type: "uint8array" });
@@ -53,6 +68,14 @@ export async function GET(
       "Cache-Control": "private, no-store",
     },
   });
+}
+function firstRelation<T>(value?: T | T[] | null) {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function safeFolderName(value: string) {
+  return value.replace(/[\\/:*?"<>|]/g, "-").trim() || "EP-country";
 }
 
 function requestedDirection(value: string | null): Direction {

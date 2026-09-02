@@ -7,7 +7,6 @@ import { FileSignature, Info, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import {
   Tooltip,
   TooltipContent,
@@ -22,11 +21,15 @@ import {
   sendPmSignatureRequest,
 } from "@/features/filing-signatures/pm-actions";
 import { appendPmSignatureFiles } from "@/features/filing-signatures/pm-append-actions";
-import type { FilingSignatureRequest } from "@/features/filing-signatures/types";
+import type {
+  FilingSignatureRequest,
+  SignatureCountry,
+  SignatureUpload,
+} from "@/features/filing-signatures/types";
+import { appendSignatureUploads } from "@/features/filing-signatures/types";
 import { signatureFilesByDirection } from "@/features/filing-signatures/types";
-import { FileList } from "@/features/requester/components/new-request-wizard-shared";
-
-import { SignatureFileLinks } from "./signature-file-links";
+import { CountrySignatureFilePicker } from "./country-signature-file-picker";
+import { CountrySignatureFileLinks } from "./signature-file-links";
 import { SignatureHistory } from "./signature-history";
 import { PmPendingSignaturePackage } from "./pm-pending-signature-package";
 
@@ -38,18 +41,20 @@ type PanelActionResult = {
 
 export function PmSignaturePanel({
   canManage,
+  countries = [],
   requestId,
   signatureRequests,
   showHeader = true,
 }: {
   canManage: boolean;
+  countries?: SignatureCountry[];
   requestId: string;
   signatureRequests: FilingSignatureRequest[];
   showHeader?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [files, setFiles] = useState<File[]>([]);
+  const [uploads, setUploads] = useState<SignatureUpload[]>([]);
   const [inputKey, setInputKey] = useState(0);
   const [isAppendOpen, setIsAppendOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -63,7 +68,7 @@ export function PmSignaturePanel({
   const [dueAt, setDueAt] = useState(active?.status === "draft" ? active.due_at ?? "" : "");
   const activeDraft = active?.status === "draft" ? active : null;
   const hasUnsavedDraftChanges = Boolean(
-    files.length
+    uploads.length
       || (activeDraft && pmNote !== (activeDraft.pm_note ?? ""))
       || (activeDraft && dueAt !== (activeDraft.due_at ?? "")),
   );
@@ -80,7 +85,7 @@ export function PmSignaturePanel({
         return;
       }
       setMessage(actionWarning(result.data));
-      setFiles([]);
+      setUploads([]);
       setInputKey((value) => value + 1);
       onSuccess?.();
       router.refresh();
@@ -92,14 +97,14 @@ export function PmSignaturePanel({
     formData.set("requestId", requestId);
     formData.set("pmNote", pmNote);
     formData.set("dueAt", dueAt);
-    files.forEach((file) => formData.append("files", file));
+    appendSignatureUploads(formData, uploads);
     run(() => savePmSignatureDraft(formData));
   }
 
   function appendFiles(signatureRequestId: string) {
     const formData = new FormData();
     formData.set("signatureRequestId", signatureRequestId);
-    files.forEach((file) => formData.append("files", file));
+    appendSignatureUploads(formData, uploads);
     run(
       () => appendPmSignatureFiles(formData),
       () => setIsAppendOpen(false),
@@ -117,7 +122,7 @@ export function PmSignaturePanel({
   function changeAppendOpen(open: boolean) {
     setIsAppendOpen(open);
     if (!open) {
-      setFiles([]);
+      setUploads([]);
       setInputKey((value) => value + 1);
       setMessage(null);
     }
@@ -174,29 +179,31 @@ export function PmSignaturePanel({
             <PmPendingSignaturePackage
               canAppend={canManage}
               disabled={isPending}
-              files={files}
+              countries={countries}
+              uploads={uploads}
               inputKey={inputKey}
               message={message}
               open={isAppendOpen}
               request={active}
               onAppend={() => appendFiles(active.id)}
               onCancel={() => runForRequest(cancelPmSignatureRequest, active.id)}
-              onFileChange={setFiles}
+              onUploadChange={setUploads}
               onOpenChange={changeAppendOpen}
               onRetry={() => runForRequest(retryPmSignatureEmail, active.id)}
             />
           ) : canManage ? (
             <DraftEditor
               active={activeDraft}
+              countries={countries}
               disabled={isPending}
               dueAt={dueAt}
-              files={files}
+              uploads={uploads}
               hasUnsavedChanges={hasUnsavedDraftChanges}
               inputKey={inputKey}
               pmNote={pmNote}
               onCancel={active ? () => runForRequest(cancelPmSignatureRequest, active.id) : undefined}
               onDueAtChange={setDueAt}
-              onFileChange={setFiles}
+              onUploadChange={setUploads}
               onNoteChange={setPmNote}
               onRemove={(fileId) => {
                 const formData = new FormData();
@@ -223,7 +230,7 @@ export function PmSignaturePanel({
             aria-label="Signature package history"
             className="rounded-xl border bg-muted/20 p-5"
           >
-            <SignatureHistory requests={history} viewer="pm" />
+            <SignatureHistory countries={countries} requests={history} viewer="pm" />
           </section>
         ) : null}
       </CardContent>
@@ -233,30 +240,32 @@ export function PmSignaturePanel({
 
 function DraftEditor({
   active,
+  countries,
   disabled,
   dueAt,
-  files,
+  uploads,
   hasUnsavedChanges,
   inputKey,
   pmNote,
   onCancel,
   onDueAtChange,
-  onFileChange,
+  onUploadChange,
   onNoteChange,
   onRemove,
   onSave,
   onSend,
 }: {
   active: FilingSignatureRequest | null;
+  countries: SignatureCountry[];
   disabled: boolean;
   dueAt: string;
-  files: File[];
+  uploads: SignatureUpload[];
   hasUnsavedChanges: boolean;
   inputKey: number;
   pmNote: string;
   onCancel?: () => void;
   onDueAtChange: (value: string) => void;
-  onFileChange: (files: File[]) => void;
+  onUploadChange: (uploads: SignatureUpload[]) => void;
   onNoteChange: (value: string) => void;
   onRemove: (fileId: string) => void;
   onSave: () => void;
@@ -270,24 +279,17 @@ function DraftEditor({
           <span className="text-destructive" aria-hidden="true">*</span>{" "}
           Signature documents
         </p>
-        <FileUploadDropzone
-          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip"
+        <CountrySignatureFilePicker
+          countries={countries}
           disabled={disabled}
           inputKey={inputKey}
           label="Upload signature documents"
-          onFilesChange={onFileChange}
+          onChange={onUploadChange}
+          uploads={uploads}
         />
         <p className="text-xs text-muted-foreground">
           PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
         </p>
-        <div className="h-32 overflow-y-auto overscroll-contain pr-1">
-          <FileList
-            files={files}
-            onRemove={(index) =>
-              onFileChange(files.filter((_, fileIndex) => fileIndex !== index))
-            }
-          />
-        </div>
       </div>
       <label className="space-y-2 text-sm">
         <span className="font-medium">Message to requester (optional)</span>
@@ -312,7 +314,8 @@ function DraftEditor({
       {sourceFiles.length ? (
         <div className="space-y-2">
           <p className="text-sm font-medium">Files in draft</p>
-          <SignatureFileLinks
+          <CountrySignatureFileLinks
+            countries={countries}
             files={sourceFiles}
             onRemove={onRemove}
             removeDisabled={disabled}
@@ -324,7 +327,7 @@ function DraftEditor({
         <Button
           type="button"
           variant="outline"
-          disabled={disabled || (!sourceFiles.length && !files.length)}
+          disabled={disabled || (!sourceFiles.length && !uploads.length)}
           onClick={onSave}
         >
           {disabled ? "Saving..." : active ? "Save draft" : "Create draft"}

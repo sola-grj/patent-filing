@@ -14,8 +14,9 @@ import {
 } from "./pm-service";
 import { cleanupSignatureFiles, uploadSignatureFiles } from "./storage";
 import type { FilingSignatureFile } from "./types";
+import { validateSignatureUploadCountries } from "./country-scope";
 import {
-  signatureFilesFromFormData,
+  signatureUploadsFromFormData,
   validateSignatureFiles,
 } from "./validation";
 
@@ -31,7 +32,8 @@ export async function appendPmSignatureFiles(
       formData.get("signatureRequestId"),
       "Signature request",
     );
-    const files = signatureFilesFromFormData(formData, "files");
+    const uploads = signatureUploadsFromFormData(formData);
+    const files = uploads.map((upload) => upload.file);
     if (!files.length) {
       throw new Error("Choose at least one additional document to upload.");
     }
@@ -39,7 +41,7 @@ export async function appendPmSignatureFiles(
     const { data: signatureRequest, error: requestError } = await context.supabase
       .from("filing_signature_requests")
       .select(
-        "id, request_id, status, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
+        "id, request_id, status, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
       )
       .eq("id", signatureRequestId)
       .single();
@@ -48,7 +50,8 @@ export async function appendPmSignatureFiles(
       throw new Error("Additional documents can only be added to a pending signature request.");
     }
 
-    await getEligibleFilingRequest(context, signatureRequest.request_id);
+    const request = await getEligibleFilingRequest(context, signatureRequest.request_id);
+    validateSignatureUploadCountries(uploads, request.countryScope);
     const existingFiles = ((signatureRequest.filing_signature_files ?? []) as FilingSignatureFile[])
       .filter((file) => file.direction === "pm_to_requester");
     validateSignatureFiles(
@@ -58,7 +61,7 @@ export async function appendPmSignatureFiles(
     );
 
     uploaded = await uploadSignatureFiles(context.supabase, {
-      files,
+      uploads,
       requestId: signatureRequest.request_id,
       signatureRequestId,
       direction: "pm_to_requester",

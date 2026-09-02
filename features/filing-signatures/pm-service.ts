@@ -6,6 +6,7 @@ import { requirePmContext, toPmErrorMessage } from "@/features/pm/server-utils";
 import { writeRequestEvent } from "@/features/requester/actions/helpers";
 
 import { sendFilingSignatureEmail } from "./email";
+import { signatureCountryScope } from "./country-scope";
 import type { FilingSignatureRequest } from "./types";
 
 export type EmailActionData = {
@@ -27,7 +28,9 @@ export async function getEligibleFilingRequest(
 ) {
   const { data, error } = await context.supabase
     .from("translation_requests")
-    .select("id, requester_id, pm_status")
+    .select(
+      "id, requester_id, pm_status, translation_requirements(ep_service_type_code, ep_country_ids)",
+    )
     .eq("id", requestId)
     .eq("supplier_organization_id", context.organization!.id)
     .single();
@@ -35,7 +38,10 @@ export async function getEligibleFilingRequest(
   if (data.pm_status !== "in_progress") {
     throw new Error("Signature documents are only available while the request is In progress.");
   }
-  return data;
+  return {
+    ...data,
+    countryScope: signatureCountryScope(firstRelation(data.translation_requirements)),
+  };
 }
 
 export async function getRequesterProfile(
@@ -116,7 +122,7 @@ export async function getSignatureEmailData(
   const { data, error } = await context.supabase
     .from("filing_signature_requests")
     .select(
-      "id, request_id, created_by, recipient_id, recipient_name, recipient_email, status, pm_note, due_at, sent_at, completed_at, cancelled_at, email_status, email_provider_id, email_last_error, email_sent_at, email_attempt_count, created_at, updated_at, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at), translation_requests(request_no, title, request_patents(patent_number))",
+      "id, request_id, created_by, recipient_id, recipient_name, recipient_email, status, pm_note, due_at, sent_at, completed_at, cancelled_at, email_status, email_provider_id, email_last_error, email_sent_at, email_attempt_count, created_at, updated_at, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at), translation_requests(request_no, title, request_patents(patent_number))",
     )
     .eq("id", signatureRequestId)
     .single();

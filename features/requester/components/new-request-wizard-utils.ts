@@ -41,7 +41,7 @@ export const defaultWizardConfig: WizardConfig = {
   channelCode: "ep",
   sourceLanguage: "",
   targetLanguages: [],
-  translationRequired: false,
+  translationRequired: true,
   epServiceType: "",
   epCountryIds: [],
   optOutCountryIds: [],
@@ -246,7 +246,7 @@ export function updateWizardChannel(
     filingApplicationType: "",
     epvType: "",
     epServiceType: "",
-    translationRequired: false,
+    translationRequired: channelCode === "ep",
     targetLanguages: [],
     serviceItem: "",
     optOutCountryIds: [],
@@ -289,7 +289,12 @@ export function normalizeWizardConfig(
     merged.epServiceType,
   );
   const translationRequired = channelCode === "ep"
-    ? Boolean(config?.translationRequired ?? configuredServiceTypes.includes("translation"))
+    ? Boolean(
+      config?.translationRequired
+      ?? (configuredServiceTypes.length
+        ? configuredServiceTypes.includes("translation")
+        : defaultWizardConfig.translationRequired),
+    )
     : configuredServiceTypes.includes("translation");
   const serviceTypes = channelCode === "ep" && translationRequired
     ? [...serviceConfig.serviceTypes, "translation"]
@@ -504,6 +509,12 @@ export function normalizeEpCountryIds(value: unknown): number[] {
 
 export function requiresSourceLanguage(config: WizardConfig) {
   if (config.channelCode !== "ep") return true;
+  if (
+    !config.translationRequired
+    && ["ep_granting", "unitary_patent"].includes(config.epServiceType)
+  ) {
+    return false;
+  }
   return Boolean(config.epServiceType);
 }
 

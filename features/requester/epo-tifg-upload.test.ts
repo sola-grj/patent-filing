@@ -129,12 +129,12 @@ test("EP Granting requires the verified customer TIFG", () => {
   }), false);
 });
 
-test("EP Granting without translation does not require document analysis", () => {
+test("all services require document analysis before quoting", () => {
   assert.equal(requiresPatentDocumentAnalysis({
     channelCode: "ep",
     epServiceType: "ep_granting",
     translationRequired: false,
-  }), false);
+  }), true);
   assert.equal(requiresPatentDocumentAnalysis({
     channelCode: "ep",
     epServiceType: "ep_granting",
@@ -147,21 +147,30 @@ test("EP Granting without translation does not require document analysis", () =>
   }), true);
 });
 
-test("automatic analysis is deferred for EP Granting", () => {
+test("automatic analysis is deferred only while EP Granting translation awaits TIFG", () => {
   assert.equal(shouldStartAutomaticPatentAnalysis({
     channelCode: "ep",
     epServiceType: "",
+    translationRequired: true,
   }), false);
   assert.equal(shouldStartAutomaticPatentAnalysis({
     channelCode: "ep",
     epServiceType: "ep_granting",
+    translationRequired: true,
   }), false);
   assert.equal(shouldStartAutomaticPatentAnalysis({
     channelCode: "ep",
+    epServiceType: "ep_granting",
+    translationRequired: false,
+  }), true);
+  assert.equal(shouldStartAutomaticPatentAnalysis({
+    channelCode: "ep",
     epServiceType: "traditional_validation",
+    translationRequired: true,
   }), true);
   assert.equal(shouldStartAutomaticPatentAnalysis({
     channelCode: "pct",
     epServiceType: "",
+    translationRequired: false,
   }), true);
 });

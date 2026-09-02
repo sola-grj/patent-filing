@@ -16,8 +16,9 @@ import {
 } from "./pm-service";
 import { removeSignatureFile, uploadSignatureFiles } from "./storage";
 import type { FilingSignatureFile } from "./types";
+import { validateSignatureUploadCountries } from "./country-scope";
 import {
-  signatureFilesFromFormData,
+  signatureUploadsFromFormData,
   validateSignatureDueDate,
   validateSignatureFiles,
 } from "./validation";
@@ -34,14 +35,16 @@ export async function savePmSignatureDraft(
       throw new Error("The requester message must not exceed 2,000 characters.");
     }
     const dueAt = validateSignatureDueDate(optionalString(formData.get("dueAt")));
-    const files = signatureFilesFromFormData(formData, "files");
+    const uploads = signatureUploadsFromFormData(formData);
+    const files = uploads.map((upload) => upload.file);
     const request = await getEligibleFilingRequest(context, requestId);
+    validateSignatureUploadCountries(uploads, request.countryScope);
     const profile = await getRequesterProfile(context, request.requester_id);
 
     const { data: active, error: activeError } = await context.supabase
       .from("filing_signature_requests")
       .select(
-        "id, request_id, created_by, recipient_id, recipient_name, recipient_email, status, pm_note, due_at, sent_at, completed_at, cancelled_at, email_status, email_provider_id, email_last_error, email_sent_at, email_attempt_count, created_at, updated_at, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
+        "id, request_id, created_by, recipient_id, recipient_name, recipient_email, status, pm_note, due_at, sent_at, completed_at, cancelled_at, email_status, email_provider_id, email_last_error, email_sent_at, email_attempt_count, created_at, updated_at, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
       )
       .eq("request_id", requestId)
       .in("status", ["draft", "sent"])
@@ -80,7 +83,7 @@ export async function savePmSignatureDraft(
 
     if (files.length) {
       await uploadSignatureFiles(context.supabase, {
-        files,
+        uploads,
         requestId,
         signatureRequestId: signatureRequest.id,
         direction: "pm_to_requester",
@@ -102,7 +105,7 @@ export async function removePmSignatureFile(formData: FormData): Promise<ActionR
     const { data: file, error: fileError } = await context.supabase
       .from("filing_signature_files")
       .select(
-        "id, signature_request_id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at",
+        "id, signature_request_id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at",
       )
       .eq("id", fileId)
       .single();

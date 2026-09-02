@@ -37,6 +37,7 @@ export type ErpCountry = {
   id: number;
   name: string;
   cname: string;
+  epvTransRequirement: 0 | 1 | 2;
   isDistinguishEntry?: boolean;
   officialCurrency?: number;
 };
@@ -48,13 +49,14 @@ export type ErpPriceRequest = {
   targetLangIds?: number[];
   optType?: 1 | 2 | 3 | 4;
   countryOptMap?: Record<string, true>;
+  patFilingRouteId: number;
   patFilingTypeId: number;
   clientId: number;
   priceCurrencyId: number;
-  patClaims: number;
+  patClaims?: number;
   patTotalPages?: number;
   patTotalWords?: number;
-  patClaimWords: number;
+  patClaimWords?: number;
 };
 
 export type ErpPriceRow = {
@@ -81,8 +83,16 @@ export type ErpQuotePreview = {
   quotedAt: string;
   customerName: string;
   validUntil?: string;
+  request?: ErpPriceRequest;
+  response?: ErpPriceRow[];
   rows: ErpQuoteRow[];
   total: number;
+};
+
+export type PreparedErpEstimate = {
+  request: ErpPriceRequest;
+  receipt: string;
+  expiresAt: string;
 };
 
 export type SignedQuoteEstimate = {
@@ -94,6 +104,7 @@ export type SignedQuoteEstimate = {
 
 export type ErpQuoteResult = ErpQuotePreview & {
   request: ErpPriceRequest;
+  response: ErpPriceRow[];
 };
 
 export type ErpActionResult<T> =

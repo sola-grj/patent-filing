@@ -251,6 +251,14 @@ export function PmRequestDetail({
       : null) ||
     request.request_no;
   const signatureRequests = request.filing_signature_requests ?? [];
+  const signatureCountries = [
+    "traditional_validation",
+    "traditional_validation_unitary_patent",
+  ].includes(config.epServiceType ?? "")
+    ? (request.ep_countries ?? []).filter((country) =>
+        config.epCountryIds.includes(country.id),
+      )
+    : [];
   const showSignaturePanel =
     request.pm_status === "in_progress" || signatureRequests.length > 0;
   const deadlineItems = buildRequestDeadlineItems({
@@ -384,6 +392,7 @@ export function PmRequestDetail({
               <PmSignaturePanel
                 key={signatureRequests.find((item) => ["draft", "sent"].includes(item.status))?.id ?? "new"}
                 canManage={request.pm_status === "in_progress"}
+                countries={signatureCountries}
                 requestId={request.id}
                 signatureRequests={signatureRequests}
                 showHeader={false}

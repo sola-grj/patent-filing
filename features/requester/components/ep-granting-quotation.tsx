@@ -74,6 +74,7 @@ function QuotationTable({
   table: ReturnType<typeof buildEpGrantingQuoteTable>;
   currency: ErpQuoteCurrencyCode;
 }) {
+  const showSubtotals = table.baseFees.length + table.translationFees.length > 1;
   return (
     <div className="overflow-x-auto px-6">
       <Table.Root size="2" variant="ghost" className="min-w-[760px] text-xs">
@@ -95,15 +96,19 @@ function QuotationTable({
           {table.translationFees.map((line, index) => (
             <FeeRow key={`translation-${index}`} line={line} />
           ))}
-          <SubtotalRow
-            label="Base Fee Subtotal"
-            amount={table.baseFeeSubtotal}
-          />
-          {table.translationFees.length ? (
-            <SubtotalRow
-              label="Translation Fee Subtotal"
-              amount={table.translationFeeSubtotal}
-            />
+          {showSubtotals ? (
+            <>
+              <SubtotalRow
+                label="Base Fee Subtotal"
+                amount={table.baseFeeSubtotal}
+              />
+              {table.translationFees.length ? (
+                <SubtotalRow
+                  label="Translation Fee Subtotal"
+                  amount={table.translationFeeSubtotal}
+                />
+              ) : null}
+            </>
           ) : null}
           <Table.Row className="font-semibold [--table-row-box-shadow:none]">
             <Table.Cell

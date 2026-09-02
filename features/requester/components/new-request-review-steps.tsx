@@ -22,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
   entityTypeOptions,
   epoSourceLanguageOptions,
@@ -351,14 +350,18 @@ export function ConfigStep({
             </div>
           ) : null}
           {config.channelCode === "ep" ? (
-            <div className="md:!w-fit">
+            <div>
               <Field label="Translation Service">
-                <div className="flex items-center gap-3">
-                  <Switch
+                <label
+                  className="flex h-10 w-full cursor-pointer items-center gap-2 rounded-md border bg-white px-3 text-sm transition-colors hover:border-brand-border/50 hover:bg-brand-soft/40"
+                  htmlFor="translation-service"
+                >
+                  <Checkbox
                     id="translation-service"
                     aria-label="Translation Service"
                     checked={config.translationRequired}
-                    onCheckedChange={(translationRequired) => {
+                    onCheckedChange={(checked) => {
+                      const translationRequired = checked === true;
                       onChange({
                         ...config,
                         translationRequired,
@@ -374,10 +377,8 @@ export function ConfigStep({
                       });
                     }}
                   />
-                  <Label className="cursor-pointer text-sm font-normal" htmlFor="translation-service">
-                    {config.translationRequired ? "On" : "Off"}
-                  </Label>
-                </div>
+                  <span>{config.translationRequired ? "Included" : "Not included"}</span>
+                </label>
               </Field>
             </div>
           ) : null}

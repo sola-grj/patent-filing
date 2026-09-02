@@ -1417,7 +1417,8 @@ async function createQuoteFromPreview(
     quotedAt: quote.quotedAt,
     customerName: quote.customerName,
     validUntil: quote.validUntil ?? null,
-    response: quote.rows,
+    request: quote.request ?? null,
+    response: quote.response ?? quote.rows,
   };
 
   const { data: storedQuote, error: quoteError } = await supabase

@@ -94,18 +94,15 @@ export function requiresPatentDocumentAnalysis(input: {
   epServiceType: string;
   translationRequired: boolean;
 }) {
-  return !(
-    input.channelCode === "ep"
-    && input.epServiceType === "ep_granting"
-    && !input.translationRequired
-  );
+  return Boolean(input);
 }
 
 export function shouldStartAutomaticPatentAnalysis(input: {
   channelCode: string;
   epServiceType: string;
+  translationRequired: boolean;
 }) {
   if (input.channelCode !== "ep") return true;
   if (!input.epServiceType) return false;
-  return input.epServiceType !== "ep_granting";
+  return input.epServiceType !== "ep_granting" || !input.translationRequired;
 }
