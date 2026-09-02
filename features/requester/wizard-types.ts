@@ -262,6 +262,8 @@ export type WizardPayload = {
   analysis?: WizardPatentAnalysisResult;
   quoteCurrency?: ErpQuoteCurrencyCode;
   quotePreview?: ErpQuotePreview;
+  quoteReceipt?: string;
+  quoteReceiptExpiresAt?: string;
   config: WizardConfig;
   lastStep: string;
 };

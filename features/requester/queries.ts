@@ -1,8 +1,10 @@
 import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
+import { unstable_cache } from "next/cache";
+import { createServiceClient } from "@/lib/supabase/server";
 import { resolveRequesterRequestScope } from "./request-scope";
 import { isEpGrantingTranslation } from "./epo-tifg-upload";
 import { recentDistinctSearches } from "./notifications";
-import { normalizeRequestSearchTerm } from "./requester-routes";
+import type { RequestDeadlineSource } from "./deadlines";
 import type {
   DictionaryOption,
   WizardDictionaries,
@@ -15,6 +17,7 @@ import type {
   WizardUploadedFile,
 } from "./wizard-types";
 import type { ErpQuotePreview, ErpQuoteRow } from "@/lib/eci-erp/types";
+import { measureServerOperation } from "@/lib/performance/server-timing";
 
 const dictionaryCategoryMap = {
   request_channel: "channels",
@@ -27,7 +30,11 @@ const dictionaryCategoryMap = {
 } as const;
 
 export async function getRequesterDictionaries(): Promise<WizardDictionaries> {
-  const { supabase } = await getAuthenticatedUser();
+  return getCachedRequesterDictionaries();
+}
+
+const getCachedRequesterDictionaries = unstable_cache(async (): Promise<WizardDictionaries> => {
+  const supabase = createServiceClient();
   const [dictionaryResult, epCountriesResult] = await Promise.all([
     supabase
       .from("dictionary_items")
@@ -73,7 +80,7 @@ export async function getRequesterDictionaries(): Promise<WizardDictionaries> {
   }
 
   return result;
-}
+}, ["requester-dictionaries-v1"], { revalidate: 3600, tags: ["requester-dictionaries"] });
 
 type DraftRow = {
   id: string;
@@ -169,6 +176,47 @@ type RequesterQuoteMessage = {
   created_at: string;
 };
 
+export type RequesterRequestListRow = RequestDeadlineSource & {
+  id: string;
+  request_no: string;
+  reference_no: string | null;
+  requester_id: string;
+  title: string | null;
+  channel_code: string | null;
+  requester_status: string;
+  workflow_stage: string;
+  submitted_at: string | null;
+  updated_at: string;
+  file_count: number;
+  translation_requirements: Array<{
+    source_language: string;
+    target_language: string;
+    target_languages: string[] | null;
+    jurisdiction_codes: string[] | null;
+    service_types: string[] | null;
+    is_urgent: boolean;
+    epv_type_code: string | null;
+    ep_service_type_code: string | null;
+    pct_chapter_code: string | null;
+  }>;
+  request_patents: Array<{
+    patent_number: string;
+    application_no: string | null;
+    publication_no: string | null;
+    first_priority_date: string | null;
+    international_filing_date: string | null;
+    grant_publication_date: string | null;
+    rule_71_3_communication_date: string | null;
+  }>;
+  quotes: Array<{
+    id: string;
+    total_amount: number | string;
+    currency: string;
+    status: string;
+    created_at: string;
+  }>;
+};
+
 type RequesterQuoteNegotiationRow = {
   id: string;
   quote_id?: string | null;
@@ -214,7 +262,14 @@ export type RequesterQuoteHistoryEntry = {
 };
 
 export type RequesterQuoteViewModel = {
-  request: Awaited<ReturnType<typeof getRequesterRequest>>;
+  request: {
+    id: string;
+    request_no: string;
+    requester_id: string;
+    requester_status: string;
+    viewer_is_owner: boolean;
+    quote_negotiations: RequesterQuoteNegotiationRow[];
+  } | null;
   quote: QuoteRow | null;
   latestNegotiation: RequesterQuoteHistoryEntry | null;
   isWaitingForPmFeedback: boolean;
@@ -281,90 +336,53 @@ export async function getRequesterRequests(filters?: {
   page?: number;
   scope?: "mine" | "organization";
 }) {
-  const { supabase, userId, organization, requestSharingEnabled } =
+  return measureServerOperation("requester.requests.list", () =>
+    getRequesterRequestsInternal(filters));
+}
+
+async function getRequesterRequestsInternal(filters?: {
+  status?: string;
+  channel?: string;
+  q?: string;
+  page?: number;
+  scope?: "mine" | "organization";
+}) {
+  const { supabase, organization, requestSharingEnabled } =
     await getRequesterOrganization();
 
   if (!organization) {
     return { organization: null, requests: [], totalCount: 0, totalPages: 0, page: 1, pageSize: 10, dictionaries: null, requestSharingEnabled: false, scope: "mine" as const };
   }
 
-  const pageSize = 10;
-  const page = Math.max(1, filters?.page ?? 1);
-
   const scope = resolveRequesterRequestScope(requestSharingEnabled, filters?.scope);
-  let query = supabase
-    .from("translation_requests")
-    .select(
-      "id, request_no, reference_no, requester_id, title, channel_code, requester_status, workflow_stage, submitted_at, updated_at, request_files(id), translation_requirements(source_language, target_language, target_languages, jurisdiction_codes, service_types, is_urgent, epv_type_code, ep_service_type_code, pct_chapter_code), request_patents(patent_number, application_no, publication_no, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date), quotes(id, total_amount, currency, status, created_at), patent_searches(query)",
-    )
-    .neq("workflow_stage", "draft")
-    .order("updated_at", { ascending: false });
-
-  query = scope === "organization"
-    ? query.eq("organization_id", organization.id).neq("requester_id", userId)
-    : query.eq("requester_id", userId);
-
-  if (filters?.status && filters.status !== "all") {
-    query = query.eq("requester_status", filters.status);
-  }
-  if (filters?.channel && filters.channel !== "all") {
-    query = query.eq("channel_code", filters.channel);
-  }
-
-  const { data, error } = await query;
+  const pageSize = 10;
+  const [{ data, error }, dictionaries] = await Promise.all([
+    supabase.rpc("get_requester_request_page", {
+      p_status: filters?.status ?? null,
+      p_channel: filters?.channel ?? null,
+      p_query: filters?.q ?? null,
+      p_page: Math.max(1, filters?.page ?? 1),
+      p_page_size: pageSize,
+      p_scope: scope,
+    }),
+    getRequesterDictionaries(),
+  ]);
   if (error) {
     throw new Error(error.message);
   }
-
-  const keyword = filters?.q?.toLowerCase().trim();
-  const normalizedKeyword = keyword
-    ? normalizeRequestSearchTerm(keyword)
-    : "";
-  const requests = keyword
-    ? (data ?? []).filter((request) => {
-        const patentQuery = (request.patent_searches ?? [])
-          .map((search: { query: string }) => search.query)
-          .join(" ");
-        const requestPatent = Array.isArray(request.request_patents)
-          ? request.request_patents[0]
-          : request.request_patents;
-        const searchableValues = [
-          request.request_no,
-          request.reference_no,
-          request.title,
-          patentQuery,
-          requestPatent?.patent_number,
-        ];
-        const displaySearchValue = searchableValues
-          .join(" ")
-          .toLowerCase();
-        const patentSearchValue = searchableValues
-          .map((value) => normalizeRequestSearchTerm(String(value ?? "")))
-          .join(" ");
-
-        return displaySearchValue.includes(keyword)
-          || Boolean(
-            normalizedKeyword
-            && patentSearchValue.includes(normalizedKeyword),
-          );
-      }).sort((left, right) => {
-        const leftExactReference = left.reference_no?.trim().toLowerCase() === keyword;
-        const rightExactReference = right.reference_no?.trim().toLowerCase() === keyword;
-        return Number(rightExactReference) - Number(leftExactReference);
-      })
-    : data ?? [];
-
-  const totalCount = requests.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const paginatedRequests = requests.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  const dictionaries = await getRequesterDictionaries();
+  const result = (data ?? {}) as {
+    items?: RequesterRequestListRow[];
+    total_count?: number;
+    page?: number;
+    page_size?: number;
+  };
+  const totalCount = Number(result.total_count ?? 0);
+  const safePage = Number(result.page ?? 1);
   return {
     organization,
-    requests: paginatedRequests,
+    requests: result.items ?? [],
     totalCount,
-    totalPages,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
     page: safePage,
     pageSize,
     dictionaries,
@@ -378,7 +396,7 @@ export async function getRequesterRequest(requestId: string) {
   const { data, error } = await supabase
     .from("translation_requests")
     .select(
-      "*, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(*, file_parse_results(*), file_parse_jobs(*)), patent_searches(*, patent_candidates(*, patent_file_versions(*))), request_patents(*), translation_requirements(*), request_config_versions(*), quotes(*, quote_items(*), quote_factor_snapshots(*)), quote_negotiations(*, quote_negotiation_messages(*)), orders(*, translation_tasks(id, assigned_pm_id, assigned_translator_id, status, task_type, started_at, task_deliverables(id, status, storage_path, created_at, version_no, language, ep_country_id, jurisdiction_code))), request_events(*), filing_signature_requests(*, filing_signature_files(*))",
+      "id, request_no, reference_no, requester_id, channel_code, title, workflow_stage, requester_status, source_mode, submitted_at, updated_at, organizations:organizations!translation_requests_organization_id_fkey(id, name), request_files(id, source, status, updated_at, original_filename, mime_type, language, metadata, file_parse_results(word_count, page_count, claim_count, document_kind, source_url, retrieval_mode, document_language, publication_date, document_date, document_sha256, epo_document_id, is_pre_grant, is_legacy_pre_grant, structure_json)), request_patents(patent_number, title, abstract, jurisdiction, source, application_no, publication_no, applicants, inventors, filing_date, publication_date, language, first_priority_date, international_filing_date, grant_publication_date, rule_71_3_communication_date, filing_deadline_30_months, filing_deadline_31_months, total_pages, legal_status, ipc_codes, cpc_codes, abstract_word_count, description_word_count, claims_word_count, claims_count, drawing_count, source_snapshot), translation_requirements(id, source_language, target_language, target_languages, scope_type, scope_details, purpose, service_types, entity_type, entity_type_code, filing_type_code, application_type_code, epv_type_code, ep_service_type_code, translation_required, service_item_code, opt_out_country_ids, pct_chapter_code, ep_country_ids, jurisdiction_codes, quality_level, delivery_option, due_at, is_urgent, config_snapshot), request_config_versions(id, version_no, config_snapshot), quotes(id, version_no, total_amount, currency, pricing_snapshot, breakdown_json, quote_items(label, amount)), quote_negotiations(initiated_by, expected_amount, expected_delivery_at, created_at, quote_negotiation_messages(author_id, expected_amount, expected_delivery_at, created_at)), orders(id, translation_tasks(id, task_deliverables(id, status, storage_path, created_at, version_no, language, ep_country_id, jurisdiction_code))), filing_signature_requests(id, request_id, created_by, recipient_id, recipient_name, recipient_email, status, pm_note, due_at, sent_at, completed_at, cancelled_at, email_status, email_provider_id, email_last_error, email_sent_at, email_attempt_count, created_at, updated_at, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at))",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -387,27 +405,19 @@ export async function getRequesterRequest(requestId: string) {
     throw new Error(error.message);
   }
 
-  if (data?.workflow_stage === "draft") {
+  if (!data || data.workflow_stage === "draft") {
     return null;
   }
 
-  const { data: epCountries, error: epCountriesError } = await supabase
-    .from("ep_countries")
-    .select("id, name, cname, abbr")
-    .eq("enabled", true)
-    .order("name", { ascending: true });
-  if (epCountriesError) throw new Error(epCountriesError.message);
-
-  const enrichedData = data ? { ...data, ep_countries: epCountries ?? [] } : data;
+  const dictionaries = await getRequesterDictionaries();
+  const enrichedData = { ...data, ep_countries: dictionaries.epCountries };
 
   const order = firstRelation<{ id: string }>(
     (enrichedData?.orders as { id: string } | Array<{ id: string }> | null) ?? null,
   );
 
   if (!order?.id) {
-    return enrichedData
-      ? { ...enrichedData, viewer_is_owner: enrichedData.requester_id === userId }
-      : enrichedData;
+    return { ...enrichedData, viewer_is_owner: enrichedData.requester_id === userId };
   }
 
   const { data: assignmentRows, error: assignmentError } = await supabase.rpc(
@@ -427,8 +437,8 @@ export async function getRequesterRequest(requestId: string) {
 
   return {
     ...enrichedData,
-    viewer_is_owner: enrichedData!.requester_id === userId,
-    orders: Array.isArray(enrichedData!.orders) ? [enrichedOrder] : enrichedOrder,
+    viewer_is_owner: enrichedData.requester_id === userId,
+    orders: Array.isArray(enrichedData.orders) ? [enrichedOrder] : enrichedOrder,
   };
 }
 
@@ -446,7 +456,17 @@ export async function getRequesterDrafts(filters?: {
   q?: string;
   page?: number;
 }) {
-  const { supabase, userId, organization } = await getRequesterOrganization();
+  return measureServerOperation("requester.drafts.list", () =>
+    getRequesterDraftsInternal(filters));
+}
+
+async function getRequesterDraftsInternal(filters?: {
+  channel?: string;
+  service?: string;
+  q?: string;
+  page?: number;
+}) {
+  const { supabase, organization } = await getRequesterOrganization();
 
   if (!organization) {
     return {
@@ -461,77 +481,38 @@ export async function getRequesterDrafts(filters?: {
   }
 
   const pageSize = 10;
-  const page = Math.max(1, filters?.page ?? 1);
-
-  const { data, error } = await supabase
-    .from("translation_requests")
-    .select("id, request_no, title, source_mode, workflow_stage, updated_at, last_draft_step, draft_payload, request_patents(patent_number, title), patent_searches(query), translation_requirements(service_types, ep_service_type_code), request_files(id, source, status, patent_document_id, original_filename, mime_type, metadata)")
-    .eq("requester_id", userId)
-    .eq("workflow_stage", "draft")
-    .order("updated_at", { ascending: false });
+  const [{ data, error }, dictionaries] = await Promise.all([
+    supabase.rpc("get_requester_draft_page", {
+      p_channel: filters?.channel ?? null,
+      p_service: filters?.service ?? null,
+      p_query: filters?.q ?? null,
+      p_page: Math.max(1, filters?.page ?? 1),
+      p_page_size: pageSize,
+    }),
+    getRequesterDictionaries(),
+  ]);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const drafts = (data ?? []).filter((draft) => matchesRequesterDraftFilters(draft, filters));
-  const totalCount = drafts.length;
+  const result = (data ?? {}) as {
+    items?: DraftRow[];
+    total_count?: number;
+    page?: number;
+  };
+  const totalCount = Number(result.total_count ?? 0);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const paginatedDrafts = drafts.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  const dictionaries = await getRequesterDictionaries();
+  const safePage = Number(result.page ?? 1);
   return {
     organization,
-    drafts: paginatedDrafts,
+    drafts: result.items ?? [],
     totalCount,
     totalPages,
     page: safePage,
     pageSize,
     dictionaries,
   };
-}
-
-function matchesRequesterDraftFilters(
-  draft: Pick<DraftRow, "request_no" | "title" | "source_mode" | "last_draft_step" | "draft_payload" | "patent_searches" | "translation_requirements" | "request_files"> & {
-    request_patents?: Array<Pick<
-      NonNullable<DraftRow["request_patents"]>[number],
-      "patent_number" | "title"
-    >> | null;
-  },
-  filters?: { channel?: string; service?: string; q?: string },
-) {
-  const payload = draft.draft_payload ?? {};
-  const channel = draft.source_mode === "upload"
-    ? "upload_files"
-    : payload.config?.channelCode ?? "";
-  const services = draft.translation_requirements?.[0]?.service_types
-    ?? payload.config?.serviceTypes
-    ?? [];
-  if (filters?.channel && filters.channel !== "all" && channel !== filters.channel) {
-    return false;
-  }
-  if (filters?.service && filters.service !== "all" && !services.includes(filters.service)) {
-    return false;
-  }
-  const keyword = filters?.q?.trim().toLowerCase();
-  if (!keyword) {
-    return true;
-  }
-
-  return [
-    draft.request_no,
-    draft.title,
-    payload.patentQuery,
-    draft.patent_searches?.[0]?.query,
-    draft.request_patents?.[0]?.patent_number,
-    draft.request_patents?.[0]?.title,
-    ...(draft.request_files ?? []).map((file) => file.original_filename),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-    .includes(keyword);
 }
 
 export async function getRequesterDraft(draftId: string) {
@@ -555,9 +536,24 @@ export async function getRequesterDraft(draftId: string) {
 }
 
 export async function getRequesterQuote(requestId: string): Promise<RequesterQuoteViewModel> {
-  const request = await getRequesterRequest(requestId);
-  const quotes = (request?.quotes ?? []) as QuoteRow[];
-  const quote = [...quotes].sort((a, b) => b.version_no - a.version_no)[0] ?? null;
+  const { supabase } = await getAuthenticatedUser();
+  const { data, error } = await supabase.rpc("get_requester_quote_detail", {
+    p_request_id: requestId,
+  });
+  if (error && error.code !== "P0002") throw new Error(error.message);
+  const detail = (data ?? null) as {
+    request: {
+      id: string;
+      request_no: string;
+      requester_id: string;
+      requester_status: string;
+      viewer_is_owner: boolean;
+      quote_negotiations: RequesterQuoteNegotiationRow[];
+    };
+    quote: QuoteRow | null;
+  } | null;
+  const request = detail?.request ?? null;
+  const quote = detail?.quote ?? null;
   const negotiationRows = ((request?.quote_negotiations ?? []) as RequesterQuoteNegotiationRow[])
     .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime());
   const latestNegotiationRow = negotiationRows[negotiationRows.length - 1] ?? null;
@@ -598,7 +594,7 @@ export async function getRequesterOrders() {
 
   const { data, error } = await supabase
     .from("orders")
-    .select("*, translation_requests(request_no, title), quotes:accepted_quote_id(total_amount, currency, estimated_delivery_at)")
+    .select("id, order_no, status, updated_at, translation_requests(request_no, title), quotes:accepted_quote_id(total_amount, currency, estimated_delivery_at)")
     .eq("requester_id", userId)
     .order("updated_at", { ascending: false });
 
@@ -606,29 +602,38 @@ export async function getRequesterOrders() {
     throw new Error(error.message);
   }
 
-  return { organization, orders: data ?? [] };
+  return {
+    organization,
+    orders: (data ?? []).map((order) => ({
+      ...order,
+      translation_requests: firstRelation(order.translation_requests),
+      quotes: firstRelation(order.quotes),
+    })),
+  };
 }
 
 export async function getRequesterOrder(orderId: string) {
   const { supabase } = await getAuthenticatedUser();
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*, translation_requests(*, translation_requirements(ep_country_ids, jurisdiction_codes, config_snapshot), request_config_versions(version_no, config_snapshot)), quotes:accepted_quote_id(*), translation_tasks(*, task_deliverables(*))")
-    .eq("id", orderId)
-    .maybeSingle();
+  const [orderResult, dictionaries] = await Promise.all([
+    supabase
+      .from("orders")
+      .select("id, order_no, status, confirmed_at, translation_requests(id, request_no, title, translation_requirements(ep_country_ids, jurisdiction_codes, config_snapshot), request_config_versions(version_no, config_snapshot)), quotes:accepted_quote_id(id, total_amount, currency, estimated_delivery_at), translation_tasks(id, task_type, status, task_deliverables(id, version_no, status, storage_path, created_at, language, ep_country_id, jurisdiction_code))")
+      .eq("id", orderId)
+      .maybeSingle(),
+    getRequesterDictionaries(),
+  ]);
+  const { data, error } = orderResult;
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const { data: epCountries, error: epCountriesError } = await supabase
-    .from("ep_countries")
-    .select("id, name, cname, abbr")
-    .eq("enabled", true)
-    .order("name", { ascending: true });
-  if (epCountriesError) throw new Error(epCountriesError.message);
-
-  return data ? { ...data, ep_countries: epCountries ?? [] } : data;
+  return data ? {
+    ...data,
+    translation_requests: firstRelation(data.translation_requests),
+    quotes: firstRelation(data.quotes),
+    ep_countries: dictionaries.epCountries,
+  } : data;
 }
 
 function mapDraftRowToWizardState(draft: DraftRow) {

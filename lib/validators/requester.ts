@@ -6,6 +6,7 @@ export type ActionResult<T = undefined> = {
   success: boolean;
   data?: T;
   error?: string;
+  code?: "QUOTE_ESTIMATE_EXPIRED" | "QUOTE_ESTIMATE_INVALID" | "SUBMIT_TRANSACTION_FAILED";
 };
 
 export function requiredString(value: FormDataEntryValue | null, label: string) {

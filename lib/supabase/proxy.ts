@@ -2,11 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils";
 
-const REQUESTER_HOME_PATH = "/requester";
 const ERP_CUSTOMER_SYNC_PATH = "/api/cron/sync-erp-clients";
 const REQUESTER_NOTIFICATION_SYNC_PATH = "/api/cron/reconcile-requester-notifications";
 
 export async function updateSession(request: NextRequest) {
+  const startedAt = performance.now();
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -18,13 +18,13 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname === ERP_CUSTOMER_SYNC_PATH
     || request.nextUrl.pathname === REQUESTER_NOTIFICATION_SYNC_PATH
   ) {
-    return supabaseResponse;
+    return withProxyTiming(supabaseResponse, startedAt);
   }
 
   // If the env vars are not set, skip proxy check. You can remove this
   // once you setup the project.
   if (!hasEnvVars) {
-    return supabaseResponse;
+    return withProxyTiming(supabaseResponse, startedAt);
   }
 
   // With Fluid compute, don't put this client in a global environment
@@ -72,45 +72,7 @@ export async function updateSession(request: NextRequest) {
     url.pathname = "/auth/login";
     url.search = "";
     url.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
-    return NextResponse.redirect(url);
-  }
-
-  if (user?.sub && !request.nextUrl.pathname.startsWith("/auth")) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("password_setup_required")
-      .eq("user_id", user.sub)
-      .maybeSingle();
-
-    if (profile?.password_setup_required) {
-      const url = request.nextUrl.clone();
-      const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
-      url.pathname = "/auth/update-password";
-      url.search = "";
-      url.searchParams.set("next", nextPath);
-      const redirectResponse = NextResponse.redirect(url);
-      supabaseResponse.cookies.getAll().forEach((cookie) =>
-        redirectResponse.cookies.set(cookie),
-      );
-      return redirectResponse;
-    }
-  }
-
-  if (user?.sub && requiresRequesterWorkspace(request.nextUrl.pathname)) {
-    const { data: requesterMembership, error: membershipError } = await supabase
-      .from("organization_members")
-      .select("organization_id")
-      .eq("user_id", user.sub)
-      .eq("role", "requester")
-      .limit(1)
-      .maybeSingle();
-
-    if (membershipError || !requesterMembership?.organization_id) {
-      const url = request.nextUrl.clone();
-      url.pathname = REQUESTER_HOME_PATH;
-      url.search = "";
-      return NextResponse.redirect(url);
-    }
+    return withProxyTiming(NextResponse.redirect(url), startedAt);
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is.
@@ -126,9 +88,11 @@ export async function updateSession(request: NextRequest) {
   // If this is not done, you may be causing the browser and server to go out
   // of sync and terminate the user's session prematurely!
 
-  return supabaseResponse;
+  return withProxyTiming(supabaseResponse, startedAt);
 }
 
-function requiresRequesterWorkspace(pathname: string) {
-  return pathname.startsWith(`${REQUESTER_HOME_PATH}/`);
+function withProxyTiming(response: NextResponse, startedAt: number) {
+  const duration = Math.round((performance.now() - startedAt) * 100) / 100;
+  response.headers.set("Server-Timing", `proxy;dur=${duration}`);
+  return response;
 }

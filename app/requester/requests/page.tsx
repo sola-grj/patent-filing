@@ -165,7 +165,7 @@ async function RequestsContent({
                   {request.request_no}
                   {request.reference_no ? ` · Ref ${request.reference_no}` : ""}
                   {" · "}
-                  {request.request_files?.length ?? 0} files
+                  {Number(request.file_count ?? 0)} files
                 </span>
               </span>
               <span className="min-w-0">

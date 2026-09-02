@@ -3,6 +3,7 @@
 import { createServiceClient, createClient } from "@/lib/supabase/server";
 import { refreshErpToken } from "@/lib/eci-erp/client";
 import { normalizeLogin } from "@/lib/eci-erp/pricing-rules";
+import { after } from "next/server";
 
 const LOGIN_ERROR = "Invalid login credentials.";
 
@@ -22,7 +23,7 @@ export async function loginWithEmailOrClientName(input: {
       password: input.password,
     });
     if (error) return { success: false, error: LOGIN_ERROR };
-    await prepareErpTokenCache();
+    after(prepareErpTokenCache);
     return { success: true };
   } catch {
     return { success: false, error: LOGIN_ERROR };

@@ -136,6 +136,8 @@ export function NewRequestWizard({
   const [quotePreview, setQuotePreview] = useState<ErpQuotePreview | null>(
     initialPayload?.quotePreview ?? null,
   );
+  const [quoteReceipt, setQuoteReceipt] = useState<string>();
+  const [quoteReceiptExpiresAt, setQuoteReceiptExpiresAt] = useState<string>();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [negotiationOpen, setNegotiationOpen] = useState(false);
   const [negotiationDraft, setNegotiationDraft] = useState<WizardNegotiationDraft>({
@@ -401,6 +403,8 @@ export function NewRequestWizard({
       analysis: analysis.result,
       quoteCurrency,
       quotePreview: quotePreview ?? undefined,
+      quoteReceipt,
+      quoteReceiptExpiresAt,
       config,
       lastStep: wizardSteps[step].title,
     });
@@ -421,6 +425,8 @@ export function NewRequestWizard({
   function handleConfigChange(nextConfig: WizardConfig) {
     const normalizedConfig = normalizeWizardConfig(nextConfig);
     setQuotePreview(null);
+    setQuoteReceipt(undefined);
+    setQuoteReceiptExpiresAt(undefined);
     const grantingSourceChanged = sourceMode === "patent_search"
       && (
         config.epServiceType === "ep_granting"
@@ -452,7 +458,9 @@ export function NewRequestWizard({
         return;
       }
       setQuoteCurrency(nextCurrency);
-      setQuotePreview(result.data);
+      setQuotePreview(result.data.quote);
+      setQuoteReceipt(result.data.receipt);
+      setQuoteReceiptExpiresAt(result.data.expiresAt);
     } finally {
       setStepLoadingMessage(null);
     }
@@ -539,7 +547,9 @@ export function NewRequestWizard({
           setError(result.error);
           return;
         }
-        setQuotePreview(result.data);
+        setQuotePreview(result.data.quote);
+        setQuoteReceipt(result.data.receipt);
+        setQuoteReceiptExpiresAt(result.data.expiresAt);
         setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
       } finally {
         setStepLoadingMessage(null);
@@ -615,6 +625,8 @@ export function NewRequestWizard({
     setConfig(defaultWizardConfig);
     setQuoteCurrency("CNY");
     setQuotePreview(null);
+    setQuoteReceipt(undefined);
+    setQuoteReceiptExpiresAt(undefined);
     setShowConfigValidation(false);
     setCancelOpen(false);
     setNegotiationOpen(false);
@@ -650,6 +662,23 @@ export function NewRequestWizard({
           options?.buildFormData?.() ?? toWizardFormData(payload, uploadedFiles);
         const result = await action(formData);
         setError(result.error ?? null);
+
+        if (
+          !result.success
+          && (result.code === "QUOTE_ESTIMATE_EXPIRED" || result.code === "QUOTE_ESTIMATE_INVALID")
+        ) {
+          setStepLoadingMessage("Revalidating price");
+          const refreshed = await generateErpEstimate(payload);
+          if (refreshed.success) {
+            setQuotePreview(refreshed.data.quote);
+            setQuoteReceipt(refreshed.data.receipt);
+            setQuoteReceiptExpiresAt(refreshed.data.expiresAt);
+            setError("The estimate was refreshed. Review it and submit again.");
+          } else {
+            setError(refreshed.error);
+          }
+          setStepLoadingMessage(null);
+        }
 
         if (result.data?.requestId) {
           setRequestId(result.data.requestId);

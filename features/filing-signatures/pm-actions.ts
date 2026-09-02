@@ -40,7 +40,9 @@ export async function savePmSignatureDraft(
 
     const { data: active, error: activeError } = await context.supabase
       .from("filing_signature_requests")
-      .select("*, filing_signature_files(*)")
+      .select(
+        "id, request_id, created_by, recipient_id, recipient_name, recipient_email, status, pm_note, due_at, sent_at, completed_at, cancelled_at, email_status, email_provider_id, email_last_error, email_sent_at, email_attempt_count, created_at, updated_at, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
+      )
       .eq("request_id", requestId)
       .in("status", ["draft", "sent"])
       .maybeSingle();
@@ -99,7 +101,9 @@ export async function removePmSignatureFile(formData: FormData): Promise<ActionR
     const fileId = requiredString(formData.get("fileId"), "File");
     const { data: file, error: fileError } = await context.supabase
       .from("filing_signature_files")
-      .select("*")
+      .select(
+        "id, signature_request_id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at",
+      )
       .eq("id", fileId)
       .single();
     if (fileError) throw new Error(fileError.message);

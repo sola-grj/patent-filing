@@ -1,8 +1,10 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
 import { AppTopNav, AppTopNavFallback } from "@/components/app-top-nav";
 import { requesterOrganizationAccessEnabled } from "@/features/organizations/availability";
 import { RequestWizardControllerProvider } from "@/features/requester/components/requester-create-request-controller";
+import { requirePortalContext } from "@/lib/auth/portal-context";
 
 const requesterNavLinks = [
   { href: "/requester", label: "Home", exact: true },
@@ -19,6 +21,18 @@ export default function RequesterLayout({
   children: React.ReactNode;
 }) {
   return (
+    <Suspense fallback={<RequesterLayoutFallback />}>
+      <RequesterShell>{children}</RequesterShell>
+    </Suspense>
+  );
+}
+
+async function RequesterShell({ children }: { children: React.ReactNode }) {
+  const context = await requirePortalContext();
+  if (context.passwordSetupRequired) {
+    redirect("/auth/update-password?next=/requester");
+  }
+  return (
     <RequestWizardControllerProvider>
       <main className="fixed inset-0 grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background">
         <Suspense fallback={<AppTopNavFallback links={requesterNavLinks} notificationHref="/requester/messages" />}>
@@ -29,5 +43,16 @@ export default function RequesterLayout({
         </div>
       </main>
     </RequestWizardControllerProvider>
+  );
+}
+
+function RequesterLayoutFallback() {
+  return (
+    <main className="fixed inset-0 grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background">
+      <AppTopNavFallback links={requesterNavLinks} notificationHref="/requester/messages" />
+      <div className="mx-auto w-full max-w-[1760px] px-6 py-7 text-sm text-muted-foreground">
+        Loading workspace...
+      </div>
+    </main>
   );
 }

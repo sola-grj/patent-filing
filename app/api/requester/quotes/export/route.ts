@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { validateWizardPayload } from "@/features/requester/components/new-request-wizard-utils";
-import { verifyWizardPatentPayload } from "@/features/requester/actions/patent-service";
+import { verifyQuoteEstimateReceipt } from "@/features/requester/actions/quote-receipt";
 import { getRequesterDraft } from "@/features/requester/queries";
 import type { WizardPayload } from "@/features/requester/wizard-types";
-import { quoteForOrganization, publicQuote } from "@/lib/eci-erp/pricing";
 import {
   isErpQuoteCurrencyCode,
   type ErpQuotePreview,
@@ -15,8 +14,8 @@ import {
   type QuoteExportMetadata,
   type QuoteExportFormat,
 } from "@/lib/eci-erp/quote-export";
-import { createClient } from "@/lib/supabase/server";
 import { getEpoServiceAvailability } from "@/features/requester/deadlines";
+import { getOptionalPortalContext } from "@/lib/auth/portal-context";
 
 const MAX_EXPORT_BODY_BYTES = 2_000_000;
 
@@ -28,6 +27,7 @@ const serviceNames: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
+  const startedAt = performance.now();
   try {
     const format = exportFormat(new URL(request.url).searchParams.get("format"));
     const contentLength = Number(request.headers.get("content-length") ?? 0);
@@ -35,20 +35,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The estimate export request is too large." }, { status: 413 });
     }
 
-    const supabase = await createClient();
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-    const userId = claimsData?.claims?.sub;
-    if (claimsError || !userId) {
+    const context = await getOptionalPortalContext();
+    if (!context) {
       return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
     }
-    const { data: membership, error: membershipError } = await supabase
-      .from("organization_members")
-      .select("organization_id")
-      .eq("user_id", userId)
-      .eq("role", "requester")
-      .limit(1)
-      .maybeSingle();
-    if (membershipError || !membership) {
+    const membership = context.requesterMembership;
+    if (!membership) {
       return NextResponse.json({ error: "A requester organization is required." }, { status: 403 });
     }
 
@@ -80,32 +72,29 @@ export async function POST(request: Request) {
         );
       }
 
-      // Drafts deliberately omit transient lookup receipts. Use the persisted
-      // request data, but preserve the currently selected currency from the
-      // browser and recalculate the export with the ERP pricing service.
       exportablePayload = {
         ...exportableSavedPayload,
         quoteCurrency: payload.quoteCurrency,
       };
-      const result = await quoteForOrganization(
-        exportablePayload,
-        membership.organization_id,
-        userId,
-      );
-      quote = publicQuote(result);
+      if (savedQuote.currency !== payload.quoteCurrency) {
+        return NextResponse.json(
+          { error: "Generate and save the estimate in the selected currency before exporting." },
+          { status: 409 },
+        );
+      }
+      quote = savedQuote;
     } else {
       const validationError = validateWizardPayload(payload);
       if (validationError) {
         return NextResponse.json({ error: validationError }, { status: 400 });
       }
 
-      exportablePayload = await verifyWizardPatentPayload(payload);
-      const result = await quoteForOrganization(
-        exportablePayload,
-        membership.organization_id,
-        userId,
-      );
-      quote = publicQuote(result);
+      exportablePayload = payload;
+      quote = verifyQuoteEstimateReceipt({
+        userId: context.userId,
+        organizationId: membership.organization_id,
+        payload,
+      });
     }
 
     const patent = exportablePayload.selectedPatent;
@@ -157,6 +146,7 @@ export async function POST(request: Request) {
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${fileName}"`,
         "Cache-Control": "private, no-store",
+        "Server-Timing": `total;dur=${Math.round((performance.now() - startedAt) * 100) / 100}`,
       },
     });
   } catch (error) {

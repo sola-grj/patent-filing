@@ -115,7 +115,10 @@ export async function createFilesFromPatentVersions(formData: FormData): Promise
     const versionIds = formData.getAll("versionId").map(String);
     if (!versionIds.length) throw new Error("Select at least one patent file version.");
 
-    const { data: versions, error } = await supabase.from("patent_file_versions").select("*").in("id", versionIds);
+    const { data: versions, error } = await supabase
+      .from("patent_file_versions")
+      .select("id, version_label, file_type, language, source_url")
+      .in("id", versionIds);
     if (error) throw new Error(error.message);
 
     const { error: insertError } = await supabase.from("request_files").insert(

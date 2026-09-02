@@ -54,7 +54,9 @@ export async function uploadSignatureFiles(
           file_size: file.size,
           uploaded_by: input.userId,
         })
-        .select("*")
+        .select(
+          "id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at",
+        )
         .single();
 
       if (insertError) {

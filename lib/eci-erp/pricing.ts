@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 
 import { createServiceClient } from "@/lib/supabase/server";
 import type { WizardConfig, WizardPayload } from "@/features/requester/wizard-types";
@@ -65,13 +66,19 @@ const LANGUAGE_SHORT_NAMES: Record<string, string> = {
   sq: "sq-AL",
 };
 
+const getCachedErpCountries = unstable_cache(
+  async (categoryId: number) => getErpCountries(categoryId),
+  ["erp-countries-v1"],
+  { revalidate: 900, tags: ["erp-countries"] },
+);
+
 export async function availableErpCountries(
   config: Pick<WizardConfig, "channelCode" | "serviceTypes" | "epvType" | "epServiceType">,
 ): Promise<ErpActionResult<ErpCountry[]>> {
   try {
     const categoryId = categoryForConfig(config);
     if (!categoryId) return { success: true, data: [] };
-    const remoteCountries = await getErpCountries(categoryId);
+    const remoteCountries = await getCachedErpCountries(categoryId);
     const service = createServiceClient();
     const ids = uniqueIntegers(remoteCountries.map((country) => country.id));
     const { data, error } = ids.length

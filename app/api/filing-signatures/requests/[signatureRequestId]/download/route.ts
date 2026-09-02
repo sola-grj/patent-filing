@@ -18,7 +18,9 @@ export async function GET(
 
   const { data: signatureRequest, error } = await supabase
     .from("filing_signature_requests")
-    .select("id, request_id, filing_signature_files(*)")
+    .select(
+      "id, request_id, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
+    )
     .eq("id", signatureRequestId)
     .maybeSingle();
   if (error || !signatureRequest) {

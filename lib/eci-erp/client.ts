@@ -19,6 +19,7 @@ import type {
 
 const PROVIDER = "eci_erp";
 const TOKEN_SKEW_MS = 60_000;
+let memoryToken: { value: string; expiresAt: string } | null = null;
 
 type ApiEnvelope<T> = {
   status?: boolean | number | string;
@@ -58,6 +59,7 @@ export async function refreshErpToken() {
 }
 
 export async function invalidateErpToken() {
+  memoryToken = null;
   const service = createServiceClient();
   const { error } = await service
     .from("eci_erp_tokens")
@@ -108,6 +110,13 @@ async function request(path: string, body: unknown, token: string) {
 }
 
 async function getValidToken(forceRefresh = false) {
+  if (
+    !forceRefresh
+    && memoryToken
+    && tokenIsReusable({ expiresAt: memoryToken.expiresAt, skewMs: TOKEN_SKEW_MS })
+  ) {
+    return memoryToken.value;
+  }
   const service = createServiceClient();
   if (!forceRefresh) {
     const { data, error } = await service
@@ -124,11 +133,13 @@ async function getValidToken(forceRefresh = false) {
         skewMs: TOKEN_SKEW_MS,
       })
     ) {
-      return decryptToken({
+      const value = decryptToken({
         ciphertext: data.access_token_ciphertext,
         iv: data.encryption_iv,
         tag: data.encryption_tag,
       });
+      memoryToken = { value, expiresAt: data.expires_at };
+      return value;
     }
   }
   return refreshToken();
@@ -170,6 +181,7 @@ async function refreshToken() {
     refreshed_at: new Date().toISOString(),
   });
   if (error) throw new ErpIntegrationError("Unable to save the pricing service session.");
+  memoryToken = { value: token, expiresAt };
   return token;
 }
 

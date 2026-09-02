@@ -2,13 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 
-import { getOptionalAuthenticatedUser } from "@/lib/auth/user-routing";
+import { getOptionalPortalContext } from "@/lib/auth/portal-context";
 import { UserAccountMenu } from "@/components/user-account-menu";
 import {
   AppTopNavLinks,
   type AppTopNavLink,
 } from "@/components/app-top-nav-links";
-import { countRequesterUnreadNotifications } from "@/features/requester/notification-queries";
 
 export async function AppTopNav({
   links = [],
@@ -17,18 +16,9 @@ export async function AppTopNav({
   links?: AppTopNavLink[];
   notificationHref?: string;
 }) {
-  const user = await getOptionalAuthenticatedUser();
-  const { data: profile } = user
-    ? await user.supabase
-        .from("profiles")
-        .select("display_name")
-        .eq("user_id", user.userId)
-        .maybeSingle()
-    : { data: null };
-  const accountLabel = profile?.display_name || user?.email || null;
-  const unreadCount = user && notificationHref
-    ? await countRequesterUnreadNotifications(user.supabase, user.userId)
-    : 0;
+  const context = await getOptionalPortalContext();
+  const accountLabel = context?.displayName || context?.email || null;
+  const unreadCount = notificationHref ? context?.unreadCount ?? 0 : 0;
 
   return (
     <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">

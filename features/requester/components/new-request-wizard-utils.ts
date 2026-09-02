@@ -96,6 +96,8 @@ export function buildWizardPayload(input: {
   analysis?: WizardPatentAnalysisResult;
   quoteCurrency: ErpQuoteCurrencyCode;
   quotePreview?: ErpQuotePreview;
+  quoteReceipt?: string;
+  quoteReceiptExpiresAt?: string;
   config: WizardConfig;
   lastStep: string;
 }): WizardPayload {
@@ -113,6 +115,8 @@ export function buildWizardPayload(input: {
     analysis: input.analysis,
     quoteCurrency: input.quoteCurrency,
     quotePreview: input.quotePreview,
+    quoteReceipt: input.quoteReceipt,
+    quoteReceiptExpiresAt: input.quoteReceiptExpiresAt,
     config: {
       ...normalizedConfig,
       scopeType: "full_text",

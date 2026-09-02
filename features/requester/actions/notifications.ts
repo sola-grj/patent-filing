@@ -12,29 +12,15 @@ import {
 } from "@/features/requester/notifications";
 
 export async function openRequesterNotification(formData: FormData) {
-  const { supabase, userId } = await getAuthenticatedUser();
+  const { supabase } = await getAuthenticatedUser();
   const notificationId = requiredString(formData.get("notificationId"), "Notification");
-  const { data, error } = await supabase
-    .from("notifications")
-    .select("id, type, payload, read_at, created_at")
-    .eq("id", notificationId)
-    .eq("recipient_id", userId)
-    .in("type", [...requesterNotificationTypes])
-    .single();
+  const { data, error } = await supabase.rpc("open_requester_notification", {
+    p_notification_id: notificationId,
+  });
   if (error) throw new Error(error.message);
 
   const item = toRequesterNotificationItem(data as RequesterNotificationRow);
   if (!item) throw new Error("This notification is not available.");
-
-  if (!item.readAt) {
-    const { error: updateError } = await supabase
-      .from("notifications")
-      .update({ read_at: new Date().toISOString() })
-      .eq("id", notificationId)
-      .eq("recipient_id", userId)
-      .is("read_at", null);
-    if (updateError) throw new Error(updateError.message);
-  }
 
   revalidatePath("/requester", "layout");
   redirect(item.href);

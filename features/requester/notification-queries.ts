@@ -1,6 +1,7 @@
 import type { createClient } from "@/lib/supabase/server";
 
 import { getAuthenticatedUser, getRequesterOrganization } from "./server-utils";
+import { requirePortalContext } from "@/lib/auth/portal-context";
 import {
   requesterNotificationTypes,
   toRequesterNotificationItem,
@@ -34,18 +35,11 @@ export async function getRequesterNotifications(input: {
     query = query.is("read_at", null);
   }
 
-  const [listResult, unreadResult] = await Promise.all([
+  const [{ data, error, count }, portalContext] = await Promise.all([
     query,
-    supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("recipient_id", userId)
-      .in("type", [...requesterNotificationTypes])
-      .is("read_at", null),
+    requirePortalContext(),
   ]);
-  const { data, error, count } = listResult;
   if (error) throw new Error(error.message);
-  if (unreadResult.error) throw new Error(unreadResult.error.message);
   const totalCount = count ?? 0;
   const totalPages = totalCount ? Math.ceil(totalCount / PAGE_SIZE) : 0;
 
@@ -57,7 +51,7 @@ export async function getRequesterNotifications(input: {
     page: Math.min(page, Math.max(1, totalPages)),
     totalPages,
     totalCount,
-    unreadCount: unreadResult.count ?? 0,
+    unreadCount: portalContext.unreadCount,
   };
 }
 

@@ -36,7 +36,6 @@ import {
   nextVersion,
   writeRequestEvent,
 } from "./helpers";
-import { quoteForOrganization } from "@/lib/eci-erp/pricing";
 import { quoteValidUntilTimestamp } from "@/lib/eci-erp/ep-granting-quote";
 import type { ErpQuotePreview } from "@/lib/eci-erp/types";
 import {
@@ -51,11 +50,28 @@ import {
   enqueueSubmittedPatentFilePreparation,
   persistDraftPatentFile,
 } from "./patent-file-readiness";
+import {
+  QuoteEstimateReceiptError,
+  verifyQuoteEstimateReceipt,
+} from "./quote-receipt";
+import { measureServerOperation } from "@/lib/performance/server-timing";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 const DEFAULT_DELIVERY_OPTION = "standard";
 
 export async function persistWizardRequest(
+  formData: FormData,
+  mode: "draft" | "submit",
+  options?: {
+    deferPatentCache?: boolean;
+    deferFormalSubmission?: boolean;
+  },
+): Promise<ActionResult<WizardPersistResult>> {
+  return measureServerOperation(`requester.wizard.${mode}`, () =>
+    persistWizardRequestInternal(formData, mode, options));
+}
+
+async function persistWizardRequestInternal(
   formData: FormData,
   mode: "draft" | "submit",
   options?: {
@@ -71,6 +87,13 @@ export async function persistWizardRequest(
     if (!organization || !supplierOrganizationId) {
       throw new Error("Your organization is not linked to a supplier.");
     }
+    const verifiedQuote = mode === "submit"
+      ? verifyQuoteEstimateReceipt({
+          userId,
+          organizationId: organization.id,
+          payload,
+        })
+      : null;
     const reuseDurablePatent = payload.sourceMode === "patent_search"
       && Boolean(payload.requestId)
       && !payload.selectedPatent?.lookupReceipt
@@ -81,7 +104,7 @@ export async function persistWizardRequest(
       validateCommercialFields(payload);
       validateFutureDateString(payload.config.dueAt, "Due date");
       await dictionaryValidation;
-      if (!reuseDurablePatent) {
+      if (!reuseDurablePatent && !verifiedQuote) {
         payload = await verifyWizardPatentPayload(payload);
       }
       validateEpoServiceAvailability(payload);
@@ -136,9 +159,6 @@ export async function persistWizardRequest(
         );
       } else if (!reuseDurablePatent) {
         await clearDraftSourceArtifacts(supabase, requestId);
-      }
-      if (mode === "submit") {
-        await clearIncompleteSubmissionArtifacts(supabase, requestId);
       }
     }
 
@@ -223,12 +243,11 @@ export async function persistWizardRequest(
       await persistSubmissionArtifacts(
         supabase,
         requestId,
-        organization.id,
-        userId,
         payload,
         requestFileIds,
         !options?.deferFormalSubmission,
         reuseDurablePatent || persistPatentBeforeSubmission,
+        verifiedQuote,
       );
       if (!options?.deferFormalSubmission) {
         await writeRequestEvent(
@@ -277,6 +296,11 @@ export async function persistWizardRequest(
       success: false,
       data: persistedResult,
       error: toErrorMessage(error),
+      code: error instanceof QuoteEstimateReceiptError
+        ? error.code
+        : mode === "submit"
+          ? "SUBMIT_TRANSACTION_FAILED"
+          : undefined,
     };
   }
 }
@@ -706,40 +730,78 @@ async function persistUploadedFiles(
   formData: FormData,
 ) {
   const files = formData.getAll("files").filter((file): file is File => file instanceof File);
-  const fileIds: string[] = [];
+  const completed: Array<{ id: string; path: string }> = [];
+  let nextIndex = 0;
+  let firstError: unknown;
 
-  for (const file of files) {
-    const fileId = randomUUID();
-    const path = `${userId}/${requestId}/${Date.now()}-${safeFileName(file.name)}`;
-    const content = new Uint8Array(await file.arrayBuffer());
-    const contentSha256 = createHash("sha256").update(content).digest("hex");
-    const { error: uploadError } = await supabase.storage.from("request-files").upload(
-      path,
-      content,
-      { contentType: file.type, upsert: false },
-    );
-    if (uploadError) throw new Error(uploadError.message);
+  const workers = Array.from({ length: Math.min(3, files.length) }, async () => {
+    while (!firstError) {
+      const index = nextIndex++;
+      if (index >= files.length) return;
+      try {
+        completed.push(await persistOneUploadedFile(
+          supabase,
+          requestId,
+          userId,
+          files[index],
+        ));
+      } catch (error) {
+        firstError = error;
+      }
+    }
+  });
+  await Promise.all(workers);
 
-    const { error } = await supabase.from("request_files").insert({
-      id: fileId,
-      request_id: requestId,
-      source: "upload",
-      storage_bucket: "request-files",
-      storage_path: path,
-      original_filename: file.name,
-      mime_type: file.type || "application/octet-stream",
-      file_role: inferFileRole(file.name),
-      language: inferLanguage(file.name),
-      status: "validated",
-      confirmed_for_translation: true,
-      metadata: { size: file.size },
-      content_sha256: contentSha256,
-    });
-    if (error) throw new Error(error.message);
-    fileIds.push(fileId);
+  if (firstError) {
+    if (completed.length) {
+      await Promise.all([
+        supabase.from("request_files").delete().in("id", completed.map((file) => file.id)),
+        supabase.storage.from("request-files").remove(completed.map((file) => file.path)),
+      ]);
+    }
+    throw firstError;
   }
 
-  return fileIds;
+  return completed.map((file) => file.id);
+}
+
+async function persistOneUploadedFile(
+  supabase: SupabaseClient,
+  requestId: string,
+  userId: string,
+  file: File,
+) {
+  const fileId = randomUUID();
+  const path = `${userId}/${requestId}/${fileId}-${safeFileName(file.name)}`;
+  const content = new Uint8Array(await file.arrayBuffer());
+  const contentSha256 = createHash("sha256").update(content).digest("hex");
+  const { error: uploadError } = await supabase.storage.from("request-files").upload(
+    path,
+    content,
+    { contentType: file.type, upsert: false },
+  );
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { error } = await supabase.from("request_files").insert({
+    id: fileId,
+    request_id: requestId,
+    source: "upload",
+    storage_bucket: "request-files",
+    storage_path: path,
+    original_filename: file.name,
+    mime_type: file.type || "application/octet-stream",
+    file_role: inferFileRole(file.name),
+    language: inferLanguage(file.name),
+    status: "validated",
+    confirmed_for_translation: true,
+    metadata: { size: file.size },
+    content_sha256: contentSha256,
+  });
+  if (error) {
+    await supabase.storage.from("request-files").remove([path]);
+    throw new Error(error.message);
+  }
+  return { id: fileId, path };
 }
 
 async function fetchExistingRequestFileIds(
@@ -1056,40 +1118,37 @@ async function clearIncompleteSubmissionArtifacts(
 async function persistSubmissionArtifacts(
   supabase: SupabaseClient,
   requestId: string,
-  organizationId: string,
-  userId: string,
   payload: WizardPayload,
   requestFileIds: string[],
   finalizeSubmission: boolean,
   reuseExistingParseResults = false,
+  verifiedQuote: ErpQuotePreview | null = null,
 ) {
+  if (!verifiedQuote) {
+    throw new QuoteEstimateReceiptError(
+      "QUOTE_ESTIMATE_INVALID",
+      "Generate a current estimate before submitting this Request.",
+    );
+  }
   if (!reuseExistingParseResults) {
     await createParseResults(supabase, requestFileIds, payload);
   }
-  const requirementId = randomUUID();
-  await createRequirement(supabase, requestId, requirementId, payload);
-  const configId = randomUUID();
-  await createConfigVersion(supabase, requestId, requirementId, configId, userId, payload);
-  const [configFilesResult] = await Promise.all([
-    requestFileIds.length
-      ? supabase.from("request_config_files").insert(
-          requestFileIds.map((fileId) => ({
-            config_version_id: configId,
-            request_file_id: fileId,
-          })),
-        )
-      : Promise.resolve({ error: null }),
-    createInitialQuote(
-      supabase,
-      requestId,
-      organizationId,
-      userId,
-      payload,
-      finalizeSubmission,
-    ),
-  ]);
-  if (configFilesResult.error) {
-    throw new Error(configFilesResult.error.message);
+  const { error } = await supabase.rpc("submit_request_from_wizard", {
+    p_request_id: requestId,
+    p_requirement: requirementInsertPayload(payload),
+    p_config_snapshot: {
+      ...payload.config,
+      scopeType: "full_text",
+    },
+    p_file_ids: requestFileIds,
+    p_quote: {
+      ...verifiedQuote,
+      valid_until_timestamp: quoteValidUntilTimestamp(verifiedQuote.validUntil),
+    },
+    p_finalize: finalizeSubmission,
+  });
+  if (error) {
+    throw new Error(`Unable to submit Request transaction: ${error.message}`);
   }
 }
 
@@ -1274,10 +1333,16 @@ async function createRequirement(
   requirementId: string,
   payload: WizardPayload,
 ) {
-  const config = payload.config;
   await supabase.from("translation_requirements").insert({
     id: requirementId,
     request_id: requestId,
+    ...requirementInsertPayload(payload),
+  });
+}
+
+function requirementInsertPayload(payload: WizardPayload) {
+  const config = payload.config;
+  return {
     source_language: config.sourceLanguage || null,
     target_language: config.targetLanguages[0] ?? null,
     target_languages: config.targetLanguages,
@@ -1313,7 +1378,7 @@ async function createRequirement(
       ...config,
       scopeType: "full_text",
     },
-  });
+  };
 }
 
 async function createConfigVersion(
@@ -1335,52 +1400,6 @@ async function createConfigVersion(
     },
     created_by: userId,
   });
-}
-
-async function createInitialQuote(
-  supabase: SupabaseClient,
-  requestId: string,
-  organizationId: string,
-  userId: string,
-  payload: WizardPayload,
-  finalizeSubmission: boolean,
-) {
-  const [erpQuote, versionNo] = await Promise.all([
-    quoteForOrganization(payload, organizationId, userId),
-    nextVersion(supabase, "quotes", requestId),
-  ]);
-  const quoteId = await createQuoteFromPreview(
-    supabase,
-    requestId,
-    payload,
-    erpQuote,
-    "accepted",
-    versionNo,
-  );
-  const { error: requestError } = await supabase
-    .from("translation_requests")
-    .update({
-      workflow_stage: finalizeSubmission ? "quoted" : "draft",
-      requester_status: "responding",
-      pm_status: "responding",
-      submitted_at: finalizeSubmission ? new Date().toISOString() : null,
-    })
-    .eq("id", requestId);
-  if (requestError) {
-    throw new Error(`Unable to finalize translation request: ${requestError.message}`);
-  }
-
-  if (finalizeSubmission) {
-    await writeRequestEvent(
-      supabase,
-      requestId,
-      userId,
-      "quote.accepted.eci_erp",
-      "configured",
-      "quoted",
-      { quoteId, amount: erpQuote.total, currency: erpQuote.currency, source: "eci_erp" },
-    );
-  }
 }
 
 async function createQuoteFromPreview(

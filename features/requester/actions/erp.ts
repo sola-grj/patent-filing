@@ -6,7 +6,7 @@ import {
   publicQuote,
   quoteForOrganization,
 } from "@/lib/eci-erp/pricing";
-import type { ErpActionResult, ErpCountry, ErpQuotePreview } from "@/lib/eci-erp/types";
+import type { ErpActionResult, ErpCountry, SignedQuoteEstimate } from "@/lib/eci-erp/types";
 
 import { getRequesterOrganization, toErrorMessage } from "../server-utils";
 import { verifyWizardPatentPayload } from "./patent-service";
@@ -14,6 +14,7 @@ import {
   isEpGrantingTranslation,
   isVerifiedCustomerTifg,
 } from "../epo-tifg-upload";
+import { signQuoteEstimate } from "./quote-receipt";
 
 export async function loadErpCountriesForWizard(
   config: Pick<WizardConfig, "channelCode" | "serviceTypes" | "epvType" | "epServiceType">,
@@ -24,7 +25,7 @@ export async function loadErpCountriesForWizard(
 
 export async function generateErpEstimate(
   payload: WizardPayload,
-): Promise<ErpActionResult<ErpQuotePreview>> {
+): Promise<ErpActionResult<SignedQuoteEstimate>> {
   try {
     const { organization, userId, supabase } = await getRequesterOrganization();
     if (!organization) throw new Error("Your account is not linked to a customer organization.");
@@ -37,7 +38,16 @@ export async function generateErpEstimate(
       ? payload
       : await verifyWizardPatentPayload(payload);
     const result = await quoteForOrganization(verifiedPayload, organization.id, userId);
-    return { success: true, data: publicQuote(result) };
+    const quote = publicQuote(result);
+    return {
+      success: true,
+      data: signQuoteEstimate({
+        userId,
+        organizationId: organization.id,
+        payload,
+        quote,
+      }),
+    };
   } catch (error) {
     return { success: false, error: toErrorMessage(error) };
   }

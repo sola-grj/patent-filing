@@ -85,6 +85,13 @@ export type ErpQuotePreview = {
   total: number;
 };
 
+export type SignedQuoteEstimate = {
+  quote: ErpQuotePreview;
+  receipt: string;
+  issuedAt: string;
+  expiresAt: string;
+};
+
 export type ErpQuoteResult = ErpQuotePreview & {
   request: ErpPriceRequest;
 };

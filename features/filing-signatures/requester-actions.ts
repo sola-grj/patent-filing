@@ -29,7 +29,9 @@ export async function submitRequesterSignatureFiles(
 
     const { data: signatureRequest, error: requestError } = await supabase
       .from("filing_signature_requests")
-      .select("id, request_id, recipient_id, status, filing_signature_files(*)")
+      .select(
+        "id, request_id, recipient_id, status, filing_signature_files(id, direction, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
+      )
       .eq("id", signatureRequestId)
       .single();
     if (requestError) throw new Error(requestError.message);
