@@ -74,11 +74,13 @@ import {
   wizardSteps,
 } from "./new-request-wizard-utils";
 import { useRequestWizardController } from "./requester-create-request-controller";
+import { useRequesterNavigationLoading } from "./requester-navigation-loading";
 import { usePatentAnalysis } from "./use-patent-analysis";
 import { PatentProcessingNotice } from "./patent-processing-notice";
 import { PatentCacheWarning } from "./patent-cache-warning";
 import type { RequestPathCode } from "../requester-routes";
 import {
+  isEpGrantingTranslation,
   shouldStartAutomaticPatentAnalysis,
 } from "../epo-tifg-upload";
 
@@ -105,10 +107,12 @@ export function NewRequestWizard({
 }) {
   const router = useRouter();
   const { registerController } = useRequestWizardController();
+  const { stopNavigationLoading } = useRequesterNavigationLoading();
   const isRestoredDraft = Boolean(initialDraft?.requestId);
   const initialPayload = initialDraft?.payload ?? seededPayload;
   const initialConfig = normalizeWizardConfig(
     initialPayload?.config ?? (initialPath ? { channelCode: initialPath } : undefined),
+    dictionaries.epCountries,
   );
   const analysis = usePatentAnalysis(initialPayload?.analysis);
   const analysisStatus = analysis.status;
@@ -155,7 +159,7 @@ export function NewRequestWizard({
   const hasUsableAnalysis = hasUsablePatentAnalysis(payload);
   const configFieldErrors =
     step === 1 && showConfigValidation
-      ? validateWizardConfigFields(config, selectedPatent, analysis.result)
+      ? validateWizardConfigFields(config, selectedPatent, analysis.result, dictionaries.epCountries)
       : {};
   const isDirty = step > 0
     || referenceNo.trim().length > 0
@@ -347,7 +351,6 @@ export function NewRequestWizard({
 
     directSearchStarted.current = true;
     setError(null);
-    setStepLoadingMessage("Parsing patent details");
     startPatentSearchRef.current();
 
     void (async () => {
@@ -368,7 +371,7 @@ export function NewRequestWizard({
         failPatentSearchRef.current();
         setError("Patent search failed. Please try again later.");
       } finally {
-        setStepLoadingMessage(null);
+        stopNavigationLoading();
       }
     })();
   }, [
@@ -377,6 +380,7 @@ export function NewRequestWizard({
     patentQuery,
     skipSourceStep,
     sourceMode,
+    stopNavigationLoading,
   ]);
 
   function switchMissingPatentToUpload() {
@@ -424,7 +428,7 @@ export function NewRequestWizard({
   }
 
   function handleConfigChange(nextConfig: WizardConfig) {
-    const normalizedConfig = normalizeWizardConfig(nextConfig);
+    const normalizedConfig = normalizeWizardConfig(nextConfig, dictionaries.epCountries);
     setQuotePreview(null);
     setQuoteReceipt(undefined);
     setQuoteReceiptExpiresAt(undefined);
@@ -511,11 +515,11 @@ export function NewRequestWizard({
 
     }
 
-    const validationError = validateWizardStep(step, payload);
+    const validationError = validateWizardStep(step, payload, dictionaries.epCountries);
     if (validationError) {
       if (step === 1) {
         setShowConfigValidation(true);
-        setError(null);
+        setError(validationError);
       } else {
         setError(validationError);
       }
@@ -651,7 +655,9 @@ export function NewRequestWizard({
     },
   ) {
     const validationError =
-      action === saveRequestDraft ? null : validateWizardPayload(payload);
+      action === saveRequestDraft
+        ? null
+        : validateWizardPayload(payload, dictionaries.epCountries);
     if (validationError) {
       setError(validationError);
       return Promise.resolve(false);

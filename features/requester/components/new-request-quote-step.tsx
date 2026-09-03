@@ -136,8 +136,6 @@ export function QuoteStepContent({
                   {estimate.rows.map((row) => {
                     const serviceStatus = optServiceStatusForCountry(
                       payload.config.serviceItem || undefined,
-                      row.countryId,
-                      payload.config.optOutCountryIds,
                     );
                     return (
                       <Table.Row key={row.countryId}>

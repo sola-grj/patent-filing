@@ -44,11 +44,11 @@ export type ErpCountry = {
 
 export type ErpPriceRequest = {
   categoryId: number;
-  sourceLangId: number;
+  isTranslate: 0 | 1;
+  sourceLangId?: number;
   countryIdList?: number[];
   targetLangIds?: number[];
   optType?: 1 | 2 | 3 | 4;
-  countryOptMap?: Record<string, true>;
   patFilingRouteId: number;
   patFilingTypeId: number;
   clientId: number;

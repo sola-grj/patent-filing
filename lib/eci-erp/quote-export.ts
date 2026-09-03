@@ -683,8 +683,6 @@ function translationDetail(row: ErpQuoteRow, currency: string) {
 function countryServiceLabel(row: ErpQuoteRow, metadata: QuoteExportMetadata) {
   const serviceStatus = optServiceStatusForCountry(
     metadata.serviceItem,
-    row.countryId,
-    metadata.optOutCountryIds,
   );
   return serviceStatus ? `${row.countryName} - ${serviceStatus}` : row.countryName;
 }

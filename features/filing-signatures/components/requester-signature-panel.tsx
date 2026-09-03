@@ -36,7 +36,9 @@ export function RequesterSignaturePanel({
   const [inputKey, setInputKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const sorted = useMemo(
-    () => [...signatureRequests].sort(newestFirst),
+    () => signatureRequests
+      .filter((request) => request.status !== "draft")
+      .sort(newestFirst),
     [signatureRequests],
   );
   const active = sorted.find((request) => request.status === "sent");

@@ -16,6 +16,7 @@ import {
   applyTranslationSelection,
   buildErpPriceRequest,
   categoryForConfig,
+  erpTranslationLanguageRequirements,
   quoteAvailabilityError,
   validatePriceRows,
   verifiedClaimMetrics,
@@ -144,12 +145,8 @@ export async function prepareQuoteForOrganization(
   const service = createServiceClient();
   const categoryId = categoryForConfig(payload.config)!;
   const requiresCountries = [82, 8283].includes(categoryId);
-  const requiresTargets = payload.config.translationRequired
-    && [83, 84, 8283].includes(categoryId);
   const [
     { data: customerAccounts, error: customerError },
-    sourceLangId,
-    targetLangIds,
     remoteCountries,
     localCountryRequirements,
   ] =
@@ -160,8 +157,6 @@ export async function prepareQuoteForOrganization(
         .eq("organization_id", organizationId)
         .is("sync_error", null)
         .eq("is_black", false),
-      resolveSourceLangId(payload.config.sourceLanguage),
-      requiresTargets ? resolveTargetLangIds(payload.config.targetLanguages) : [],
       requiresCountries ? getCachedErpCountries(categoryId) : [],
       requiresCountries
         ? resolveLocalCountryRequirements(payload.config.epCountryIds)
@@ -193,6 +188,19 @@ export async function prepareQuoteForOrganization(
     }
   }
   await recordCountryRequirementMismatches(categoryId, requirementMismatches);
+  const languageRequirements = erpTranslationLanguageRequirements(
+    categoryId,
+    payload.config.translationRequired,
+    countryRequirements,
+  );
+  const [sourceLangId, targetLangIds] = await Promise.all([
+    languageRequirements.source
+      ? resolveSourceLangId(payload.config.sourceLanguage)
+      : undefined,
+    languageRequirements.target
+      ? resolveTargetLangIds(payload.config.targetLanguages)
+      : [],
+  ]);
 
   const metrics = verifiedPatentMetrics(payload, categoryId);
   const currency = erpQuoteCurrency(payload.quoteCurrency);
@@ -201,7 +209,6 @@ export async function prepareQuoteForOrganization(
     sourceLangId,
     targetLangIds,
     countryIds: payload.config.epCountryIds,
-    optOutCountryIds: payload.config.optOutCountryIds,
     serviceItem: payload.config.serviceItem,
     translationRequired: payload.config.translationRequired,
     countryRequirements,
@@ -247,10 +254,11 @@ export async function executeErpQuote(input: {
     const translationFeeDetails = Object.entries(row.translationFees).map(
       ([languageIdValue, amount]) => {
         const languageId = Number(languageIdValue);
+        const feeAmount = Number(amount);
         return {
           languageId,
           languageName: languageNames.get(languageId)!,
-          amount,
+          amount: feeAmount,
         };
       },
     );

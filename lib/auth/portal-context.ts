@@ -48,19 +48,14 @@ const staffRoles = new Set(["pm", "ops", "admin"]);
 
 export const getOptionalPortalContext = cache(async (): Promise<PortalContext | null> => {
   const supabase = await createClient();
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-  const claims = claimsData?.claims;
-
-  if (claimsError || !claims?.sub) {
-    return null;
-  }
-
   const { data, error } = await supabase.rpc("get_portal_context");
   if (error) {
+    if (error.code === "42501") return null;
     throw new Error(error.message);
   }
 
   const payload = (data ?? {}) as PortalContextPayload;
+  if (!payload.user_id) return null;
   const memberships = payload.memberships ?? [];
   const requesterMembership = memberships.find((membership) =>
     membership.role === "requester" && membership.organization?.type === "customer"
@@ -71,10 +66,8 @@ export const getOptionalPortalContext = cache(async (): Promise<PortalContext | 
 
   return {
     supabase,
-    userId: claims.sub,
-    email: typeof claims.email === "string"
-      ? claims.email
-      : payload.profile?.email ?? null,
+    userId: payload.user_id,
+    email: payload.profile?.email ?? null,
     displayName: payload.profile?.display_name ?? null,
     passwordSetupRequired: payload.profile?.password_setup_required ?? false,
     memberships,

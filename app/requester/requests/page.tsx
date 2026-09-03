@@ -20,6 +20,8 @@ import { formatCurrency, formatDate } from "@/features/requester/format";
 import { getRequesterRequests } from "@/features/requester/queries";
 import { buildFreshRequestHref } from "@/features/requester/requester-routes";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
+import { RequestLoadingOverlay } from "@/features/requester/components/request-loading-overlay";
+import { RedirectToFreshRequest } from "@/features/requester/components/redirect-to-fresh-request";
 
 const requestGridClassName =
   "grid grid-cols-[minmax(17rem,1.7fr)_minmax(7rem,0.7fr)_minmax(11rem,1.1fr)_minmax(10rem,0.9fr)_minmax(7rem,0.65fr)_minmax(9rem,0.75fr)_minmax(9rem,0.75fr)]";
@@ -37,7 +39,7 @@ export default async function RequesterRequestsPage({
   }>;
 }) {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading requests...</p>}>
+    <Suspense fallback={<RequestLoadingOverlay message="Searching patent records..." />}>
       <RequestsContent searchParams={searchParams} />
     </Suspense>
   );
@@ -92,7 +94,11 @@ async function RequestsContent({
     dashboardQuery &&
     totalCount === 0
   ) {
-    redirect(buildFreshRequestHref(Date.now(), dashboardQuery, "configure"));
+    return (
+      <RedirectToFreshRequest
+        href={buildFreshRequestHref(Date.now(), dashboardQuery, "configure")}
+      />
+    );
   }
 
   return (

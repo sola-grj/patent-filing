@@ -14,7 +14,7 @@ process.env.QUOTE_ESTIMATE_SIGNING_SECRET = "test-only-signing-secret-with-at-le
 
 const request: ErpPriceRequest = {
   categoryId: 82,
-  sourceLangId: 12,
+  isTranslate: 1,
   countryIdList: [26],
   patFilingRouteId: 1,
   patFilingTypeId: 1,
@@ -63,7 +63,7 @@ test("accepts only the exact signed ERP body for the same user and organization"
 
 test("rejects an expired prepared ERP receipt", () => {
   const expired: PreparedErpReceiptClaims = {
-    version: 2,
+    version: 3,
     userId: "user-a",
     organizationId: "org-a",
     payloadHash: "payload",

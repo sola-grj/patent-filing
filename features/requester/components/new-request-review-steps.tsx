@@ -42,7 +42,6 @@ import {
   isTraditionalValidation,
   requestPathLabels,
   requiresEpCountries,
-  usesEpoTargetLanguages,
   type ServiceTypeSelectionValue,
 } from "@/features/requester/request-paths";
 import type {
@@ -58,6 +57,7 @@ import type {
 import {
   onConfigValueChange,
   normalizeEpoTargetLanguages,
+  requiresEpoTargetLanguages,
   parsePreviewFiles,
   requiresSourceLanguage,
   type WizardConfigFieldErrors,
@@ -230,6 +230,7 @@ export function ConfigStep({
         config.targetLanguages,
       )
     : config.targetLanguages;
+  const requiresTargetLanguages = requiresEpoTargetLanguages(config, dictionaries.epCountries);
   const serviceAvailability = Object.fromEntries(
     getServiceTypeSelections(config.channelCode).map((option) => [
       option.value,
@@ -248,12 +249,6 @@ export function ConfigStep({
       ? config.serviceItem || "traditional_validation"
       : "";
     const nextRequiresCountries = requiresEpCountries(selection.epServiceType);
-    const nextOptOutCountryIds = nextServiceItem === "traditional_validation_opt_out"
-      ? config.optOutCountryIds.filter((id) => config.epCountryIds.includes(id))
-      : [];
-    const preservesOptOutConfirmation = nextServiceItem === config.serviceItem
-      && config.optOutCountriesConfirmed
-      && nextOptOutCountryIds.length === config.optOutCountryIds.length;
     onChange({
       ...config,
       serviceTypes: nextServiceTypes,
@@ -270,8 +265,8 @@ export function ConfigStep({
       epCountriesConfirmed: nextRequiresCountries
         ? config.epCountriesConfirmed
         : false,
-      optOutCountryIds: nextOptOutCountryIds,
-      optOutCountriesConfirmed: preservesOptOutConfirmation,
+      optOutCountryIds: [],
+      optOutCountriesConfirmed: false,
       targetLanguages: normalizeEpoTargetLanguages(
         selection.epServiceType,
         config.translationRequired,
@@ -333,9 +328,7 @@ export function ConfigStep({
                         onChange={() => onChange({
                           ...config,
                           serviceItem: option.value,
-                          optOutCountryIds: option.value === "traditional_validation_opt_out"
-                            ? config.optOutCountryIds.filter((id) => config.epCountryIds.includes(id))
-                            : [],
+                          optOutCountryIds: [],
                           optOutCountriesConfirmed: false,
                         })}
                       />
@@ -485,9 +478,51 @@ export function ConfigStep({
               />
             </div>
           ) : null}
+          {showEpCountries ? (
+              <EpCountrySelector
+                className="min-w-0 md:col-start-1"
+                title="EP countries"
+                description="Select the countries covered by this service."
+                values={config.epCountryIds}
+                options={dictionaries.epCountries}
+                error={configFieldErrors.epCountryIds}
+                onChange={(epCountryIds) => {
+                  onChange({
+                    ...config,
+                    epCountryIds,
+                    epCountriesConfirmed: epCountryIds.length > 0,
+                    optOutCountryIds: [],
+                    optOutCountriesConfirmed: false,
+                    targetLanguages: requiresEpoTargetLanguages(
+                      { ...config, epCountryIds },
+                      dictionaries.epCountries,
+                    ) ? config.targetLanguages : [],
+                  });
+                }}
+              />
+          ) : config.channelCode !== "ep" ? (
+            <MultiSelectField
+              label="Jurisdictions"
+              values={config.jurisdictionCodes}
+              options={dictionaries.jurisdictions.length
+                ? dictionaries.jurisdictions
+                : jurisdictionOptions}
+              placeholder="Choose jurisdictions"
+              error={configFieldErrors.jurisdictionCodes}
+              required
+              onToggle={(targetLanguage, checked) =>
+                onChange({
+                  ...config,
+                  jurisdictionCodes: checked
+                    ? [...new Set([...config.jurisdictionCodes, targetLanguage])]
+                    : config.jurisdictionCodes.filter((item) => item !== targetLanguage),
+                })
+              }
+            />
+          ) : null}
           {config.channelCode === "ep"
             && config.translationRequired
-            && usesEpoTargetLanguages(config.epServiceType) ? (
+            && requiresTargetLanguages ? (
               ["unitary_patent", "traditional_validation_unitary_patent"].includes(config.epServiceType) ? (
                   config.sourceLanguage === "en" ? (
                     <SearchableSingleSelectField
@@ -513,86 +548,6 @@ export function ConfigStep({
                     error={configFieldErrors.targetLanguages}
                   />
                 )
-          ) : null}
-          {showEpCountries ? (
-            config.serviceItem === "traditional_validation_opt_out" ? (
-              <div className="grid gap-5">
-                <EpCountrySelector
-                  className="h-full min-w-0"
-                  title="EP countries"
-                  description="Select the countries covered by this service."
-                  values={config.epCountryIds}
-                  options={dictionaries.epCountries}
-                  error={configFieldErrors.epCountryIds}
-                  onChange={(epCountryIds) => {
-                    const optOutCountryIds = config.optOutCountryIds.filter((id) =>
-                      epCountryIds.includes(id)
-                    );
-                    onChange({
-                      ...config,
-                      epCountryIds,
-                      epCountriesConfirmed: epCountryIds.length > 0,
-                      optOutCountryIds,
-                      optOutCountriesConfirmed: optOutCountryIds.length > 0,
-                    });
-                  }}
-                />
-                <EpCountrySelector
-                  className="h-full min-w-0"
-                  title="Opt Out countries"
-                  description="Choose the Opt Out subset from the selected business countries."
-                  values={config.optOutCountryIds}
-                  options={dictionaries.epCountries.filter((country) => config.epCountryIds.includes(country.id))}
-                  disabled={!config.epCountryIds.length}
-                  error={configFieldErrors.optOutCountryIds}
-                  onChange={(optOutCountryIds) => onChange({
-                    ...config,
-                    optOutCountryIds,
-                    optOutCountriesConfirmed: optOutCountryIds.length > 0,
-                  })}
-                />
-              </div>
-            ) : (
-              <EpCountrySelector
-                className="min-w-0 md:col-start-1"
-                title="EP countries"
-                description="Select the countries covered by this service."
-                values={config.epCountryIds}
-                options={dictionaries.epCountries}
-                error={configFieldErrors.epCountryIds}
-                onChange={(epCountryIds) => {
-                  const optOutCountryIds = config.optOutCountryIds.filter((id) =>
-                    epCountryIds.includes(id)
-                  );
-                  onChange({
-                    ...config,
-                    epCountryIds,
-                    epCountriesConfirmed: epCountryIds.length > 0,
-                    optOutCountryIds,
-                    optOutCountriesConfirmed: optOutCountryIds.length > 0,
-                  });
-                }}
-              />
-            )
-          ) : config.channelCode !== "ep" ? (
-            <MultiSelectField
-              label="Jurisdictions"
-              values={config.jurisdictionCodes}
-              options={dictionaries.jurisdictions.length
-                ? dictionaries.jurisdictions
-                : jurisdictionOptions}
-              placeholder="Choose jurisdictions"
-              error={configFieldErrors.jurisdictionCodes}
-              required
-              onToggle={(targetLanguage, checked) =>
-                onChange({
-                  ...config,
-                  jurisdictionCodes: checked
-                    ? [...new Set([...config.jurisdictionCodes, targetLanguage])]
-                    : config.jurisdictionCodes.filter((item) => item !== targetLanguage),
-                })
-              }
-            />
           ) : null}
           <div className="md:col-start-1">
             <Field label="Reference No.">

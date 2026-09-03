@@ -104,6 +104,7 @@ async function persistWizardRequestInternal(
       validateCommercialFields(payload);
       validateFutureDateString(payload.config.dueAt, "Due date");
       await dictionaryValidation;
+      await validateCombinationTranslationTargets(supabase, payload);
       if (!reuseDurablePatent && !verifiedQuote) {
         payload = await verifyWizardPatentPayload(payload);
       }
@@ -414,15 +415,6 @@ function validateCommercialFields(payload: WizardPayload) {
   if (isTraditionalValidation(config.epServiceType) && !config.serviceItem) {
     throw new Error("Service Item is required for Traditional Validation.");
   }
-  if (
-    config.serviceItem === "traditional_validation_opt_out"
-    && (!config.optOutCountryIds.length || !config.optOutCountriesConfirmed)
-  ) {
-    throw new Error("Select and confirm at least one Opt Out country.");
-  }
-  if (config.optOutCountryIds.some((id) => !config.epCountryIds.includes(id))) {
-    throw new Error("Opt Out countries must be a subset of the selected EP countries.");
-  }
   if (requiresSourceLanguage(config) && !config.sourceLanguage) {
     throw new Error("Source language is required for this EPO service.");
   }
@@ -481,6 +473,8 @@ function parseWizardPayload(formData: FormData): WizardPayload {
     : "";
   if (payload.config.channelCode === "ep") {
     payload.config.jurisdictionCodes = [];
+    payload.config.optOutCountryIds = [];
+    payload.config.optOutCountriesConfirmed = false;
   } else {
     payload.config.epCountryIds = [];
     payload.config.optOutCountryIds = [];
@@ -488,6 +482,37 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   payload.config.scopeType = "full_text";
   payload.config.qualityLevel = HUMAN_TRANSLATION_QUALITY_LEVEL;
   return payload;
+}
+
+async function validateCombinationTranslationTargets(
+  supabase: SupabaseClient,
+  payload: WizardPayload,
+) {
+  const { config } = payload;
+  if (
+    config.epServiceType !== "traditional_validation_unitary_patent"
+    || !config.translationRequired
+    || !config.epCountryIds.length
+  ) return;
+  const { data, error } = await supabase
+    .from("ep_countries")
+    .select("id, epv_trans_requirement")
+    .in("id", config.epCountryIds)
+    .eq("enabled", true);
+  if (error || (data?.length ?? 0) !== config.epCountryIds.length) {
+    throw new Error("Unable to validate the selected EP countries.");
+  }
+  const hasFullTextTraditionalCountry = data!.some(
+    (country) => country.epv_trans_requirement === 2,
+  );
+  if (hasFullTextTraditionalCountry && config.targetLanguages.length) {
+    throw new Error(
+      "Target languages must be empty when a selected Traditional Validation country requires full-text translation.",
+    );
+  }
+  if (!hasFullTextTraditionalCountry && !config.targetLanguages.length) {
+    throw new Error("Select a target language for the Unitary Patent service.");
+  }
 }
 
 function validateEpoServiceAvailability(payload: WizardPayload) {

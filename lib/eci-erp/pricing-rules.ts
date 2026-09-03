@@ -55,10 +55,9 @@ export function verifiedClaimMetrics(aggregate: {
 
 export function buildErpPriceRequest(input: {
   categoryId: number;
-  sourceLangId: number;
+  sourceLangId?: number;
   targetLangIds: number[];
   countryIds: number[];
-  optOutCountryIds: number[];
   serviceItem?: string;
   translationRequired: boolean;
   countryRequirements: Record<number, 0 | 1 | 2>;
@@ -71,7 +70,7 @@ export function buildErpPriceRequest(input: {
 }): ErpPriceRequest {
   const request: ErpPriceRequest = {
     categoryId: input.categoryId,
-    sourceLangId: input.sourceLangId,
+    isTranslate: input.translationRequired ? 1 : 0,
     patFilingRouteId: 1,
     patFilingTypeId: 1,
     clientId: input.clientId,
@@ -130,25 +129,36 @@ export function buildErpPriceRequest(input: {
     const optType = optTypeForServiceItem(input.serviceItem);
     request.countryIdList = [...input.countryIds];
     request.optType = optType;
-    if (optType === 2) {
-      const invalidOptCountry = input.optOutCountryIds.find(
-        (countryId) => !input.countryIds.includes(countryId),
-      );
-      if (invalidOptCountry) throw new Error("Opt Out countries must be selected EP countries.");
-      if (!input.optOutCountryIds.length) throw new Error("Select at least one Opt Out country.");
-      request.countryOptMap = Object.fromEntries(
-        input.optOutCountryIds.map((countryId) => [String(countryId), true]),
-      );
-    }
   }
-  if (
-    input.translationRequired
-    && [83, 84, 8283].includes(input.categoryId)
-  ) {
+  const languageRequirements = erpTranslationLanguageRequirements(
+    input.categoryId,
+    input.translationRequired,
+    input.countryRequirements,
+  );
+  if (languageRequirements.source) {
+    request.sourceLangId = requiredLanguageId(input.sourceLangId, "source language");
+  }
+  if (languageRequirements.target) {
     if (!input.targetLangIds.length) throw new Error("Select at least one target language.");
     request.targetLangIds = [...input.targetLangIds];
   }
   return request;
+}
+
+export function erpTranslationLanguageRequirements(
+  categoryId: number,
+  translationRequired: boolean,
+  countryRequirements: Record<number, 0 | 1 | 2>,
+) {
+  if (!translationRequired) return { source: false, target: false };
+  if (categoryId === 82) return { source: false, target: false };
+  if ([83, 84].includes(categoryId)) return { source: true, target: true };
+  if (categoryId === 8283) {
+    const hasFullTextTraditionalCountry = Object.values(countryRequirements)
+      .some((requirement) => requirement === 2);
+    return { source: true, target: !hasFullTextTraditionalCountry };
+  }
+  return { source: false, target: false };
 }
 
 export function requiredMetricsForCountries(
@@ -173,6 +183,13 @@ function requiredMetric(value: number | undefined, label: string) {
     throw new Error(`Verified ${label} is required.`);
   }
   return value!;
+}
+
+function requiredLanguageId(value: number | undefined, label: string) {
+  if (!Number.isInteger(value) || (value ?? 0) <= 0) {
+    throw new Error(`The selected ${label} is not available in the pricing service.`);
+  }
+  return value;
 }
 
 export function validatePriceRows(input: {

@@ -4,7 +4,10 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RequestDetailTabs } from "@/features/requests/components/request-detail-tabs";
+import {
+  RequestDetailTabs,
+  type RequestDetailTab,
+} from "@/features/requests/components/request-detail-tabs";
 import { latestPublishedDeliverables } from "@/features/deliverables/delivery-progress";
 import { mapPatentLookupResponse } from "@/features/requester/actions/patent-lookup";
 import { PatentDetailStep } from "@/features/requester/components/patent-detail-step";
@@ -199,7 +202,13 @@ type RequestDetail = {
   viewer_is_owner?: boolean;
 };
 
-export function RequestDetailView({ request }: { request: RequestDetail }) {
+export function RequestDetailView({
+  request,
+  initialTab,
+}: {
+  request: RequestDetail;
+  initialTab?: RequestDetailTab;
+}) {
   const files = request.request_files ?? [];
   const uploadedFiles = files.filter((file) => file.source === "upload");
   const patent = firstRelation(request.request_patents);
@@ -419,6 +428,7 @@ export function RequestDetailView({ request }: { request: RequestDetail }) {
             </p>
           ) : null}
           <RequestDetailTabs
+            initialTab={initialTab}
             requestOverview={(
               <Section showHeader={false}>
                 {deadlineItems.length || deadlinePendingMessage ? (

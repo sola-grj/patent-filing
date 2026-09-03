@@ -93,7 +93,6 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
     sourceLangId: 12,
     targetLangIds: [17, 15, 58],
     countryIds: [133, 135, 157],
-    optOutCountryIds: [135, 157],
     translationRequired: true,
     countryRequirements: { 133: 0, 135: 1, 157: 2 } as Record<number, 0 | 1 | 2>,
     clientId: 20031901,
@@ -102,7 +101,7 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
   };
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 82, serviceItem: "traditional_validation" }), {
     categoryId: 82,
-    sourceLangId: 12,
+    isTranslate: 1,
     countryIdList: [133, 135, 157],
     patFilingRouteId: 1,
     patFilingTypeId: 1,
@@ -111,12 +110,17 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
     optType: 1,
     ...common.metrics,
   });
-  assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 82, serviceItem: "traditional_validation_opt_out" }).countryOptMap, {
-    "135": true,
-    "157": true,
-  });
+  assert.equal(
+    "countryOptMap" in buildErpPriceRequest({
+      ...common,
+      categoryId: 82,
+      serviceItem: "traditional_validation_opt_out",
+    }),
+    false,
+  );
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 83 }), {
     categoryId: 83,
+    isTranslate: 1,
     sourceLangId: 12,
     targetLangIds: [17, 15, 58],
     patFilingRouteId: 1,
@@ -158,7 +162,7 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
   );
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 84, translationRequired: false }), {
     categoryId: 84,
-    sourceLangId: 12,
+    isTranslate: 0,
     patFilingRouteId: 1,
     patFilingTypeId: 1,
     clientId: 20031901,
@@ -166,6 +170,7 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
   });
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 84 }), {
     categoryId: 84,
+    isTranslate: 1,
     sourceLangId: 12,
     targetLangIds: [17, 15, 58],
     patFilingRouteId: 1,
@@ -176,6 +181,25 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
   });
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 8283, serviceItem: "opt_out_only" }).optType, 3);
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 8283, serviceItem: "opt_in_only" }).optType, 4);
+
+  const combinedFullText = buildErpPriceRequest({
+    ...common,
+    categoryId: 8283,
+    serviceItem: "traditional_validation",
+    countryRequirements: { 133: 0, 135: 2, 157: 1 },
+  });
+  assert.equal(combinedFullText.isTranslate, 1);
+  assert.equal(combinedFullText.sourceLangId, 12);
+  assert.equal(combinedFullText.targetLangIds, undefined);
+
+  const noTranslation = buildErpPriceRequest({
+    ...common,
+    categoryId: 83,
+    translationRequired: false,
+  });
+  assert.equal(noTranslation.isTranslate, 0);
+  assert.equal(noTranslation.sourceLangId, undefined);
+  assert.equal(noTranslation.targetLangIds, undefined);
 });
 
 test("uses the union of traditional-validation country translation requirements", () => {
@@ -183,7 +207,6 @@ test("uses the union of traditional-validation country translation requirements"
     categoryId: 82,
     sourceLangId: 12,
     targetLangIds: [] as number[],
-    optOutCountryIds: [] as number[],
     serviceItem: "traditional_validation",
     translationRequired: false,
     clientId: 318,

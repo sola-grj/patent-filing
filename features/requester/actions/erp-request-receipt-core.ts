@@ -9,7 +9,7 @@ import {
   signReceiptClaims,
 } from "./quote-receipt-core.ts";
 
-const RECEIPT_VERSION = 2;
+const RECEIPT_VERSION = 3;
 const RECEIPT_TTL_MS = 15 * 60 * 1000;
 
 export type PreparedErpReceiptClaims = {

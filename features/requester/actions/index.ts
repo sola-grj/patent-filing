@@ -4,3 +4,4 @@ export * from "./quotes";
 export * from "./wizard";
 export * from "./patent-cache";
 export * from "./erp";
+export * from "./dashboard-search";

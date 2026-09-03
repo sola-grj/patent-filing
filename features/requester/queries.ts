@@ -42,7 +42,7 @@ const getCachedRequesterDictionaries = unstable_cache(async (): Promise<WizardDi
       .order("sort_order", { ascending: true }),
     supabase
       .from("ep_countries")
-      .select("id, name, cname, abbr")
+      .select("id, name, cname, abbr, epv_trans_requirement")
       .eq("enabled", true)
       .order("name", { ascending: true }),
   ]);
@@ -62,6 +62,7 @@ const getCachedRequesterDictionaries = unstable_cache(async (): Promise<WizardDi
       name: country.name,
       cname: country.cname,
       abbr: country.abbr,
+      epvTranslationRequirement: country.epv_trans_requirement,
     })),
     jurisdictions: [],
   };

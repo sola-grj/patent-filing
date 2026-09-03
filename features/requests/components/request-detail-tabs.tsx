@@ -1,6 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -10,20 +12,32 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+export type RequestDetailTab = "overview" | "quotation" | "signatures" | "patent";
+
 export function RequestDetailTabs({
   requestOverview,
   quotation,
   signatureDocuments,
   patentInformation,
+  initialTab = "overview",
 }: {
   requestOverview: ReactNode;
   quotation: ReactNode;
   signatureDocuments: ReactNode;
   patentInformation: ReactNode;
+  initialTab?: RequestDetailTab;
 }) {
+  const pathname = usePathname();
+  const [activeTab, setActiveTab] = useState<RequestDetailTab>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab, pathname]);
+
   return (
     <Tabs
-      defaultValue="overview"
+      value={activeTab}
+      onValueChange={(value) => setActiveTab(value as RequestDetailTab)}
       className="relative min-w-0"
     >
       <TooltipProvider delayDuration={120}>

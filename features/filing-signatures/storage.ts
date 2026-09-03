@@ -28,8 +28,7 @@ export async function uploadSignatureFiles(
   const storedPaths: string[] = [];
 
   try {
-    const rows = [];
-    for (const upload of input.uploads) {
+    const rows = await mapWithConcurrency(input.uploads, 3, async (upload) => {
       const { file } = upload;
       const contentType = signatureFileContentType(file);
       const folder = input.direction === "pm_to_requester" ? "source" : "return";
@@ -45,11 +44,9 @@ export async function uploadSignatureFiles(
       const { error: uploadError } = await service.storage
         .from(SIGNATURE_BUCKET)
         .upload(path, bytes, { contentType, upsert: false });
-      if (uploadError) {
-        throw new Error(uploadError.message);
-      }
+      if (uploadError) throw new Error(uploadError.message);
       storedPaths.push(path);
-      rows.push({
+      return {
         signature_request_id: input.signatureRequestId,
         direction: input.direction,
         ep_country_id: upload.epCountryId,
@@ -59,8 +56,8 @@ export async function uploadSignatureFiles(
         mime_type: contentType,
         file_size: file.size,
         uploaded_by: input.userId,
-      });
-    }
+      };
+    });
 
     const { data, error: insertError } = await supabase
       .from("filing_signature_files")
@@ -76,6 +73,28 @@ export async function uploadSignatureFiles(
     }
     throw error;
   }
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>,
+) {
+  const results: R[] = [];
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index]!);
+    }
+  }
+  const workers = await Promise.allSettled(
+    Array.from({ length: Math.min(concurrency, values.length) }, worker),
+  );
+  const failed = workers.find((workerResult) => workerResult.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+  return results;
 }
 
 export async function cleanupSignatureFiles(files: FilingSignatureFile[]) {

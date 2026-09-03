@@ -239,12 +239,11 @@ test("places EP Granting subtotals after all fee detail rows", async () => {
   assert.ok(content.indexOf("Translation Fee Subtotal") < content.indexOf("Quotation Total"));
 });
 
-test("maps service items to per-country Opt Out and Opt In labels", () => {
-  assert.equal(optServiceStatusForCountry("traditional_validation_opt_out", 2, [2]), "Opt Out");
-  assert.equal(optServiceStatusForCountry("traditional_validation_opt_out", 1, [2]), null);
-  assert.equal(optServiceStatusForCountry("opt_out_only", 1), "Opt Out");
-  assert.equal(optServiceStatusForCountry("opt_in_only", 1), "Opt In");
-  assert.equal(optServiceStatusForCountry("traditional_validation", 1), null);
+test("maps service items to Opt Out and Opt In labels", () => {
+  assert.equal(optServiceStatusForCountry("traditional_validation_opt_out"), "Opt Out");
+  assert.equal(optServiceStatusForCountry("opt_out_only"), "Opt Out");
+  assert.equal(optServiceStatusForCountry("opt_in_only"), "Opt In");
+  assert.equal(optServiceStatusForCountry("traditional_validation"), null);
 });
 
 test("keeps each traditional-validation country as a separate row without language detail lines", async () => {

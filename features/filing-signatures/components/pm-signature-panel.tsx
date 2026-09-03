@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileSignature, Info, Send } from "lucide-react";
 
@@ -58,9 +58,13 @@ export function PmSignaturePanel({
   const [inputKey, setInputKey] = useState(0);
   const [isAppendOpen, setIsAppendOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [currentSignatureRequests, setCurrentSignatureRequests] = useState(signatureRequests);
+  useEffect(() => {
+    setCurrentSignatureRequests(signatureRequests);
+  }, [signatureRequests]);
   const sorted = useMemo(
-    () => [...signatureRequests].sort(newestFirst),
-    [signatureRequests],
+    () => [...currentSignatureRequests].sort(newestFirst),
+    [currentSignatureRequests],
   );
   const active = sorted.find((request) => ["draft", "sent"].includes(request.status));
   const history = sorted.filter((request) => request.id !== active?.id);
@@ -75,7 +79,8 @@ export function PmSignaturePanel({
 
   function run(
     action: () => Promise<PanelActionResult>,
-    onSuccess?: () => void,
+    onSuccess?: (data?: unknown) => void,
+    refresh = true,
   ) {
     setMessage(null);
     startTransition(async () => {
@@ -87,8 +92,8 @@ export function PmSignaturePanel({
       setMessage(actionWarning(result.data));
       setUploads([]);
       setInputKey((value) => value + 1);
-      onSuccess?.();
-      router.refresh();
+      onSuccess?.(result.data);
+      if (refresh) router.refresh();
     });
   }
 
@@ -98,7 +103,17 @@ export function PmSignaturePanel({
     formData.set("pmNote", pmNote);
     formData.set("dueAt", dueAt);
     appendSignatureUploads(formData, uploads);
-    run(() => savePmSignatureDraft(formData));
+    run(() => savePmSignatureDraft(formData), (data) => {
+      // The Action returns the authoritative draft so this panel need not refetch
+      // the entire PM request detail graph after a successful save.
+      const signatureRequest = (data as { signatureRequest?: FilingSignatureRequest } | undefined)
+        ?.signatureRequest;
+      if (!signatureRequest) return;
+      setCurrentSignatureRequests((current) => [
+        ...current.filter((item) => item.id !== signatureRequest.id),
+        signatureRequest,
+      ]);
+    }, false);
   }
 
   function appendFiles(signatureRequestId: string) {

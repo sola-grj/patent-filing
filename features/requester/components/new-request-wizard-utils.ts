@@ -2,6 +2,7 @@ import type {
   EpServiceTypeCode,
   TraditionalServiceItemCode,
   WizardConfig,
+  EpCountryOption,
   WizardPatentCandidate,
   WizardPatentAnalysisResult,
   WizardPatentFile,
@@ -126,7 +127,11 @@ export function buildWizardPayload(input: {
   };
 }
 
-export function validateWizardStep(step: number, payload: WizardPayload) {
+export function validateWizardStep(
+  step: number,
+  payload: WizardPayload,
+  epCountries?: EpCountryOption[],
+) {
   if (step === 0 && payload.sourceMode === "patent_search" && !payload.selectedPatent) {
     return "Search and select a patent before continuing.";
   }
@@ -138,6 +143,7 @@ export function validateWizardStep(step: number, payload: WizardPayload) {
       payload.config,
       payload.selectedPatent,
       payload.analysis,
+      epCountries,
     );
     const firstError = Object.values(fieldErrors)[0];
     if (firstError) {
@@ -147,9 +153,12 @@ export function validateWizardStep(step: number, payload: WizardPayload) {
   return null;
 }
 
-export function validateWizardPayload(payload: WizardPayload) {
+export function validateWizardPayload(
+  payload: WizardPayload,
+  epCountries?: EpCountryOption[],
+) {
   for (let index = 0; index < wizardSteps.length - 1; index += 1) {
-    const error = validateWizardStep(index, payload);
+    const error = validateWizardStep(index, payload, epCountries);
     if (error) return error;
   }
   if (!hasUsablePatentAnalysis(payload)) {
@@ -265,6 +274,7 @@ export function normalizeWizardConfig(
     targetLanguage?: string;
     targetLanguages?: string[];
   },
+  epCountries: EpCountryOption[] = [],
 ): WizardConfig {
   const merged = {
     ...defaultWizardConfig,
@@ -314,24 +324,23 @@ export function normalizeWizardConfig(
     && !epoSourceLanguages.has(merged.sourceLanguage)
     ? ""
     : merged.sourceLanguage;
-  const targetLanguages = channelCode === "ep"
-    ? normalizeEpoTargetLanguages(
-        serviceConfig.epServiceType,
-        translationRequired,
-        sourceLanguage,
-        config?.targetLanguages ?? (config?.targetLanguage ? [config.targetLanguage] : []),
-      )
-    : normalizeTextValues(
-        config?.targetLanguages ?? (config?.targetLanguage ? [config.targetLanguage] : []),
-      );
   const epCountryIds = requiresEpCountries(serviceConfig.epServiceType)
     ? normalizeEpCountryIds(config?.epCountryIds)
     : [];
-  const optOutCountryIds = serviceItem === "traditional_validation_opt_out"
-    ? normalizeEpCountryIds(config?.optOutCountryIds)
-        .filter((id) => epCountryIds.includes(id))
-    : [];
-
+  const suppressUnitaryTarget = serviceConfig.epServiceType === "traditional_validation_unitary_patent"
+    && epCountryIds.some((id) => epCountries.find((country) => country.id === id)?.epvTranslationRequirement === 2);
+  const targetLanguages = channelCode === "ep"
+    ? suppressUnitaryTarget
+      ? []
+      : normalizeEpoTargetLanguages(
+          serviceConfig.epServiceType,
+          translationRequired,
+          sourceLanguage,
+          config?.targetLanguages ?? (config?.targetLanguage ? [config.targetLanguage] : []),
+        )
+    : normalizeTextValues(
+        config?.targetLanguages ?? (config?.targetLanguage ? [config.targetLanguage] : []),
+      );
   return {
     ...merged,
     channelCode,
@@ -343,13 +352,9 @@ export function normalizeWizardConfig(
     epvType: serviceConfig.epvType,
     epServiceType: serviceConfig.epServiceType as EpServiceTypeCode | "",
     serviceItem,
-    optOutCountryIds,
+    optOutCountryIds: [],
     epCountriesConfirmed: Boolean(config?.epCountriesConfirmed && epCountryIds.length),
-    optOutCountriesConfirmed: Boolean(
-      config?.optOutCountriesConfirmed
-      && serviceItem === "traditional_validation_opt_out"
-      && optOutCountryIds.length,
-    ),
+    optOutCountriesConfirmed: false,
     optType: "",
     pctChapter: hasPctFilingService && merged.pctChapter === "chapter_ii"
       ? "chapter_ii"
@@ -369,6 +374,7 @@ export function validateWizardConfigFields(
   config: WizardConfig,
   patent?: WizardPatentCandidate,
   analysis?: WizardPatentAnalysisResult,
+  epCountries?: EpCountryOption[],
 ): WizardConfigFieldErrors {
   const errors: WizardConfigFieldErrors = {};
   const hasTranslationService = config.serviceTypes.includes("translation");
@@ -455,7 +461,7 @@ export function validateWizardConfigFields(
   if (
     config.channelCode === "ep"
     && config.translationRequired
-    && usesEpoTargetLanguages(config.epServiceType)
+    && requiresEpoTargetLanguages(config, epCountries)
     && !config.targetLanguages.length
   ) {
     errors.targetLanguages = "Select a target language before continuing.";
@@ -476,13 +482,6 @@ export function validateWizardConfigFields(
     && !config.epCountriesConfirmed
   ) {
     errors.epCountryIds = "Confirm the selected EP countries before continuing.";
-  }
-
-  if (
-    config.serviceItem === "traditional_validation_opt_out"
-    && (!config.optOutCountryIds.length || !config.optOutCountriesConfirmed)
-  ) {
-    errors.optOutCountryIds = "Select and confirm at least one Opt Out country.";
   }
 
   if (config.channelCode !== "ep" && !config.jurisdictionCodes.length) {
@@ -509,13 +508,24 @@ export function normalizeEpCountryIds(value: unknown): number[] {
 
 export function requiresSourceLanguage(config: WizardConfig) {
   if (config.channelCode !== "ep") return true;
-  if (
-    !config.translationRequired
-    && ["ep_granting", "unitary_patent"].includes(config.epServiceType)
-  ) {
+  if (config.epServiceType === "traditional_validation") return false;
+  return Boolean(config.epServiceType && config.translationRequired);
+}
+
+export function requiresEpoTargetLanguages(
+  config: Pick<WizardConfig, "epServiceType" | "translationRequired" | "epCountryIds">,
+  epCountries?: EpCountryOption[],
+) {
+  if (!config.translationRequired || !usesEpoTargetLanguages(config.epServiceType)) return false;
+  if (config.epServiceType === "traditional_validation_unitary_patent" && !epCountries) {
     return false;
   }
-  return Boolean(config.epServiceType);
+  return !(
+    config.epServiceType === "traditional_validation_unitary_patent"
+    && config.epCountryIds.some((id) =>
+      epCountries?.find((country) => country.id === id)?.epvTranslationRequirement === 2
+    )
+  );
 }
 
 export function normalizeEpoTargetLanguages(

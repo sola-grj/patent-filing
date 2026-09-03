@@ -23,7 +23,7 @@ export async function openRequesterNotification(formData: FormData) {
   if (!item) throw new Error("This notification is not available.");
 
   revalidatePath("/requester", "layout");
-  redirect(item.href);
+  redirect(buildRequesterNotificationHref(item.href, item.type));
 }
 
 export async function markAllRequesterNotificationsRead() {
@@ -38,4 +38,17 @@ export async function markAllRequesterNotificationsRead() {
 
   revalidatePath("/requester", "layout");
   revalidatePath("/requester/messages");
+}
+
+function buildRequesterNotificationHref(
+  href: string,
+  type: RequesterNotificationRow["type"],
+) {
+  const url = new URL(href, "http://localhost");
+  url.searchParams.set("source", "message");
+  if (type === "filing_signature_required") {
+    url.searchParams.set("tab", "signatures");
+  }
+
+  return `${url.pathname}${url.search}${url.hash}`;
 }
