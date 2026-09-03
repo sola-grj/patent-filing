@@ -27,6 +27,7 @@ export function PmRequestHeaderAction({
   epServiceType,
   jurisdictionCodes,
   order,
+  hasPendingQuoteConfirmation = false,
   requestId,
   status,
 }: {
@@ -35,9 +36,13 @@ export function PmRequestHeaderAction({
   epServiceType?: string;
   jurisdictionCodes: string[];
   order?: HeaderOrder | null;
+  hasPendingQuoteConfirmation?: boolean;
   requestId: string;
   status?: string | null;
 }) {
+  if (hasPendingQuoteConfirmation) {
+    return <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">Waiting for customer confirmation</p>;
+  }
   if (status === "responding") {
     return <PmStartTaskForm requestId={requestId} />;
   }

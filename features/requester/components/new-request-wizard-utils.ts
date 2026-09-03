@@ -508,7 +508,6 @@ export function normalizeEpCountryIds(value: unknown): number[] {
 
 export function requiresSourceLanguage(config: WizardConfig) {
   if (config.channelCode !== "ep") return true;
-  if (config.epServiceType === "traditional_validation") return false;
   return Boolean(config.epServiceType && config.translationRequired);
 }
 

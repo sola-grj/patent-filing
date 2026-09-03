@@ -108,6 +108,7 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
     clientId: 20031901,
     priceCurrencyId: 2,
     optType: 1,
+    sourceLangId: 12,
     ...common.metrics,
   });
   assert.equal(

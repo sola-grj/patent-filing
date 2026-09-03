@@ -84,27 +84,16 @@ export async function acceptQuote(formData: FormData): Promise<ActionResult> {
       throw new Error(requestError.message);
     }
 
-    await supabase
-      .from("quotes")
-      .update({ status: "superseded" })
-      .eq("request_id", requestId)
-      .eq("status", "accepted")
-      .neq("id", quoteId);
-
-    await supabase.from("quotes").update({ status: "accepted" }).eq("id", quoteId);
-    await supabase
-      .from("translation_requests")
-      .update({
-        workflow_stage: "quoted",
-        requester_status: "responding",
-        pm_status: "responding",
-      })
-      .eq("id", requestId);
+    const { error: confirmError } = await supabase.rpc("confirm_latest_quote", {
+      p_request_id: requestId,
+      p_quote_id: quoteId,
+    });
+    if (confirmError) throw new Error(confirmError.message);
     await writeRequestEvent(
       supabase,
       requestId,
       userId,
-      "quote.accepted",
+      "quote.confirmed.requester",
       request.workflow_stage ?? "quoted",
       "quoted",
       { quoteId },

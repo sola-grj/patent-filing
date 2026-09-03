@@ -151,7 +151,7 @@ export function erpTranslationLanguageRequirements(
   countryRequirements: Record<number, 0 | 1 | 2>,
 ) {
   if (!translationRequired) return { source: false, target: false };
-  if (categoryId === 82) return { source: false, target: false };
+  if (categoryId === 82) return { source: true, target: false };
   if ([83, 84].includes(categoryId)) return { source: true, target: true };
   if (categoryId === 8283) {
     const hasFullTextTraditionalCountry = Object.values(countryRequirements)

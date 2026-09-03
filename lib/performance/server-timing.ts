@@ -1,7 +1,21 @@
 import "server-only";
 
 type TimingFields = Partial<Record<
-  "auth_ms" | "db_ms" | "storage_ms" | "email_ms" | "erp_ms" | "patent_service_ms",
+  | "auth_ms"
+  | "db_ms"
+  | "storage_ms"
+  | "email_ms"
+  | "erp_ms"
+  | "patent_service_ms"
+  | "validation_ms"
+  | "request_write_ms"
+  | "existing_submission_check_ms"
+  | "draft_prepare_ms"
+  | "source_files_ms"
+  | "submission_ms"
+  | "parse_results_ms"
+  | "submit_rpc_ms"
+  | "event_ms",
   number
 >>;
 

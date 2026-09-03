@@ -57,6 +57,19 @@ import {
 import { measureServerOperation } from "@/lib/performance/server-timing";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
+type WizardSubmissionTimings = {
+  auth_ms?: number;
+  validation_ms?: number;
+  request_write_ms?: number;
+  existing_submission_check_ms?: number;
+  draft_prepare_ms?: number;
+  source_files_ms?: number;
+  submission_ms?: number;
+  parse_results_ms?: number;
+  submit_rpc_ms?: number;
+  event_ms?: number;
+};
+
 const DEFAULT_DELIVERY_OPTION = "standard";
 
 export async function persistWizardRequest(
@@ -67,23 +80,25 @@ export async function persistWizardRequest(
     deferFormalSubmission?: boolean;
   },
 ): Promise<ActionResult<WizardPersistResult>> {
+  const timings: WizardSubmissionTimings = {};
   return measureServerOperation(`requester.wizard.${mode}`, () =>
-    persistWizardRequestInternal(formData, mode, options));
+    persistWizardRequestInternal(formData, mode, options, timings), timings);
 }
 
 async function persistWizardRequestInternal(
   formData: FormData,
   mode: "draft" | "submit",
-  options?: {
+  options: {
     deferPatentCache?: boolean;
     deferFormalSubmission?: boolean;
-  },
+  } | undefined,
+  timings: WizardSubmissionTimings,
 ): Promise<ActionResult<WizardPersistResult>> {
   let persistedResult: WizardPersistResult | undefined;
   try {
     let payload = parseWizardPayload(formData);
     const { supabase, userId, organization, supplierOrganizationId } =
-      await getRequesterOrganization();
+      await measureWizardStage(timings, "auth_ms", () => getRequesterOrganization());
     if (!organization || !supplierOrganizationId) {
       throw new Error("Your organization is not linked to a supplier.");
     }
@@ -99,28 +114,31 @@ async function persistWizardRequestInternal(
       && !payload.selectedPatent?.lookupReceipt
       && !payload.analysis?.analysis_receipt
       && await hasDurableDraftPatent(supabase, payload.requestId!);
-    const dictionaryValidation = validateDictionaryValues(supabase, payload);
-    if (mode !== "draft") {
-      validateCommercialFields(payload);
-      validateFutureDateString(payload.config.dueAt, "Due date");
-      await dictionaryValidation;
-      await validateCombinationTranslationTargets(supabase, payload);
-      if (!reuseDurablePatent && !verifiedQuote) {
-        payload = await verifyWizardPatentPayload(payload);
+    payload = await measureWizardStage(timings, "validation_ms", async () => {
+      const dictionaryValidation = validateDictionaryValues(supabase, payload);
+      if (mode !== "draft") {
+        validateCommercialFields(payload);
+        validateFutureDateString(payload.config.dueAt, "Due date");
+        await dictionaryValidation;
+        await validateCombinationTranslationTargets(supabase, payload);
+        if (!reuseDurablePatent && !verifiedQuote) {
+          payload = await verifyWizardPatentPayload(payload);
+        }
+        validateEpoServiceAvailability(payload);
+      } else {
+        await dictionaryValidation;
+        if (
+          payload.sourceMode === "patent_search"
+          && payload.selectedPatent
+          && payload.analysis?.analysis_receipt
+          && !isEpGrantingTranslation(payload.config)
+          && !reuseDurablePatent
+        ) {
+          payload = await verifyWizardPatentPayload(payload);
+        }
       }
-      validateEpoServiceAvailability(payload);
-    } else {
-      await dictionaryValidation;
-      if (
-        payload.sourceMode === "patent_search"
-        && payload.selectedPatent
-        && payload.analysis?.analysis_receipt
-        && !isEpGrantingTranslation(payload.config)
-        && !reuseDurablePatent
-      ) {
-        payload = await verifyWizardPatentPayload(payload);
-      }
-    }
+      return payload;
+    });
 
     const requestId = payload.requestId ?? randomUUID();
     const uploadedFormFiles = formData.getAll("files").filter((file): file is File => file instanceof File);
@@ -128,21 +146,20 @@ async function persistWizardRequestInternal(
     const usesCustomerTifg = payload.sourceMode === "patent_search"
       && isEpGrantingTranslation(payload.config);
     validateCustomerTifgFiles(payload, uploadedFormFiles, mode);
-    const patentAnalysisRequired = requiresPatentDocumentAnalysis(payload.config);
     const submittedRequestNo = mode === "submit"
       && payload.requestId
       && payload.sourceMode === "patent_search"
       && !options?.deferFormalSubmission
       && !options?.deferPatentCache
-      ? await findSubmittedPatentRequest(
+      ? await measureWizardStage(timings, "existing_submission_check_ms", () => findSubmittedPatentRequest(
           supabase,
           requestId,
           userId,
-        )
+        ))
       : null;
     if (submittedRequestNo) {
       persistedResult = { requestId, requestNo: submittedRequestNo };
-      revalidateRequestPaths(requestId);
+      after(() => revalidateRequestPaths(requestId));
       return { success: true, data: persistedResult };
     }
     const reuseExistingUploadFiles = Boolean(payload.requestId)
@@ -151,19 +168,21 @@ async function persistWizardRequestInternal(
       && payload.uploadedFiles.some((file) => Boolean(file.requestFileId));
 
     if (payload.requestId) {
-      await assertEditableDraft(supabase, requestId, userId);
-      if (reuseExistingUploadFiles) {
-        await reconcileDraftUploadFiles(
-          supabase,
-          requestId,
-          payload.uploadedFiles,
-        );
-      } else if (!reuseDurablePatent) {
-        await clearDraftSourceArtifacts(supabase, requestId);
-      }
+      await measureWizardStage(timings, "draft_prepare_ms", async () => {
+        await assertEditableDraft(supabase, requestId, userId);
+        if (reuseExistingUploadFiles) {
+          await reconcileDraftUploadFiles(
+            supabase,
+            requestId,
+            payload.uploadedFiles,
+          );
+        } else if (!reuseDurablePatent) {
+          await clearDraftSourceArtifacts(supabase, requestId);
+        }
+      });
     }
 
-    const requestNo = await upsertRequest(
+    const requestNo = await measureWizardStage(timings, "request_write_ms", () => upsertRequest(
       supabase,
       requestId,
       organization.id,
@@ -171,10 +190,10 @@ async function persistWizardRequestInternal(
       userId,
       payload,
       mode,
-    );
-    const requestFileIds = reuseDurablePatent
-      ? await fetchExistingRequestFileIds(supabase, requestId)
-      : await persistSourceFiles(
+    ));
+    const requestFileIds = await measureWizardStage(timings, "source_files_ms", () => reuseDurablePatent
+      ? fetchExistingRequestFileIds(supabase, requestId)
+      : persistSourceFiles(
           supabase,
           requestId,
           userId,
@@ -182,16 +201,10 @@ async function persistWizardRequestInternal(
           formData,
           reuseExistingUploadFiles,
           mode,
-        );
+        ));
     persistedResult = { requestId, requestNo };
-    const persistPatentBeforeSubmission = mode === "submit"
-      && payload.sourceMode === "patent_search"
-      && Boolean(payload.selectedPatent)
-      && patentAnalysisRequired
-      && !usesCustomerTifg
-      && !reuseDurablePatent;
     if (
-      (mode === "draft" || persistPatentBeforeSubmission)
+      mode === "draft"
       && payload.sourceMode === "patent_search"
       && payload.selectedPatent
       && payload.analysis?.analysis_receipt
@@ -241,17 +254,18 @@ async function persistWizardRequestInternal(
         { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
       );
     } else {
-      await persistSubmissionArtifacts(
+      await measureWizardStage(timings, "submission_ms", () => persistSubmissionArtifacts(
         supabase,
         requestId,
         payload,
         requestFileIds,
         !options?.deferFormalSubmission,
-        reuseDurablePatent || persistPatentBeforeSubmission,
+        reuseDurablePatent,
         verifiedQuote,
-      );
+        timings,
+      ));
       if (!options?.deferFormalSubmission) {
-        await writeRequestEvent(
+        await measureWizardStage(timings, "event_ms", () => writeRequestEvent(
           supabase,
           requestId,
           userId,
@@ -259,14 +273,13 @@ async function persistWizardRequestInternal(
           "draft",
           "quoted",
           { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
-        );
+        ));
       }
       if (
         payload.sourceMode === "patent_search"
         && !options?.deferPatentCache
         && payload.analysis?.analysis_receipt
         && !reuseDurablePatent
-        && !persistPatentBeforeSubmission
         && !usesCustomerTifg
       ) {
         scheduleSubmittedPatentFile({
@@ -290,7 +303,7 @@ async function persistWizardRequestInternal(
       }
     }
 
-    revalidateRequestPaths(requestId);
+    after(() => revalidateRequestPaths(requestId));
     return { success: true, data: persistedResult };
   } catch (error) {
     return {
@@ -335,9 +348,21 @@ async function prepareSubmittedPatentFile(input: {
   lookupReceipt?: string;
   analysisReceipt: string;
 }) {
+  const startedAt = performance.now();
   try {
     await enqueueSubmittedPatentFilePreparation(input);
+    console.info(JSON.stringify({
+      event: "requester.patent_cache.prepare",
+      success: true,
+      total_ms: roundDuration(performance.now() - startedAt),
+    }));
   } catch (cacheError) {
+    console.warn(JSON.stringify({
+      event: "requester.patent_cache.prepare",
+      success: false,
+      total_ms: roundDuration(performance.now() - startedAt),
+      error: toErrorMessage(cacheError),
+    }));
     await writeRequestEvent(
       input.supabase,
       input.requestId,
@@ -370,6 +395,23 @@ function revalidateRequestPaths(requestId: string) {
   revalidatePath(`/requester/requests/${requestId}/quote`);
   revalidatePath("/pm");
   revalidatePath(`/pm/${requestId}`);
+}
+
+async function measureWizardStage<T>(
+  timings: WizardSubmissionTimings,
+  field: keyof WizardSubmissionTimings,
+  operation: () => Promise<T>,
+) {
+  const startedAt = performance.now();
+  try {
+    return await operation();
+  } finally {
+    timings[field] = roundDuration(performance.now() - startedAt);
+  }
+}
+
+function roundDuration(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function validateCommercialFields(payload: WizardPayload) {
@@ -1148,6 +1190,7 @@ async function persistSubmissionArtifacts(
   finalizeSubmission: boolean,
   reuseExistingParseResults = false,
   verifiedQuote: ErpQuotePreview | null = null,
+  timings: WizardSubmissionTimings,
 ) {
   if (!verifiedQuote) {
     throw new QuoteEstimateReceiptError(
@@ -1156,21 +1199,25 @@ async function persistSubmissionArtifacts(
     );
   }
   if (!reuseExistingParseResults) {
-    await createParseResults(supabase, requestFileIds, payload);
+    await measureWizardStage(timings, "parse_results_ms", () =>
+      createParseResults(supabase, requestFileIds, payload));
   }
-  const { error } = await supabase.rpc("submit_request_from_wizard", {
-    p_request_id: requestId,
-    p_requirement: requirementInsertPayload(payload),
-    p_config_snapshot: {
-      ...payload.config,
-      scopeType: "full_text",
-    },
-    p_file_ids: requestFileIds,
-    p_quote: {
-      ...verifiedQuote,
-      valid_until_timestamp: quoteValidUntilTimestamp(verifiedQuote.validUntil),
-    },
-    p_finalize: finalizeSubmission,
+  const error = await measureWizardStage(timings, "submit_rpc_ms", async () => {
+    const { error: rpcError } = await supabase.rpc("submit_request_from_wizard", {
+      p_request_id: requestId,
+      p_requirement: requirementInsertPayload(payload),
+      p_config_snapshot: {
+        ...payload.config,
+        scopeType: "full_text",
+      },
+      p_file_ids: requestFileIds,
+      p_quote: {
+        ...verifiedQuote,
+        valid_until_timestamp: quoteValidUntilTimestamp(verifiedQuote.validUntil),
+      },
+      p_finalize: finalizeSubmission,
+    });
+    return rpcError;
   });
   if (error) {
     throw new Error(`Unable to submit Request transaction: ${error.message}`);

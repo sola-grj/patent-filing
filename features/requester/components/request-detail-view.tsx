@@ -123,6 +123,8 @@ type RequestConfigVersion = {
 type Quote = {
   id: string;
   version_no: number;
+  status?: string | null;
+  notes?: string | null;
   total_amount?: number | string | null;
   currency?: string | null;
   pricing_snapshot?: unknown;
@@ -450,12 +452,15 @@ export function RequestDetailView({
               </Section>
             )}
             quotation={(
-              <RequestQuoteSheet
-                quote={latestQuote}
-                showHeader={false}
-                isEpGranting={config.epServiceType === "ep_granting"}
-                translationRequired={config.translationRequired}
-              />
+              <div id="quotation" className="flex flex-col gap-6">
+                <RequestQuoteSheet
+                  quote={latestQuote}
+                  quotes={request.quotes}
+                  confirmation={{ requestId: request.id, canConfirm: !isReadOnly }}
+                  isEpGranting={config.epServiceType === "ep_granting"}
+                  translationRequired={config.translationRequired}
+                />
+              </div>
             )}
             signatureDocuments={signatureRequests.length ? (
               <RequesterSignaturePanel

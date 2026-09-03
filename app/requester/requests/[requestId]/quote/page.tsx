@@ -57,8 +57,6 @@ async function QuoteContent({
     request,
     quote,
     latestNegotiation,
-    isWaitingForPmFeedback,
-    isPmInitiatedNegotiation,
     negotiationHistory,
   } = await getRequesterQuote(requestId);
 
@@ -107,7 +105,7 @@ async function QuoteContent({
           <div className="space-y-6 pb-px">
             <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
               <Card>
-                <CardHeader><CardTitle>Quote details</CardTitle></CardHeader>
+                <CardHeader><CardTitle>Quotation</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-2">
@@ -170,37 +168,22 @@ async function QuoteContent({
                       <p className="text-sm font-medium">Read-only organization Request</p>
                       <p className="mt-1 text-sm text-muted-foreground">Only the Request creator can accept, reject, or negotiate this quote.</p>
                     </div>
-                  ) : isWaitingForPmFeedback ? (
-                    <div className="rounded-xl border border-dashed px-4 py-5">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="gap-1.5">
-                          <CircleEllipsis className="size-3.5" />
-                          Pending
-                        </Badge>
-                      </div>
-                      <p className="mt-3 text-sm font-medium">Waiting for PM feedback</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Your negotiation request has been sent. Actions will be available again after the PM responds.
-                      </p>
-                    </div>
-                  ) : isPmInitiatedNegotiation ? (
+                  ) : quote.status === "sent" ? (
                     <div className="space-y-4">
                       <div className="rounded-xl border border-dashed px-4 py-5">
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary" className="gap-1.5">
                             <CircleEllipsis className="size-3.5" />
-                            Negotiating
+                            Confirmation required
                           </Badge>
                         </div>
-                        <p className="mt-3 text-sm font-medium">PM requested quote adjustments</p>
+                        <p className="mt-3 text-sm font-medium">A revised quotation is ready</p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Review the latest negotiation request and choose to accept, reject, or continue negotiating from this page.
+                          Confirm this latest quotation to allow PM to continue. Questions about pricing? Please contact us directly.
                         </p>
                       </div>
                       <QuoteActions
-                        acceptLabel="Accept"
-                        acceptMode="pm-negotiation"
-                        negotiationId={latestNegotiation?.id}
+                        acceptLabel="Confirm quotation"
                         requestId={request.id}
                         quoteId={quote.id}
                       />
@@ -228,21 +211,16 @@ async function QuoteContent({
                     <div className="rounded-xl border border-dashed px-4 py-5">
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary">
-                          {isNegotiationActive ? "Negotiating" : "Quote review"}
+                          Quote history
                         </Badge>
                       </div>
                       <p className="mt-3 text-sm font-medium">
-                        {isNegotiationActive
-                          ? "Review the updated quote"
-                          : "Choose how to respond to this quote"}
+                        This quotation is not awaiting confirmation
                       </p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {isNegotiationActive
-                          ? "PM has responded to the current negotiation round. You can accept this updated quote, reject the request, or continue negotiating with another counteroffer."
-                          : "Accept the current quote to continue, reject it to close the request, or start a negotiation if pricing or delivery needs adjustment."}
+                        Previous quotation versions remain available for reference. Only the latest revised quotation can be confirmed.
                       </p>
                     </div>
-                    <QuoteActions requestId={request.id} quoteId={quote.id} />
                   </div>
                 )}
               </CardContent>

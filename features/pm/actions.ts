@@ -20,6 +20,11 @@ import {
   buildSingleDeliverySubmissionPlan,
 } from "@/features/deliverables/delivery-progress";
 import { safeFileName } from "@/features/requester/server-utils";
+import { createServiceClient } from "@/lib/supabase/server";
+import { executeErpQuote } from "@/lib/eci-erp/pricing";
+import { reviseErpQuote, type CountryFeeOverride } from "@/lib/eci-erp/quote-revision";
+import type { ErpPriceRequest } from "@/lib/eci-erp/types";
+import { sendQuoteConfirmationEmail } from "./quote-confirmation-email";
 import { usesSingleEpDelivery } from "@/features/requester/request-paths";
 import { ensureCompletedRequestNotification } from "@/features/requester/notification-reconciliation";
 
@@ -80,6 +85,124 @@ export async function generatePmQuote(formData: FormData): Promise<ActionResult>
     redirect(redirectTo);
   }
   return { success: true };
+}
+
+export async function revisePmQuotation(formData: FormData): Promise<ActionResult<{ quoteId: string }>> {
+  try {
+    const context = await assertPm();
+    const requestId = requiredString(formData.get("requestId"), "Request");
+    const adjustedDescriptionWords = requiredNonNegativeInteger(
+      formData.get("descriptionWordCount"),
+      "Description word count",
+    );
+    const discountPercent = requiredPercent(formData.get("translationDiscountPercent"));
+    const notes = requiredString(formData.get("adjustmentNotes"), "Adjustment reason");
+    const { data: request, error: requestError } = await context.supabase
+      .from("translation_requests")
+      .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count), quotes(id, version_no, currency, estimated_delivery_at, pricing_snapshot, quote_factor_snapshots(factors))")
+      .eq("id", requestId)
+      .single();
+    if (requestError) throw new Error(requestError.message);
+    if (request.workflow_stage === "completed") {
+      throw new Error("Completed Requests cannot be repriced.");
+    }
+    const latestQuote = latestQuoteRow(request.quotes ?? []);
+    const storedRequest = erpRequestFromSnapshot(latestQuote?.pricing_snapshot)
+      ?? erpRequestFromSnapshot(quoteFactorSnapshot(latestQuote?.quote_factor_snapshots));
+    if (!latestQuote || !storedRequest) {
+      throw new Error("This Request has no ERP quotation available for revision.");
+    }
+    const parsedDescriptionWords = Number(request.request_patents?.[0]?.description_word_count ?? 0);
+    const latestAdjustedDescriptionWords = adjustedDescriptionWordsFromSnapshot(
+      latestQuote.pricing_snapshot,
+      parsedDescriptionWords,
+    );
+    const latestTotalWords = Number(storedRequest.patTotalWords ?? 0);
+    if (!Number.isInteger(parsedDescriptionWords) || parsedDescriptionWords < 0 || !latestTotalWords) {
+      throw new Error("The verified description word count is unavailable for this Request.");
+    }
+    const adjustedTotalWords = latestTotalWords - latestAdjustedDescriptionWords + adjustedDescriptionWords;
+    if (!Number.isInteger(adjustedTotalWords) || adjustedTotalWords < 0) {
+      throw new Error("The adjusted total word count is invalid.");
+    }
+    const revisedRequest: ErpPriceRequest = {
+      ...storedRequest,
+      patTotalWords: adjustedTotalWords,
+    };
+    const customer = await resolveErpCustomer(request.organization_id, request.requester_id);
+    const baseQuote = await executeErpQuote({
+      request: { ...revisedRequest, clientId: customer.clientId },
+      currency: latestQuote.currency ?? "USD",
+      customerName: customer.clientName,
+      translationRequired: revisedRequest.isTranslate === 1,
+    });
+    const countryOverrides = parseCountryOverrides(formData, baseQuote.rows.map((row) => row.countryId));
+    const revision = reviseErpQuote(baseQuote, {
+      countryOverrides,
+      translationDiscountPercent: discountPercent,
+    });
+    const snapshot = {
+      source: "pm_erp_revision",
+      quotedAt: revision.quote.quotedAt,
+      customerName: revision.quote.customerName,
+      request: revisedRequest,
+      erpResponse: baseQuote.response,
+      response: revision.quote.rows,
+      revision: {
+        sourceQuoteId: latestQuote.id,
+        parsedDescriptionWords,
+        latestAdjustedDescriptionWords,
+        adjustedDescriptionWords,
+        countryOverrides,
+        translationDiscountPercent: discountPercent,
+        translationFeeBeforeDiscount: revision.translationFeeBeforeDiscount,
+        translationDiscountAmount: revision.discountAmount,
+        adjustmentNotes: notes,
+        revisedBy: context.userId,
+        revisedAt: new Date().toISOString(),
+      },
+    };
+    const quoteItems = revision.quote.rows.map((row) => ({
+      label: row.countryName,
+      amount: row.total,
+      quantity: 1,
+      unit: "country",
+      description: `Official ${row.officialFee.toFixed(2)} + service ${row.serviceFee.toFixed(2)} + translation ${row.translationFee.toFixed(2)}`,
+    }));
+    const { data: quoteId, error: revisionError } = await context.supabase.rpc(
+      "create_pm_quote_revision",
+      {
+        p_request_id: requestId,
+        p_currency: revision.quote.currency,
+        p_total_amount: revision.quote.total,
+        p_estimated_delivery_at: latestQuote.estimated_delivery_at ?? null,
+        p_notes: notes,
+        p_pricing_snapshot: snapshot,
+        p_breakdown_json: snapshot,
+        p_factors: snapshot.revision,
+        p_quote_items: quoteItems,
+      },
+    );
+    if (revisionError) throw new Error(revisionError.message);
+    await writeRequestEvent(context.supabase, requestId, context.userId, "quote.revised.pm", request.workflow_stage, "quoted", {
+      quoteId,
+      translationDiscountPercent: discountPercent,
+      adjustedDescriptionWords,
+    });
+    revalidatePmRequest(requestId);
+    revalidatePath(`/requester/requests/${requestId}`);
+    revalidatePath(`/requester/requests/${requestId}/quote`);
+    return { success: true, data: { quoteId } };
+  } catch (error) {
+    return { success: false, error: toPmErrorMessage(error) };
+  }
+}
+
+export async function revisePmQuotationFormState(
+  _previous: ActionResult<{ quoteId: string }>,
+  formData: FormData,
+): Promise<ActionResult<{ quoteId: string }>> {
+  return revisePmQuotation(formData);
 }
 
 export async function startNegotiationFromPm(formData: FormData): Promise<ActionResult> {
@@ -434,6 +557,7 @@ export async function startTranslationTaskFromPm(
     if (request.pm_status !== "responding") {
       throw new Error("Tasks can only start while the request is Responding.");
     }
+    await assertLatestQuoteConfirmed(context.supabase, requestId);
 
     const { data: acceptedQuote, error: acceptedQuoteError } = await context.supabase
       .from("quotes")
@@ -648,6 +772,7 @@ export async function deliverPmOrder(
     if (order.status === "completed") {
       throw new Error("This order has already been delivered.");
     }
+    await assertLatestQuoteConfirmed(context.supabase, requestId);
 
     const deliveryConfig = await getDeliveryConfiguration(
       context.supabase,
@@ -840,6 +965,133 @@ function requiredAmount(value: FormDataEntryValue | null, label: string) {
   return amount;
 }
 
+function requiredNonNegativeInteger(value: FormDataEntryValue | null, label: string) {
+  const parsed = typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${label} must be a non-negative whole number.`);
+  }
+  return parsed;
+}
+
+function requiredPercent(value: FormDataEntryValue | null) {
+  const parsed = typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+    throw new Error("Translation discount must be between 0 and 100 percent.");
+  }
+  return parsed;
+}
+
+function latestQuoteRow<T extends { version_no: number }>(quotes: T[]) {
+  return [...quotes].sort((left, right) => right.version_no - left.version_no)[0] ?? null;
+}
+
+function erpRequestFromSnapshot(value: unknown): ErpPriceRequest | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const request = (value as { request?: unknown }).request ?? value;
+  if (!request || typeof request !== "object" || Array.isArray(request)) return null;
+  const candidate = request as Partial<ErpPriceRequest>;
+  return Number.isInteger(candidate.categoryId)
+    && Number.isInteger(candidate.priceCurrencyId)
+    && typeof candidate.isTranslate === "number"
+    // resolveErpCustomer supplies the current client before executeErpQuote.
+    ? { ...candidate, clientId: Number.isInteger(candidate.clientId) ? candidate.clientId : 0 } as ErpPriceRequest
+    : null;
+}
+
+export async function sendPmQuoteRevision(formData: FormData): Promise<ActionResult> {
+  try {
+    const context = await assertPm();
+    const quoteId = requiredString(formData.get("quoteId"), "Quotation");
+    const { data: quote, error: quoteError } = await context.supabase
+      .from("quotes")
+      .select("id, request_id, status, translation_requests(request_no, title, requester_id, request_patents(patent_number))")
+      .eq("id", quoteId)
+      .single();
+    if (quoteError) throw new Error(quoteError.message);
+    if (quote.status !== "draft") throw new Error("Only a saved draft quotation can be sent.");
+
+    const service = createServiceClient();
+    const request = firstRelation(quote.translation_requests);
+    if (!request) throw new Error("Request not found.");
+    const { data: profile, error: profileError } = await service
+      .from("profiles")
+      .select("email, display_name")
+      .eq("user_id", request.requester_id)
+      .single();
+    if (profileError || !profile?.email?.trim()) throw new Error("The requester email address is missing.");
+
+    const { error: sendError } = await context.supabase.rpc("send_pm_quote_revision", { p_quote_id: quoteId });
+    if (sendError) throw new Error(sendError.message);
+    await sendQuoteConfirmationEmail({
+      recipient: profile.email,
+      recipientName: profile.display_name,
+      requestId: quote.request_id,
+      requestNo: request.request_no,
+      matter: firstRelation(request.request_patents)?.patent_number ?? request.title ?? request.request_no,
+      quoteId,
+    });
+    await writeRequestEvent(context.supabase, quote.request_id, context.userId, "quote.sent.pm", "quoted", "quoted", { quoteId });
+    revalidatePmRequest(quote.request_id);
+    revalidatePath(`/requester/requests/${quote.request_id}`);
+    revalidatePath("/requester", "layout");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toPmErrorMessage(error) };
+  }
+}
+
+function quoteFactorSnapshot(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return quoteFactorSnapshot(value[0]);
+  }
+  if (!value || typeof value !== "object") return null;
+  return (value as { factors?: unknown }).factors ?? null;
+}
+
+function adjustedDescriptionWordsFromSnapshot(value: unknown, fallback: number) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const revision = (value as { revision?: unknown }).revision;
+  if (!revision || typeof revision !== "object" || Array.isArray(revision)) return fallback;
+  const amount = Number((revision as { adjustedDescriptionWords?: unknown }).adjustedDescriptionWords);
+  return Number.isInteger(amount) && amount >= 0 ? amount : fallback;
+}
+
+function firstRelation<T>(value: T | T[] | null | undefined): T | null {
+  return Array.isArray(value) ? value[0] ?? null : value ?? null;
+}
+
+function parseCountryOverrides(formData: FormData, countryIds: number[]): CountryFeeOverride[] {
+  return countryIds.map((countryId) => {
+    const officialFee = parseOptionalMoney(formData.get(`officialFee-${countryId}`), "Official fee");
+    const serviceFee = parseOptionalMoney(formData.get(`serviceFee-${countryId}`), "Service fee");
+    return { countryId, ...(officialFee === null ? {} : { officialFee }), ...(serviceFee === null ? {} : { serviceFee }) };
+  });
+}
+
+function parseOptionalMoney(value: FormDataEntryValue | null, label: string) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`${label} must be non-negative.`);
+  return Math.round((parsed + Number.EPSILON) * 100) / 100;
+}
+
+async function resolveErpCustomer(organizationId: string, requesterId: string) {
+  const service = createServiceClient();
+  const { data, error } = await service
+    .from("eci_erp_customers")
+    .select("client_id, client_name, auth_user_id")
+    .eq("organization_id", organizationId)
+    .eq("is_black", false)
+    .is("sync_error", null);
+  if (error) throw new Error("Unable to resolve the ERP customer for this Request.");
+  const customer = data?.find((row) => row.auth_user_id === requesterId)
+    ?? (data?.length === 1 ? data[0] : null);
+  if (!customer || !Number.isInteger(Number(customer.client_id))) {
+    throw new Error("This Request is not linked to an active ERP customer.");
+  }
+  return { clientId: Number(customer.client_id), clientName: customer.client_name };
+}
+
 function parsePmNegotiationInput(formData: FormData) {
   const input = {
     expectedAmount: optionalNumber(formData.get("expectedAmount")),
@@ -977,8 +1229,30 @@ async function getUploadDeliveryOrder(
   if (order.status === "completed") {
     throw new Error("This order has already been delivered.");
   }
+  await assertLatestQuoteConfirmed(supabase, requestId);
 
   return order as typeof order & { translation_tasks?: DeliveryTask[] | null };
+}
+
+async function assertLatestQuoteConfirmed(supabase: SupabaseClient, requestId: string) {
+  const { data, error } = await supabase
+    .from("quotes")
+    .select("id, version_no, status")
+    .eq("request_id", requestId)
+    .order("version_no", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const latest = data?.[0];
+  if (!latest || latest.status !== "accepted") {
+    throw new Error("Waiting for customer confirmation of the latest quotation.");
+  }
+  const { count, error: pendingError } = await supabase
+    .from("quotes")
+    .select("id", { count: "exact", head: true })
+    .eq("request_id", requestId)
+    .eq("status", "sent");
+  if (pendingError) throw new Error(pendingError.message);
+  if (count) throw new Error("Waiting for customer confirmation of the latest quotation.");
 }
 
 async function getDeliveryConfiguration(

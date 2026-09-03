@@ -41,6 +41,7 @@ import { PmFormSubmitButton } from "./pm-form-submit-button";
 import { PmHeader } from "./pm-header";
 import { PmPatentInfo, type PmRequestPatent } from "./pm-patent-info";
 import { PmQuoteSheet } from "./pm-quote-sheet";
+import { PmQuoteRevisionDialog } from "./pm-quote-revision-form";
 import { PmRequestHeaderAction } from "./pm-request-header-action";
 import { PmRequestOverview } from "./pm-request-overview";
 
@@ -51,6 +52,7 @@ type Quote = {
   id: string;
   version_no: number;
   status?: string | null;
+  notes?: string | null;
   total_amount?: number | string | null;
   currency?: string | null;
   estimated_delivery_at?: string | null;
@@ -213,6 +215,7 @@ export function PmRequestDetail({
   const organization = firstRelation(request.organizations);
   const requirement = firstRelation(request.translation_requirements);
   const latestQuote = latestBy(request.quotes ?? [], "version_no");
+  const hasPendingQuoteConfirmation = (request.quotes ?? []).some((quote) => quote.status === "sent");
   const patent = firstRelation(request.request_patents);
   const patentCandidate = firstRelation(
     firstRelation(request.patent_searches)?.patent_candidates,
@@ -299,6 +302,7 @@ export function PmRequestDetail({
               requestId={request.id}
               status={request.pm_status}
               order={order}
+              hasPendingQuoteConfirmation={hasPendingQuoteConfirmation}
             />
           }
         />
@@ -350,9 +354,17 @@ export function PmRequestDetail({
               <div className="flex flex-col gap-6">
                 <PmQuoteSheet
                   quote={latestQuote}
-                  showHeader={false}
+                  quotes={request.quotes}
                   isEpGranting={config.epServiceType === "ep_granting"}
                   translationRequired={config.translationRequired}
+                  editAction={(
+                    <PmQuoteRevisionDialog
+                      quote={latestQuote}
+                      descriptionWordCount={Number(patent?.description_word_count ?? 0)}
+                      requestId={request.id}
+                      requestStage={request.workflow_stage}
+                    />
+                  )}
                 />
                 {SHOW_NEGOTIATION_HISTORY ? (
                   negotiationHistory.length ? (
@@ -680,6 +692,7 @@ function Field({
   type = "text",
   defaultValue,
   min,
+  max,
   step,
 }: {
   label: string;
@@ -687,6 +700,7 @@ function Field({
   type?: string;
   defaultValue?: string;
   min?: string;
+  max?: string;
   step?: string;
 }) {
   return (
@@ -705,6 +719,7 @@ function Field({
           type={type}
           defaultValue={defaultValue}
           min={min}
+          max={max}
           step={step}
           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
         />

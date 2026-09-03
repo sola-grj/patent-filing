@@ -2,6 +2,7 @@ import { addCalendarMonths, buildDashboardDeadlineItems, type RequestDeadlineSou
 
 export const requesterNotificationTypes = [
   "filing_signature_required",
+  "quote_confirmation_required",
   "request_completed",
   "request_deadline_approaching",
 ] as const;
@@ -79,6 +80,19 @@ export function toRequesterNotificationItem(
       title: "Documents require your signature",
       detail: `${matter} · ${fileCount ?? 0} ${(fileCount ?? 0) === 1 ? "file" : "files"}`,
       meta: dueAt ? `Due ${formatDate(dueAt)}` : requestNo,
+      href,
+      readAt: row.read_at,
+      createdAt: row.created_at,
+    };
+  }
+
+  if (row.type === "quote_confirmation_required") {
+    return {
+      id: row.id,
+      type: row.type,
+      title: "Quotation confirmation required",
+      detail: `${matter} · ${requestNo}`,
+      meta: "Your PM has sent a revised quotation",
       href,
       readAt: row.read_at,
       createdAt: row.created_at,

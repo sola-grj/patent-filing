@@ -49,6 +49,9 @@ function buildRequesterNotificationHref(
   if (type === "filing_signature_required") {
     url.searchParams.set("tab", "signatures");
   }
+  if (type === "quote_confirmation_required") {
+    url.searchParams.set("tab", "quotation");
+  }
 
   return `${url.pathname}${url.search}${url.hash}`;
 }
