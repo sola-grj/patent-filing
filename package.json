@@ -11,6 +11,7 @@
     "test:drafts": "node --experimental-strip-types --test features/requester/draft-v2.test.ts",
     "test:organization-access": "node --experimental-strip-types --test features/requester/request-scope.test.ts",
     "test:notifications": "node --experimental-strip-types --test features/requester/notifications.test.ts",
+    "test:pm-notifications": "node --experimental-strip-types --test features/pm/notifications.test.ts",
     "test:erp": "node --experimental-strip-types --test lib/eci-erp/eci-erp.test.ts",
     "test:erp-receipt": "node --experimental-strip-types --test features/requester/actions/erp-request-receipt.test.ts",
     "test:filing-signatures": "node --experimental-strip-types --test features/filing-signatures/country-scope.test.ts",

@@ -280,12 +280,11 @@ export async function cancelPmSignatureRequest(formData: FormData): Promise<Acti
       .eq("id", signatureRequestId);
     if (updateError) throw new Error(updateError.message);
 
-    await context.supabase
-      .from("notifications")
-      .update({ read_at: now })
-      .eq("entity_type", "filing_signature_request")
-      .eq("entity_id", signatureRequestId)
-      .is("read_at", null);
+    const { error: dismissError } = await context.supabase.rpc(
+      "dismiss_filing_signature_notification",
+      { p_signature_request_id: signatureRequestId },
+    );
+    if (dismissError) throw new Error(dismissError.message);
     await writeRequestEvent(
       context.supabase,
       signatureRequest.request_id,
