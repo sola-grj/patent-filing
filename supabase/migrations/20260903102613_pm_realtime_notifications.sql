@@ -3,6 +3,8 @@
 
 drop policy if exists "Notifications are visible to recipient and staff" on public.notifications;
 drop policy if exists "Notifications can be updated by recipient or staff" on public.notifications;
+drop policy if exists "Notifications are visible to recipient" on public.notifications;
+drop policy if exists "Notifications can be updated by recipient" on public.notifications;
 drop policy if exists "Notifications can be created by staff" on public.notifications;
 drop policy if exists "Supplier staff can create signature notifications" on public.notifications;
 

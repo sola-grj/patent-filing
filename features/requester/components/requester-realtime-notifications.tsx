@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { BellRing, CircleCheck, FileSignature } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { toRequesterNotificationItem, type RequesterNotificationRow } from "@/features/requester/notifications";
 import { createClient } from "@/lib/supabase/client";
-import { toPmNotificationItem, type PmNotificationRow } from "@/features/pm/notifications";
 
 type Toast = { id: string; title: string; detail: string; type: string };
 
-export function PmRealtimeNotifications({ userId }: { userId: string }) {
+export function RequesterRealtimeNotifications({ userId }: { userId: string }) {
   const router = useRouter();
   const [toast, setToast] = useState<Toast | null>(null);
   const refreshTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,14 +32,14 @@ export function PmRealtimeNotifications({ userId }: { userId: string }) {
 
       supabase.realtime.setAuth(session.access_token);
       channel = supabase
-        .channel(`pm-notifications:${userId}`)
+        .channel(`requester-notifications:${userId}`)
         .on("postgres_changes", {
           event: "INSERT",
           schema: "public",
           table: "notifications",
           filter: `recipient_id=eq.${userId}`,
         }, (payload) => {
-          const item = toPmNotificationItem(payload.new as PmNotificationRow);
+          const item = toRequesterNotificationItem(payload.new as RequesterNotificationRow);
           refresh();
           if (!item || item.readAt) return;
           setToast({ id: item.id, title: item.title, detail: item.detail, type: item.type });
@@ -51,7 +51,7 @@ export function PmRealtimeNotifications({ userId }: { userId: string }) {
           filter: `recipient_id=eq.${userId}`,
         }, refresh)
         .subscribe((status, error) => {
-          if (status === "CHANNEL_ERROR" && error) console.error("PM notifications Realtime error", error);
+          if (status === "CHANNEL_ERROR" && error) console.error("Requester notifications Realtime error", error);
         });
     };
 
@@ -78,7 +78,7 @@ export function PmRealtimeNotifications({ userId }: { userId: string }) {
 }
 
 function toastIcon(type: string) {
-  if (type === "pm_signed_documents_received") return <FileSignature className="size-5" />;
-  if (type === "pm_quote_confirmed") return <CircleCheck className="size-5" />;
+  if (type === "filing_signature_required") return <FileSignature className="size-5" />;
+  if (type === "quote_confirmation_required" || type === "request_completed") return <CircleCheck className="size-5" />;
   return <BellRing className="size-5" />;
 }

@@ -5,6 +5,7 @@ export type CountryFeeOverride = {
   countryId: number;
   officialFee?: number;
   serviceFee?: number;
+  translationFee?: number;
 };
 
 export type QuoteRevisionInput = {
@@ -24,7 +25,9 @@ export function reviseErpQuote(
 ): QuoteRevisionResult {
   const overrides = new Map(input.countryOverrides.map((item) => [item.countryId, item]));
   const discountRate = input.translationDiscountPercent / 100;
-  const translationFeeBeforeDiscount = sumMoney(base.rows.map((row) => row.translationFee));
+  const translationFeeBeforeDiscount = sumMoney(base.rows.map((row) =>
+    overrides.get(row.countryId)?.translationFee ?? row.translationFee,
+  ));
   const rows = base.rows.map((row) => reviseRow(row, overrides.get(row.countryId), discountRate));
   const total = sumMoney(rows.map((row) => row.total));
   const discountedTranslationFee = sumMoney(rows.map((row) => row.translationFee));
@@ -51,11 +54,16 @@ function reviseRow(
 ): ErpQuoteRow {
   const officialFee = override?.officialFee ?? row.officialFee;
   const serviceFee = override?.serviceFee ?? row.serviceFee;
-  const translationFeeDetails = row.translationFeeDetails.map((fee) => ({
+  const translationFeeDetails = withTranslationFeeOverride(
+    row.translationFeeDetails,
+    override?.translationFee,
+  ).map((fee) => ({
     ...fee,
     amount: roundMoney(fee.amount * (1 - discountRate)),
   }));
-  const translationFee = sumMoney(translationFeeDetails.map((fee) => fee.amount));
+  const translationFee = override?.translationFee !== undefined && !translationFeeDetails.length
+    ? roundMoney(override.translationFee * (1 - discountRate))
+    : sumMoney(translationFeeDetails.map((fee) => fee.amount));
   return {
     ...row,
     officialFee,
@@ -67,6 +75,25 @@ function reviseRow(
     translationFee,
     total: sumMoney([officialFee, serviceFee, translationFee]),
   };
+}
+
+function withTranslationFeeOverride(
+  fees: ErpQuoteRow["translationFeeDetails"],
+  translationFee: number | undefined,
+) {
+  if (translationFee === undefined || !fees.length) return fees;
+  const originalTotal = sumMoney(fees.map((fee) => fee.amount));
+  if (originalTotal <= 0) {
+    return fees.map((fee, index) => ({ ...fee, amount: index === 0 ? translationFee : 0 }));
+  }
+  let remaining = translationFee;
+  return fees.map((fee, index) => {
+    const amount = index === fees.length - 1
+      ? remaining
+      : roundMoney(translationFee * fee.amount / originalTotal);
+    remaining = roundMoney(remaining - amount);
+    return { ...fee, amount };
+  });
 }
 
 function roundMoney(value: number) {

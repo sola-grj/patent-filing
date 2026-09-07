@@ -39,6 +39,14 @@ type QuoteSeed = {
   source: string;
 };
 
+export type PmQuoteRevisionRow = {
+  countryId: number;
+  countryName: string;
+  officialFee: number;
+  serviceFee: number;
+  translationFee: number;
+};
+
 export async function generatePmQuote(formData: FormData): Promise<ActionResult> {
   let redirectTo: string | null = null;
 
@@ -998,6 +1006,58 @@ function erpRequestFromSnapshot(value: unknown): ErpPriceRequest | null {
     : null;
 }
 
+export async function calculatePmQuotation(formData: FormData): Promise<ActionResult<{ rows: PmQuoteRevisionRow[] }>> {
+  try {
+    const context = await assertPm();
+    const requestId = requiredString(formData.get("requestId"), "Request");
+    const adjustedDescriptionWords = requiredNonNegativeInteger(
+      formData.get("descriptionWordCount"),
+      "Description word count",
+    );
+    requiredPercent(formData.get("translationDiscountPercent"));
+    const { data: request, error: requestError } = await context.supabase
+      .from("translation_requests")
+      .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count), quotes(version_no, currency, pricing_snapshot, quote_factor_snapshots(factors))")
+      .eq("id", requestId)
+      .single();
+    if (requestError) throw new Error(requestError.message);
+    if (request.workflow_stage === "completed") throw new Error("Completed Requests cannot be repriced.");
+    const latestQuote = latestQuoteRow(request.quotes ?? []);
+    const storedRequest = erpRequestFromSnapshot(latestQuote?.pricing_snapshot)
+      ?? erpRequestFromSnapshot(quoteFactorSnapshot(latestQuote?.quote_factor_snapshots));
+    if (!latestQuote || !storedRequest) throw new Error("This Request has no ERP quotation available for revision.");
+    const parsedDescriptionWords = Number(request.request_patents?.[0]?.description_word_count ?? 0);
+    const latestAdjustedDescriptionWords = adjustedDescriptionWordsFromSnapshot(latestQuote.pricing_snapshot, parsedDescriptionWords);
+    const latestTotalWords = Number(storedRequest.patTotalWords ?? 0);
+    if (!Number.isInteger(parsedDescriptionWords) || parsedDescriptionWords < 0 || !latestTotalWords) {
+      throw new Error("The verified description word count is unavailable for this Request.");
+    }
+    const adjustedTotalWords = latestTotalWords - latestAdjustedDescriptionWords + adjustedDescriptionWords;
+    if (!Number.isInteger(adjustedTotalWords) || adjustedTotalWords < 0) throw new Error("The adjusted total word count is invalid.");
+    const customer = await resolveErpCustomer(request.organization_id, request.requester_id);
+    const baseQuote = await executeErpQuote({
+      request: { ...storedRequest, patTotalWords: adjustedTotalWords, clientId: customer.clientId },
+      currency: latestQuote.currency ?? "USD",
+      customerName: customer.clientName,
+      translationRequired: storedRequest.isTranslate === 1,
+    });
+    return {
+      success: true,
+      data: {
+        rows: baseQuote.rows.map((row) => ({
+          countryId: row.countryId,
+          countryName: row.countryName,
+          officialFee: row.officialFee,
+          serviceFee: row.serviceFee,
+          translationFee: row.translationFee,
+        })),
+      },
+    };
+  } catch (error) {
+    return { success: false, error: toPmErrorMessage(error) };
+  }
+}
+
 export async function sendPmQuoteRevision(formData: FormData): Promise<ActionResult> {
   try {
     const context = await assertPm();
@@ -1064,7 +1124,13 @@ function parseCountryOverrides(formData: FormData, countryIds: number[]): Countr
   return countryIds.map((countryId) => {
     const officialFee = parseOptionalMoney(formData.get(`officialFee-${countryId}`), "Official fee");
     const serviceFee = parseOptionalMoney(formData.get(`serviceFee-${countryId}`), "Service fee");
-    return { countryId, ...(officialFee === null ? {} : { officialFee }), ...(serviceFee === null ? {} : { serviceFee }) };
+    const translationFee = parseOptionalMoney(formData.get(`translationFee-${countryId}`), "Translate fee");
+    return {
+      countryId,
+      ...(officialFee === null ? {} : { officialFee }),
+      ...(serviceFee === null ? {} : { serviceFee }),
+      ...(translationFee === null ? {} : { translationFee }),
+    };
   });
 }
 

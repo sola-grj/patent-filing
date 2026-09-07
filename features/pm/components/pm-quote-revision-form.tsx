@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -13,17 +13,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { revisePmQuotationFormState } from "@/features/pm/actions";
+import { calculatePmQuotation, revisePmQuotationFormState, type PmQuoteRevisionRow } from "@/features/pm/actions";
 import { PmQuoteSendAction } from "./pm-quote-send-action";
 import type { ActionResult } from "@/lib/validators/requester";
 
-type RevisionRow = {
-  countryId: number;
-  countryName: string;
-  officialFee: number;
-  serviceFee: number;
-  translationFee: number;
-};
+type RevisionRow = PmQuoteRevisionRow;
 
 const initialState: ActionResult<{ quoteId: string }> = { success: false };
 
@@ -51,6 +45,8 @@ export function PmQuoteRevisionDialog({
   );
   const rows = revisionRows(quote);
   const latestAdjustedDescriptionWords = adjustedDescriptionWords(quote, descriptionWordCount);
+  const latestDiscountPercent = translationDiscountPercent(quote);
+  const latestTranslationFeeBeforeDiscount = translationFeeBeforeDiscount(quote);
   const isCompleted = requestStage === "completed";
   const isPendingConfirmation = quote?.status === "sent";
   const cannotRevise = !quote || !rows.length || !Number.isInteger(descriptionWordCount) || descriptionWordCount < 0;
@@ -79,6 +75,8 @@ export function PmQuoteRevisionDialog({
         </DialogHeader>
         <PmQuoteRevisionFormFields
           descriptionWordCount={latestAdjustedDescriptionWords}
+          initialDiscountPercent={latestDiscountPercent}
+          initialTranslationFeeBeforeDiscount={latestTranslationFeeBeforeDiscount}
           requestId={requestId}
           rows={rows}
           draftQuoteId={draftQuoteId}
@@ -91,12 +89,16 @@ export function PmQuoteRevisionDialog({
 
 export function PmQuoteRevisionFormFields({
   descriptionWordCount,
+  initialDiscountPercent,
+  initialTranslationFeeBeforeDiscount,
   requestId,
   rows,
   draftQuoteId,
   onSavedQuote,
 }: {
   descriptionWordCount: number;
+  initialDiscountPercent: number;
+  initialTranslationFeeBeforeDiscount: number | null;
   requestId: string;
   rows: RevisionRow[];
   draftQuoteId?: string;
@@ -104,29 +106,40 @@ export function PmQuoteRevisionFormFields({
 }) {
   const [state, formAction, isPending] = useActionState(revisePmQuotationFormState, initialState);
   const [adjustedRows, setAdjustedRows] = useState(rows);
-  const [discountPercent, setDiscountPercent] = useState("0");
-  const totals = useMemo(() => revisionTotals(adjustedRows, discountPercent), [adjustedRows, discountPercent]);
+  const [discountPercent, setDiscountPercent] = useState(String(initialDiscountPercent));
+  const [translationFeesAreDiscounted, setTranslationFeesAreDiscounted] = useState(initialDiscountPercent > 0);
+  const [calculationError, setCalculationError] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isCalculating, startCalculation] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  const totals = useMemo(
+    () => revisionTotals(adjustedRows, discountPercent, translationFeesAreDiscounted, initialTranslationFeeBeforeDiscount),
+    [adjustedRows, discountPercent, initialTranslationFeeBeforeDiscount, translationFeesAreDiscounted],
+  );
 
   useEffect(() => {
-    if (state.success && state.data?.quoteId) onSavedQuote(state.data.quoteId);
+    if (state.success && state.data?.quoteId) {
+      onSavedQuote(state.data.quoteId);
+      setHasUnsavedChanges(false);
+    }
   }, [onSavedQuote, state.data?.quoteId, state.success]);
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="space-y-4" ref={formRef}>
       <input type="hidden" name="requestId" value={requestId} />
       <div className="grid gap-3 md:grid-cols-2">
-        <LabeledInput label="Adjusted description words" name="descriptionWordCount" type="number" min="0" step="1" defaultValue={String(descriptionWordCount)} required />
-        <LabeledInput label="Translation fee discount (%)" name="translationDiscountPercent" type="number" min="0" max="100" step="0.01" value={discountPercent} onChange={(event) => setDiscountPercent(event.target.value)} required />
+        <LabeledInput label="Adjusted description words" name="descriptionWordCount" type="number" min="0" step="1" defaultValue={String(descriptionWordCount)} onChange={() => setHasUnsavedChanges(true)} required />
+        <LabeledInput label="Translation fee discount (%)" name="translationDiscountPercent" type="number" min="0" max="100" step="0.01" value={discountPercent} onChange={(event) => { setDiscountPercent(event.target.value); setHasUnsavedChanges(true); }} required />
       </div>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-muted/40 text-left"><tr><th className="p-3">Country</th><th className="p-3">Official fee</th><th className="p-3">Service fee</th><th className="p-3">ERP translation fee</th></tr></thead>
+          <thead className="bg-muted/40 text-left"><tr><th className="p-3">Country</th><th className="p-3">Official fee</th><th className="p-3">Service fee</th><th className="p-3">Translate fee</th></tr></thead>
           <tbody>{adjustedRows.map((row) => (
             <tr key={row.countryId} className="border-t">
               <td className="p-3 font-medium">{row.countryName}</td>
-              <td className="p-3"><input className="h-9 w-28 rounded-md border bg-background px-2" name={`officialFee-${row.countryId}`} type="number" min="0" step="0.01" value={row.officialFee} onChange={(event) => updateFee(setAdjustedRows, row.countryId, "officialFee", event.target.value)} required /></td>
-              <td className="p-3"><input className="h-9 w-28 rounded-md border bg-background px-2" name={`serviceFee-${row.countryId}`} type="number" min="0" step="0.01" value={row.serviceFee} onChange={(event) => updateFee(setAdjustedRows, row.countryId, "serviceFee", event.target.value)} required /></td>
-              <td className="p-3">{row.translationFee.toFixed(2)}</td>
+              <td className="p-3"><input className="h-9 w-28 rounded-md border bg-background px-2" name={`officialFee-${row.countryId}`} type="number" min="0" step="0.01" value={row.officialFee} onChange={(event) => { updateFee(setAdjustedRows, row.countryId, "officialFee", event.target.value); setHasUnsavedChanges(true); }} required /></td>
+              <td className="p-3"><input className="h-9 w-28 rounded-md border bg-background px-2" name={`serviceFee-${row.countryId}`} type="number" min="0" step="0.01" value={row.serviceFee} onChange={(event) => { updateFee(setAdjustedRows, row.countryId, "serviceFee", event.target.value); setHasUnsavedChanges(true); }} required /></td>
+              <td className="p-3"><input className="h-9 w-28 rounded-md border bg-background px-2" name={`translationFee-${row.countryId}`} type="number" min="0" step="0.01" value={row.translationFee} onChange={(event) => { updateFee(setAdjustedRows, row.countryId, "translationFee", event.target.value); setHasUnsavedChanges(true); }} required /></td>
             </tr>
           ))}</tbody>
           <tfoot className="border-t bg-muted/20 font-semibold">
@@ -148,12 +161,28 @@ export function PmQuoteRevisionFormFields({
       </div>
       <label className="block space-y-2 text-sm">
         <span className="font-medium">Adjustment reason</span>
-        <Textarea name="adjustmentNotes" required className="min-h-24 w-full resize-y" />
+        <Textarea name="adjustmentNotes" required className="min-h-24 w-full resize-y" onChange={() => setHasUnsavedChanges(true)} />
       </label>
       {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
-      {state.success ? <p className="text-sm text-emerald-700">Revision saved as a draft. Review it, then send it to the requester.</p> : null}
+      {calculationError ? <p role="alert" className="text-sm text-destructive">{calculationError}</p> : null}
+      {state.success && !hasUnsavedChanges ? <p className="text-sm text-emerald-700">Revision saved as a draft. Review it, then send it to the requester.</p> : null}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
-        <Button type="submit" className="min-w-48" disabled={isPending}>{isPending ? "Saving quotation..." : "Save revised quotation"}</Button>
+        <Button type="button" variant="outline" className="min-w-44" disabled={isPending || isCalculating} onClick={() => {
+          if (!formRef.current || !reportCalculationValidity(formRef.current)) return;
+          const formData = new FormData(formRef.current);
+          setCalculationError(null);
+          startCalculation(async () => {
+            const result = await calculatePmQuotation(formData);
+            if (!result.success || !result.data) {
+              setCalculationError(result.error ?? "Unable to calculate the quotation.");
+              return;
+            }
+            setAdjustedRows(result.data.rows);
+            setTranslationFeesAreDiscounted(false);
+            setHasUnsavedChanges(true);
+          });
+        }}>{isCalculating ? "Calculating quotation..." : "Calculate quotation"}</Button>
+        <Button type="submit" className="min-w-48" disabled={isPending || !hasUnsavedChanges}>{isPending ? "Saving quotation..." : "Save revised quotation"}</Button>
         {draftQuoteId ? <PmQuoteSendAction quoteId={draftQuoteId} status="draft" /> : null}
       </div>
     </form>
@@ -172,7 +201,7 @@ function SummaryLine({ label, value, final = false }: { label: React.ReactNode; 
 function updateFee(
   setRows: React.Dispatch<React.SetStateAction<RevisionRow[]>>,
   countryId: number,
-  key: "officialFee" | "serviceFee",
+  key: "officialFee" | "serviceFee" | "translationFee",
   value: string,
 ) {
   const amount = Number(value);
@@ -181,12 +210,22 @@ function updateFee(
     : row));
 }
 
-function revisionTotals(rows: RevisionRow[], discountValue: string) {
+function revisionTotals(
+  rows: RevisionRow[],
+  discountValue: string,
+  translationFeesAreDiscounted: boolean,
+  savedTranslationFeeBeforeDiscount: number | null,
+) {
   const officialFee = rows.reduce((sum, row) => sum + row.officialFee, 0);
   const serviceFee = rows.reduce((sum, row) => sum + row.serviceFee, 0);
-  const translationBeforeDiscount = rows.reduce((sum, row) => sum + row.translationFee, 0);
+  const rowTranslationFee = rows.reduce((sum, row) => sum + row.translationFee, 0);
   const discount = Math.min(100, Math.max(0, Number(discountValue) || 0));
-  const translationFee = roundMoney(translationBeforeDiscount * (1 - discount / 100));
+  const translationBeforeDiscount = translationFeesAreDiscounted
+    ? savedTranslationFeeBeforeDiscount ?? (discount < 100 ? roundMoney(rowTranslationFee / (1 - discount / 100)) : rowTranslationFee)
+    : rowTranslationFee;
+  const translationFee = translationFeesAreDiscounted
+    ? rowTranslationFee
+    : roundMoney(translationBeforeDiscount * (1 - discount / 100));
   return { officialFee, serviceFee, translationBeforeDiscount, translationFee, discount, total: roundMoney(officialFee + serviceFee + translationFee) };
 }
 
@@ -200,6 +239,10 @@ function formatAmount(value: number) {
 
 function formatDiscount(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value) + "%";
+}
+
+function reportCalculationValidity(form: HTMLFormElement) {
+  return Array.from(form.querySelectorAll<HTMLInputElement>("input[required]")).every((input) => input.reportValidity());
 }
 
 function LabeledInput(props: React.ComponentProps<"input"> & { label: string }) {
@@ -236,4 +279,26 @@ function adjustedDescriptionWords(quote: RevisionQuote | null, fallback: number)
     ? Number((revision as { adjustedDescriptionWords?: unknown }).adjustedDescriptionWords)
     : Number.NaN;
   return Number.isInteger(amount) && amount >= 0 ? amount : fallback;
+}
+
+function translationDiscountPercent(quote: RevisionQuote | null) {
+  const snapshot = quote?.breakdown_json ?? quote?.pricing_snapshot;
+  const revision = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+    ? (snapshot as { revision?: unknown }).revision
+    : null;
+  const amount = revision && typeof revision === "object" && !Array.isArray(revision)
+    ? Number((revision as { translationDiscountPercent?: unknown }).translationDiscountPercent)
+    : Number.NaN;
+  return Number.isFinite(amount) && amount >= 0 && amount <= 100 ? amount : 0;
+}
+
+function translationFeeBeforeDiscount(quote: RevisionQuote | null) {
+  const snapshot = quote?.breakdown_json ?? quote?.pricing_snapshot;
+  const revision = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+    ? (snapshot as { revision?: unknown }).revision
+    : null;
+  const amount = revision && typeof revision === "object" && !Array.isArray(revision)
+    ? Number((revision as { translationFeeBeforeDiscount?: unknown }).translationFeeBeforeDiscount)
+    : Number.NaN;
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }

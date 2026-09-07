@@ -5,6 +5,7 @@ import { AppTopNav, AppTopNavFallback } from "@/components/app-top-nav";
 import { requesterOrganizationAccessEnabled } from "@/features/organizations/availability";
 import { RequestWizardControllerProvider } from "@/features/requester/components/requester-create-request-controller";
 import { RequesterNavigationLoadingProvider } from "@/features/requester/components/requester-navigation-loading";
+import { RequesterRealtimeNotifications } from "@/features/requester/components/requester-realtime-notifications";
 import { requirePortalContext } from "@/lib/auth/portal-context";
 
 const requesterNavLinks = [
@@ -40,6 +41,7 @@ async function RequesterShell({ children }: { children: React.ReactNode }) {
           <Suspense fallback={<AppTopNavFallback links={requesterNavLinks} notificationHref="/requester/messages" />}>
             <AppTopNav links={requesterNavLinks} notificationHref="/requester/messages" />
           </Suspense>
+          <RequesterRealtimeNotifications userId={context.userId} />
           <div className="mx-auto flex min-h-0 w-full max-w-[1760px] flex-col overflow-visible px-6 py-7">
             {children}
           </div>
