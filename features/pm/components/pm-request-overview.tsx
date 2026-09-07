@@ -51,7 +51,7 @@ export function PmRequestOverview({
   const showFilingFields = serviceTypes.includes("filing");
   const showServiceItem = isTraditionalValidation(config.epServiceType);
   const showDestinations = config.channelCode !== "ep"
-    || requiresEpCountries(config.epServiceType);
+    || requiresEpCountries(config.epServiceType, config.serviceItem);
   const serviceTypeLabel = resolveServiceTypeSelection(
     config.channelCode,
     serviceTypes,

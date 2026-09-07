@@ -18,6 +18,7 @@ import {
   categoryForConfig,
   erpTranslationLanguageRequirements,
   quoteAvailabilityError,
+  requiresErpCountryList,
   validatePriceRows,
   verifiedClaimMetrics,
 } from "./pricing-rules";
@@ -144,7 +145,10 @@ export async function prepareQuoteForOrganization(
   if (availabilityError) throw new Error(availabilityError);
   const service = createServiceClient();
   const categoryId = categoryForConfig(payload.config)!;
-  const requiresCountries = [82, 8283].includes(categoryId);
+  const requiresCountries = requiresErpCountryList(
+    categoryId,
+    payload.config.serviceItem,
+  );
   const [
     { data: customerAccounts, error: customerError },
     remoteCountries,

@@ -221,7 +221,7 @@ export function ConfigStep({
   const showTraditionalItems = isTraditionalValidation(config.epServiceType);
   const showSourceLanguage = requiresSourceLanguage(config);
   const showEpCountries = config.channelCode === "ep"
-    && requiresEpCountries(config.epServiceType);
+    && requiresEpCountries(config.epServiceType, config.serviceItem);
   const normalizedTargetLanguages = config.channelCode === "ep"
     ? normalizeEpoTargetLanguages(
         config.epServiceType,
@@ -248,7 +248,10 @@ export function ConfigStep({
     const nextServiceItem = isTraditionalValidation(selection.epServiceType)
       ? config.serviceItem || "traditional_validation"
       : "";
-    const nextRequiresCountries = requiresEpCountries(selection.epServiceType);
+    const nextRequiresCountries = requiresEpCountries(
+      selection.epServiceType,
+      nextServiceItem,
+    );
     onChange({
       ...config,
       serviceTypes: nextServiceTypes,
@@ -325,12 +328,22 @@ export function ConfigStep({
                         value={option.value}
                         className="size-4 accent-brand"
                         checked={config.serviceItem === option.value}
-                        onChange={() => onChange({
-                          ...config,
-                          serviceItem: option.value,
-                          optOutCountryIds: [],
-                          optOutCountriesConfirmed: false,
-                        })}
+                        onChange={() => {
+                          const requiresCountries = requiresEpCountries(
+                            config.epServiceType,
+                            option.value,
+                          );
+                          onChange({
+                            ...config,
+                            serviceItem: option.value,
+                            epCountryIds: requiresCountries ? config.epCountryIds : [],
+                            epCountriesConfirmed: requiresCountries
+                              ? config.epCountriesConfirmed
+                              : false,
+                            optOutCountryIds: [],
+                            optOutCountriesConfirmed: false,
+                          });
+                        }}
                       />
                       {option.label}
                     </label>

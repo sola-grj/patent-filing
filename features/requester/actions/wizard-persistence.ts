@@ -428,7 +428,7 @@ function validateCommercialFields(payload: WizardPayload) {
   }
   if (
     config.channelCode === "ep"
-    && requiresEpCountries(config.epServiceType)
+    && requiresEpCountries(config.epServiceType, config.serviceItem)
     && (!config.epCountryIds.length || !config.epCountriesConfirmed)
   ) {
     throw new Error("Select at least one EP country.");

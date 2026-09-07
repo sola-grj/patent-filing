@@ -30,7 +30,7 @@ export function PmRealtimeNotifications({ userId }: { userId: string }) {
       const { data: { session } } = await supabase.auth.getSession();
       if (disposed || !session || session.user.id !== userId) return;
 
-      supabase.realtime.setAuth(session.access_token);
+      await supabase.realtime.setAuth();
       channel = supabase
         .channel(`pm-notifications:${userId}`)
         .on("postgres_changes", {

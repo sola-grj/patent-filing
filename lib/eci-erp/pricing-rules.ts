@@ -37,6 +37,11 @@ export function optTypeForServiceItem(value?: string): 1 | 2 | 3 | 4 {
   return 1;
 }
 
+export function requiresErpCountryList(categoryId: number, serviceItem?: string) {
+  return [82, 8283].includes(categoryId)
+    && !["opt_out_only", "opt_in_only"].includes(serviceItem ?? "");
+}
+
 export function verifiedClaimMetrics(aggregate: {
   claims_count: number;
   claims_words: number;
@@ -125,10 +130,11 @@ export function buildErpPriceRequest(input: {
     );
   }
   if ([82, 8283].includes(input.categoryId)) {
-    if (!input.countryIds.length) throw new Error("Select at least one supported country.");
-    const optType = optTypeForServiceItem(input.serviceItem);
-    request.countryIdList = [...input.countryIds];
-    request.optType = optType;
+    request.optType = optTypeForServiceItem(input.serviceItem);
+    if (requiresErpCountryList(input.categoryId, input.serviceItem)) {
+      if (!input.countryIds.length) throw new Error("Select at least one supported country.");
+      request.countryIdList = [...input.countryIds];
+    }
   }
   const languageRequirements = erpTranslationLanguageRequirements(
     input.categoryId,
@@ -208,6 +214,7 @@ export function validatePriceRows(input: {
     }
     if (
       [82, 8283].includes(input.categoryId)
+      && input.requestedCountryIds.length
       && !allowed.has(row.countryId)
     ) {
       throw new Error(`The pricing service returned unexpected country ${row.countryId}.`);

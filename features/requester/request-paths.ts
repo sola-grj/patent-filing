@@ -170,8 +170,10 @@ export function isTraditionalValidation(epServiceType?: string) {
     || epServiceType === "traditional_validation_unitary_patent";
 }
 
-export function requiresEpCountries(epServiceType?: string) {
-  return isTraditionalValidation(epServiceType);
+export function requiresEpCountries(epServiceType?: string, serviceItem?: string) {
+  return isTraditionalValidation(epServiceType)
+    && serviceItem !== "opt_out_only"
+    && serviceItem !== "opt_in_only";
 }
 
 export function usesEpoTargetLanguages(epServiceType?: string) {
@@ -180,8 +182,11 @@ export function usesEpoTargetLanguages(epServiceType?: string) {
     || epServiceType === "traditional_validation_unitary_patent";
 }
 
-export function usesSingleEpDelivery(epServiceType?: string | null) {
-  return epServiceType === "ep_granting" || epServiceType === "unitary_patent";
+export function usesSingleEpDelivery(epServiceType?: string | null, serviceItem?: string | null) {
+  return epServiceType === "ep_granting"
+    || epServiceType === "unitary_patent"
+    || serviceItem === "opt_out_only"
+    || serviceItem === "opt_in_only";
 }
 
 function resolveLegacyEpvSelection(

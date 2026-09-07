@@ -254,7 +254,7 @@ export function RequestDetailView({
   const isReadOnly = request.viewer_is_owner === false;
   const showServiceItem = isTraditionalValidation(config.epServiceType);
   const showDestinations = config.channelCode !== "ep"
-    || requiresEpCountries(config.epServiceType);
+    || requiresEpCountries(config.epServiceType, config.serviceItem);
   const serviceTypeLabel = resolveServiceTypeSelection(
     config.channelCode,
     serviceTypes,

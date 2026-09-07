@@ -36,6 +36,7 @@ export function PmDeliveryDialog({
   epCountryIds,
   epCountries,
   epServiceType,
+  serviceItem,
   jurisdictionCodes,
   order,
   requestId,
@@ -43,6 +44,7 @@ export function PmDeliveryDialog({
   epCountryIds: number[];
   epCountries: Array<{ id: number; name: string; abbr: string }>;
   epServiceType?: string;
+  serviceItem?: string;
   jurisdictionCodes: string[];
   order?: DeliveryOrder | null;
   requestId: string;
@@ -66,6 +68,7 @@ export function PmDeliveryDialog({
           epCountryIds={epCountryIds}
           epCountries={epCountries}
           epServiceType={epServiceType}
+          serviceItem={serviceItem}
           jurisdictionCodes={jurisdictionCodes}
           requestId={requestId}
           order={order}

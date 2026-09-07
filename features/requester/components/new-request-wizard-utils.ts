@@ -324,7 +324,7 @@ export function normalizeWizardConfig(
     && !epoSourceLanguages.has(merged.sourceLanguage)
     ? ""
     : merged.sourceLanguage;
-  const epCountryIds = requiresEpCountries(serviceConfig.epServiceType)
+  const epCountryIds = requiresEpCountries(serviceConfig.epServiceType, serviceItem)
     ? normalizeEpCountryIds(config?.epCountryIds)
     : [];
   const suppressUnitaryTarget = serviceConfig.epServiceType === "traditional_validation_unitary_patent"
@@ -469,7 +469,7 @@ export function validateWizardConfigFields(
 
   if (
     config.channelCode === "ep"
-    && requiresEpCountries(config.epServiceType)
+    && requiresEpCountries(config.epServiceType, config.serviceItem)
     && !config.epCountryIds.length
   ) {
     errors.epCountryIds = "Select at least one EP country before continuing.";
@@ -477,7 +477,7 @@ export function validateWizardConfigFields(
 
   if (
     config.channelCode === "ep"
-    && requiresEpCountries(config.epServiceType)
+    && requiresEpCountries(config.epServiceType, config.serviceItem)
     && config.epCountryIds.length
     && !config.epCountriesConfirmed
   ) {

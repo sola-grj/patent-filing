@@ -298,6 +298,7 @@ export function PmRequestDetail({
               epCountryIds={config.epCountryIds}
               epCountries={request.ep_countries ?? []}
               epServiceType={config.epServiceType}
+              serviceItem={config.serviceItem}
               jurisdictionCodes={config.jurisdictionCodes}
               requestId={request.id}
               status={request.pm_status}

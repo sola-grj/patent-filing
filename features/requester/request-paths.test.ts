@@ -69,11 +69,14 @@ test("EP route exposes the four base service types", () => {
   );
 });
 
-test("only services containing Traditional Validation require countries", () => {
+test("only Traditional Validation service items that use a country scope require countries", () => {
   assert.equal(requiresEpCountries("ep_granting"), false);
   assert.equal(requiresEpCountries("traditional_validation"), true);
+  assert.equal(requiresEpCountries("traditional_validation", "opt_out_only"), false);
+  assert.equal(requiresEpCountries("traditional_validation", "opt_in_only"), false);
   assert.equal(requiresEpCountries("unitary_patent"), false);
   assert.equal(requiresEpCountries("traditional_validation_unitary_patent"), true);
+  assert.equal(requiresEpCountries("traditional_validation_unitary_patent", "opt_out_only"), false);
 });
 
 test("the two non-Traditional EPO services use target languages", () => {

@@ -25,6 +25,7 @@ export function PmRequestHeaderAction({
   epCountryIds,
   epCountries,
   epServiceType,
+  serviceItem,
   jurisdictionCodes,
   order,
   hasPendingQuoteConfirmation = false,
@@ -34,6 +35,7 @@ export function PmRequestHeaderAction({
   epCountryIds: number[];
   epCountries: Array<{ id: number; name: string; abbr: string }>;
   epServiceType?: string;
+  serviceItem?: string;
   jurisdictionCodes: string[];
   order?: HeaderOrder | null;
   hasPendingQuoteConfirmation?: boolean;
@@ -53,6 +55,7 @@ export function PmRequestHeaderAction({
         epCountryIds={epCountryIds}
         epCountries={epCountries}
         epServiceType={epServiceType}
+        serviceItem={serviceItem}
         jurisdictionCodes={jurisdictionCodes}
         requestId={requestId}
         order={order}

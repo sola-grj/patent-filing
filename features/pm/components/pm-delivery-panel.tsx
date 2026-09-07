@@ -49,6 +49,7 @@ export function PmDeliveryPanel({
   epCountryIds,
   epCountries,
   epServiceType,
+  serviceItem,
   jurisdictionCodes,
   requestId,
   order,
@@ -57,6 +58,7 @@ export function PmDeliveryPanel({
   epCountryIds: number[];
   epCountries: Array<{ id: number; name: string; abbr: string }>;
   epServiceType?: string;
+  serviceItem?: string;
   jurisdictionCodes: string[];
   requestId: string;
   order?: Order | null;
@@ -69,7 +71,7 @@ export function PmDeliveryPanel({
   const [uploadingJurisdiction, setUploadingJurisdiction] = useState<string | null>(null);
   const [isUploading, startUploadTransition] = useTransition();
   const [isDelivering, startDeliverTransition] = useTransition();
-  const isSingleDelivery = usesSingleEpDelivery(epServiceType);
+  const isSingleDelivery = usesSingleEpDelivery(epServiceType, serviceItem);
   const destinations = useMemo<DeliveryDestination[]>(() => {
     if (isSingleDelivery) {
       return [{ key: "general", label: "Delivery", displayCode: "" }];

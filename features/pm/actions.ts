@@ -728,7 +728,10 @@ export async function uploadPmDeliverableFile(
       context.supabase,
       requestId,
     );
-    const isSingleDelivery = usesSingleEpDelivery(deliveryConfig.epServiceType);
+    const isSingleDelivery = usesSingleEpDelivery(
+      deliveryConfig.epServiceType,
+      deliveryConfig.serviceItem,
+    );
     if (isSingleDelivery && (epCountryId || jurisdictionCode)) {
       throw new Error("This Request has one delivery and cannot be bound to a country.");
     }
@@ -797,7 +800,10 @@ export async function deliverPmOrder(
         jurisdiction_code?: string | null;
       }> | null;
     }>;
-    const isSingleDelivery = usesSingleEpDelivery(deliveryConfig.epServiceType);
+    const isSingleDelivery = usesSingleEpDelivery(
+      deliveryConfig.epServiceType,
+      deliveryConfig.serviceItem,
+    );
     if (!isSingleDelivery
       && !deliveryConfig.epCountryIds.length
       && !deliveryConfig.jurisdictionCodes.length) {
@@ -1273,6 +1279,7 @@ type DeliveryTask = {
 type DeliveryConfiguration = {
   epCountryIds: number[];
   epServiceType: string | null;
+  serviceItem: string | null;
   jurisdictionCodes: string[];
   targetLanguage: string | null;
 };
@@ -1328,7 +1335,7 @@ async function getDeliveryConfiguration(
   const [requirementResult, configVersionResult] = await Promise.all([
     supabase
       .from("translation_requirements")
-      .select("target_language, ep_country_ids, ep_service_type_code, jurisdiction_codes, config_snapshot")
+      .select("target_language, ep_country_ids, ep_service_type_code, service_item_code, jurisdiction_codes, config_snapshot")
       .eq("request_id", requestId)
       .maybeSingle(),
     supabase
@@ -1356,12 +1363,17 @@ async function getDeliveryConfiguration(
   const storedCountryIds = normalizeEpCountryIds(requirement?.ep_country_ids);
   const snapshotServiceType = (latestSnapshot as { epServiceType?: unknown } | null)
     ?.epServiceType;
+  const snapshotServiceItem = (latestSnapshot as { serviceItem?: unknown } | null)
+    ?.serviceItem;
 
   return {
     epCountryIds: snapshotCountryIds.length ? snapshotCountryIds : storedCountryIds,
     epServiceType: typeof snapshotServiceType === "string" && snapshotServiceType
       ? snapshotServiceType
       : requirement?.ep_service_type_code ?? null,
+    serviceItem: typeof snapshotServiceItem === "string" && snapshotServiceItem
+      ? snapshotServiceItem
+      : requirement?.service_item_code ?? null,
     jurisdictionCodes: snapshotCodes.length ? snapshotCodes : storedCodes,
     targetLanguage: requirement?.target_language ?? null,
   };

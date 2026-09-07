@@ -182,6 +182,13 @@ test("builds conditional ERP fields for all four EP quote categories", () => {
   });
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 8283, serviceItem: "opt_out_only" }).optType, 3);
   assert.deepEqual(buildErpPriceRequest({ ...common, categoryId: 8283, serviceItem: "opt_in_only" }).optType, 4);
+  const optOutOnly = buildErpPriceRequest({
+    ...common,
+    categoryId: 82,
+    serviceItem: "opt_out_only",
+  });
+  assert.equal("countryIdList" in optOutOnly, false);
+  assert.equal(optOutOnly.optType, 3);
 
   const combinedFullText = buildErpPriceRequest({
     ...common,
