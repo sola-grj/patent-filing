@@ -5,13 +5,21 @@ import { AppTopNav, AppTopNavFallback } from "@/components/app-top-nav";
 import { requirePortalContext } from "@/lib/auth/portal-context";
 import { PmRealtimeNotifications } from "@/features/pm/components/pm-realtime-notifications";
 
-const pmNavLinks = [
+const pmBaseNavLinks = [
   { href: "/pm", label: "Home", exact: true },
   { href: "/pm/orders", label: "Orders" },
-  { href: "/pm/messages", label: "Messages" },
-  { href: "/pm/customers", label: "Customers" },
   { href: "/pm/patent-search", label: "Patent Search" },
 ];
+
+function getPmNavLinks(isSupplierAdmin: boolean) {
+  return isSupplierAdmin
+    ? [
+        ...pmBaseNavLinks.slice(0, 2),
+        { href: "/pm/customers", label: "Customers" },
+        ...pmBaseNavLinks.slice(2),
+      ]
+    : pmBaseNavLinks;
+}
 
 export default function PmLayout({
   children,
@@ -30,6 +38,7 @@ async function PmShell({ children }: { children: React.ReactNode }) {
   if (context.passwordSetupRequired) {
     redirect("/auth/update-password?next=/pm");
   }
+  const pmNavLinks = getPmNavLinks(context.staffMembership?.role === "admin");
   return (
     <main className="fixed inset-0 grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background">
       <Suspense fallback={<AppTopNavFallback links={pmNavLinks} notificationHref="/pm/messages" />}>
@@ -46,7 +55,7 @@ async function PmShell({ children }: { children: React.ReactNode }) {
 function PmLayoutFallback() {
   return (
     <main className="fixed inset-0 grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background">
-      <AppTopNavFallback links={pmNavLinks} notificationHref="/pm/messages" />
+      <AppTopNavFallback links={pmBaseNavLinks} notificationHref="/pm/messages" />
       <div className="mx-auto w-full max-w-[1760px] px-6 py-7 text-sm text-muted-foreground">
         Loading workspace...
       </div>
