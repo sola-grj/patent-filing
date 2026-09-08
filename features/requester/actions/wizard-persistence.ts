@@ -55,6 +55,7 @@ import {
   verifyQuoteEstimateReceipt,
 } from "./quote-receipt";
 import { measureServerOperation } from "@/lib/performance/server-timing";
+import { getRequesterDictionaries } from "@/features/requester/queries";
 
 type SupabaseClient = Awaited<ReturnType<typeof getAuthenticatedUser>>["supabase"];
 type WizardSubmissionTimings = {
@@ -97,6 +98,9 @@ async function persistWizardRequestInternal(
   let persistedResult: WizardPersistResult | undefined;
   try {
     let payload = parseWizardPayload(formData);
+    // Draft saving still validates against the stable dictionary cache. Submit
+    // receipts are only issued after the same validation during quote creation.
+    const dictionariesPromise = mode === "draft" ? getRequesterDictionaries() : null;
     const { supabase, userId, organization, supplierOrganizationId } =
       await measureWizardStage(timings, "auth_ms", () => getRequesterOrganization());
     if (!organization || !supplierOrganizationId) {
@@ -109,24 +113,28 @@ async function persistWizardRequestInternal(
           payload,
         })
       : null;
-    const reuseDurablePatent = payload.sourceMode === "patent_search"
+    const durableDraftFileIds = payload.sourceMode === "patent_search"
       && Boolean(payload.requestId)
-      && !payload.selectedPatent?.lookupReceipt
-      && !payload.analysis?.analysis_receipt
-      && await hasDurableDraftPatent(supabase, payload.requestId!);
+      && !isEpGrantingTranslation(payload.config)
+      ? await getDurableDraftPatentFileIds(
+        supabase,
+        payload.requestId!,
+        payload.selectedPatent?.patentNumber,
+        requiresPatentDocumentAnalysis(payload.config),
+      )
+      : null;
+    const reuseDurablePatent = durableDraftFileIds !== null;
     payload = await measureWizardStage(timings, "validation_ms", async () => {
-      const dictionaryValidation = validateDictionaryValues(supabase, payload);
       if (mode !== "draft") {
-        validateCommercialFields(payload);
-        validateFutureDateString(payload.config.dueAt, "Due date");
-        await dictionaryValidation;
-        await validateCombinationTranslationTargets(supabase, payload);
+        // A current signed estimate is minted only after
+        // validateWizardSubmitConfiguration succeeds. Its payload hash binds
+        // the exact configuration presented here, so repeat validation would
+        // add latency without providing additional protection.
         if (!reuseDurablePatent && !verifiedQuote) {
           payload = await verifyWizardPatentPayload(payload);
         }
-        validateEpoServiceAvailability(payload);
       } else {
-        await dictionaryValidation;
+        await validateWizardSubmitConfiguration(payload, await dictionariesPromise!);
         if (
           payload.sourceMode === "patent_search"
           && payload.selectedPatent
@@ -159,7 +167,7 @@ async function persistWizardRequestInternal(
       : null;
     if (submittedRequestNo) {
       persistedResult = { requestId, requestNo: submittedRequestNo };
-      after(() => revalidateRequestPaths(requestId));
+      after(() => revalidateSubmittedRequestPaths(requestId));
       return { success: true, data: persistedResult };
     }
     const reuseExistingUploadFiles = Boolean(payload.requestId)
@@ -182,26 +190,49 @@ async function persistWizardRequestInternal(
       });
     }
 
-    const requestNo = await measureWizardStage(timings, "request_write_ms", () => upsertRequest(
-      supabase,
-      requestId,
-      organization.id,
-      supplierOrganizationId,
-      userId,
-      payload,
-      mode,
-    ));
-    const requestFileIds = await measureWizardStage(timings, "source_files_ms", () => reuseDurablePatent
-      ? fetchExistingRequestFileIds(supabase, requestId)
-      : persistSourceFiles(
-          supabase,
-          requestId,
-          userId,
-          payload,
-          formData,
-          reuseExistingUploadFiles,
-          mode,
-        ));
+    const batchPatentWrites = mode === "submit"
+      && payload.sourceMode === "patent_search"
+      && !usesCustomerTifg
+      && !reuseDurablePatent;
+    const batchedPatentResult = batchPatentWrites
+      ? await measureWizardStage(timings, "request_write_ms", () =>
+          upsertRequestAndPatentSource(
+            supabase,
+            requestId,
+            organization.id,
+            supplierOrganizationId,
+            userId,
+            payload,
+          ))
+      : null;
+    const requestNo = batchedPatentResult?.requestNo ?? await measureWizardStage(
+      timings,
+      "request_write_ms",
+      () => upsertRequest(
+        supabase,
+        requestId,
+        organization.id,
+        supplierOrganizationId,
+        userId,
+        payload,
+        mode,
+      ),
+    );
+    const requestFileIds = batchedPatentResult?.requestFileIds ?? await measureWizardStage(
+      timings,
+      "source_files_ms",
+      () => reuseDurablePatent
+        ? Promise.resolve(durableDraftFileIds ?? [])
+        : persistSourceFiles(
+            supabase,
+            requestId,
+            userId,
+            payload,
+            formData,
+            reuseExistingUploadFiles,
+            mode,
+          ),
+    );
     persistedResult = { requestId, requestNo };
     if (
       mode === "draft"
@@ -260,21 +291,14 @@ async function persistWizardRequestInternal(
         payload,
         requestFileIds,
         !options?.deferFormalSubmission,
-        reuseDurablePatent,
+        reuseDurablePatent || batchPatentWrites || (
+          payload.sourceMode === "patent_search"
+          && !usesCustomerTifg
+          && requiresPatentDocumentAnalysis(payload.config)
+        ),
         verifiedQuote,
         timings,
       ));
-      if (!options?.deferFormalSubmission) {
-        await measureWizardStage(timings, "event_ms", () => writeRequestEvent(
-          supabase,
-          requestId,
-          userId,
-          "request.submitted.from_wizard",
-          "draft",
-          "quoted",
-          { sourceMode: payload.sourceMode, lastStep: payload.lastStep },
-        ));
-      }
       if (
         payload.sourceMode === "patent_search"
         && !options?.deferPatentCache
@@ -303,7 +327,14 @@ async function persistWizardRequestInternal(
       }
     }
 
-    after(() => revalidateRequestPaths(requestId));
+    scheduleSubmissionFollowUp({
+      supabase,
+      requestId,
+      userId,
+      sourceMode: payload.sourceMode,
+      lastStep: payload.lastStep,
+      writeSubmissionEvent: mode === "submit" && !options?.deferFormalSubmission,
+    });
     return { success: true, data: persistedResult };
   } catch (error) {
     return {
@@ -386,15 +417,38 @@ function scheduleSubmittedPatentFile(input: Parameters<
   after(() => prepareSubmittedPatentFile(input));
 }
 
-function revalidateRequestPaths(requestId: string) {
-  revalidatePath("/requester");
-  revalidatePath("/requester/drafts");
-  revalidatePath(`/requester/drafts/${requestId}`);
+function scheduleSubmissionFollowUp(input: {
+  supabase: SupabaseClient;
+  requestId: string;
+  userId: string;
+  sourceMode: WizardPayload["sourceMode"];
+  lastStep: string;
+  writeSubmissionEvent: boolean;
+}) {
+  after(async () => {
+    if (input.writeSubmissionEvent) {
+      try {
+        await writeRequestEvent(
+          input.supabase,
+          input.requestId,
+          input.userId,
+          "request.submitted.from_wizard",
+          "draft",
+          "quoted",
+          { sourceMode: input.sourceMode, lastStep: input.lastStep },
+        );
+      } catch (error) {
+        console.error("Unable to write submission event after response", error);
+      }
+    }
+    revalidateSubmittedRequestPaths(input.requestId);
+  });
+}
+
+function revalidateSubmittedRequestPaths(requestId: string) {
   revalidatePath("/requester/requests");
   revalidatePath(`/requester/requests/${requestId}`);
   revalidatePath(`/requester/requests/${requestId}/quote`);
-  revalidatePath("/pm");
-  revalidatePath(`/pm/${requestId}`);
 }
 
 async function measureWizardStage<T>(
@@ -526,8 +580,20 @@ function parseWizardPayload(formData: FormData): WizardPayload {
   return payload;
 }
 
-async function validateCombinationTranslationTargets(
-  supabase: SupabaseClient,
+export async function validateWizardSubmitConfiguration(
+  payload: WizardPayload,
+  dictionaries?: Awaited<ReturnType<typeof getRequesterDictionaries>>,
+) {
+  const activeDictionaries = dictionaries ?? await getRequesterDictionaries();
+  validateCommercialFields(payload);
+  validateFutureDateString(payload.config.dueAt, "Due date");
+  validateDictionaryValues(activeDictionaries, payload);
+  validateCombinationTranslationTargets(activeDictionaries.epCountries, payload);
+  validateEpoServiceAvailability(payload);
+}
+
+function validateCombinationTranslationTargets(
+  epCountries: Awaited<ReturnType<typeof getRequesterDictionaries>>["epCountries"],
   payload: WizardPayload,
 ) {
   const { config } = payload;
@@ -536,16 +602,13 @@ async function validateCombinationTranslationTargets(
     || !config.translationRequired
     || !config.epCountryIds.length
   ) return;
-  const { data, error } = await supabase
-    .from("ep_countries")
-    .select("id, epv_trans_requirement")
-    .in("id", config.epCountryIds)
-    .eq("enabled", true);
-  if (error || (data?.length ?? 0) !== config.epCountryIds.length) {
+  const countriesById = new Map(epCountries.map((country) => [country.id, country]));
+  const selectedCountries = config.epCountryIds.map((id) => countriesById.get(id));
+  if (selectedCountries.some((country) => !country)) {
     throw new Error("Unable to validate the selected EP countries.");
   }
-  const hasFullTextTraditionalCountry = data!.some(
-    (country) => country.epv_trans_requirement === 2,
+  const hasFullTextTraditionalCountry = selectedCountries.some(
+    (country) => country!.epvTranslationRequirement === 2,
   );
   if (hasFullTextTraditionalCountry && config.targetLanguages.length) {
     throw new Error(
@@ -571,8 +634,8 @@ function validateEpoServiceAvailability(payload: WizardPayload) {
   }
 }
 
-async function validateDictionaryValues(
-  supabase: SupabaseClient,
+function validateDictionaryValues(
+  dictionaries: Awaited<ReturnType<typeof getRequesterDictionaries>>,
   payload: WizardPayload,
 ) {
   const config = payload.config;
@@ -587,12 +650,15 @@ async function validateDictionaryValues(
     ...(config.entityType ? [["entity_type", config.entityType]] : []),
     ...(config.epvType ? [["epv_type", config.epvType]] : []),
   ] as Array<[string, string]>;
-  const { data, error } = await supabase
-    .from("dictionary_items")
-    .select("category, code")
-    .eq("is_active", true);
-  if (error) throw new Error(error.message);
-  const activeValues = new Set((data ?? []).map((item) => `${item.category}:${item.code}`));
+  const activeValues = new Set([
+    ...dictionaries.channels.map((item) => `request_channel:${item.value}`),
+    ...dictionaries.serviceTypes.map((item) => `service_type:${item.value}`),
+    ...dictionaries.filingTypes.map((item) => `filing_type:${item.value}`),
+    ...dictionaries.applicationTypes.map((item) => `application_type:${item.value}`),
+    ...dictionaries.entityTypes.map((item) => `entity_type:${item.value}`),
+    ...dictionaries.epvTypes.map((item) => `epv_type:${item.value}`),
+    ...dictionaries.jurisdictions.map((item) => `jurisdiction:${item.value}`),
+  ]);
   const builtInDictionaryValues = new Set([
     "filing_type:submission",
     "filing_type:annuity",
@@ -612,13 +678,7 @@ async function validateDictionaryValues(
   if (invalid) throw new Error(`Invalid ${invalid[0]} value: ${invalid[1]}.`);
 
   if (config.channelCode === "ep" && config.epCountryIds.length) {
-    const { data: countries, error: countriesError } = await supabase
-      .from("ep_countries")
-      .select("id")
-      .in("id", config.epCountryIds)
-      .eq("enabled", true);
-    if (countriesError) throw new Error(countriesError.message);
-    const activeCountryIds = new Set((countries ?? []).map((country) => country.id));
+    const activeCountryIds = new Set(dictionaries.epCountries.map((country) => country.id));
     const invalidCountryId = config.epCountryIds.find((id) => !activeCountryIds.has(id));
     if (invalidCountryId) {
       throw new Error(`Invalid or disabled EP country id: ${invalidCountryId}.`);
@@ -736,10 +796,9 @@ async function persistSourceFiles(
     return [];
   }
   if (!requiresPatentDocumentAnalysis(payload.config)) {
-    await persistPatentSelection(supabase, requestId, payload, mode, false);
-    return [];
+    return persistPatentSelection(supabase, requestId, payload, mode, false);
   }
-  await persistPatentSelection(
+  const patentFileIds = await persistPatentSelection(
     supabase,
     requestId,
     payload,
@@ -747,12 +806,53 @@ async function persistSourceFiles(
     !usesCustomerTifg,
   );
   if (!usesCustomerTifg) {
-    return fetchExistingRequestFileIds(supabase, requestId);
+    return patentFileIds;
   }
   if (reuseExistingUploadFiles) {
     return fetchExistingRequestFileIds(supabase, requestId);
   }
   return persistUploadedFiles(supabase, requestId, userId, formData);
+}
+
+async function upsertRequestAndPatentSource(
+  supabase: SupabaseClient,
+  requestId: string,
+  organizationId: string,
+  supplierOrganizationId: string,
+  userId: string,
+  payload: WizardPayload,
+) {
+  const patent = payload.selectedPatent;
+  if (!patent) throw new Error("Search for a patent before submitting.");
+  const persistedPatent = stripPatentReceipts(patent) as Record<string, unknown>;
+  const { data, error } = await supabase.rpc("upsert_draft_request_and_patent_source", {
+    p_request_id: requestId,
+    p_request: {
+      organization_id: organizationId,
+      supplier_organization_id: supplierOrganizationId,
+      requester_id: userId,
+      reference_no: payload.referenceNo?.trim() || "",
+      channel_code: payload.config.channelCode,
+      draft_payload: buildWizardDraftPayloadV2(payload),
+      last_draft_step: payload.lastStep,
+    },
+    p_patent: {
+      ...persistedPatent,
+      patentQuery: payload.patentQuery,
+    },
+    p_analysis: payload.analysis ?? {},
+    p_files: requiresPatentDocumentAnalysis(payload.config)
+      ? resolvePatentFiles(payload)
+      : [],
+    p_create_parse_results: requiresPatentDocumentAnalysis(payload.config),
+  });
+  if (error) throw new Error(error.message);
+  const result = data as { request_no?: string; request_file_ids?: string[] } | null;
+  if (!result?.request_no) throw new Error("Unable to persist the Request source package.");
+  return {
+    requestNo: result.request_no,
+    requestFileIds: result.request_file_ids ?? [],
+  };
 }
 
 function validateCustomerTifgFiles(
@@ -966,157 +1066,41 @@ async function persistPatentSelection(
 ) {
   const patent = payload.selectedPatent;
   if (!patent) return [];
-
-  const searchId = randomUUID();
-  const candidateId = randomUUID();
   const selectedFiles = includePatentFiles ? resolvePatentFiles(payload) : [];
-  const analysis = payload.analysis;
-
-  const { error: searchError } = await supabase.from("patent_searches").insert({
-    id: searchId,
-    request_id: requestId,
-    query: payload.patentQuery ?? patent.patentNumber,
-    detected_patent_type: "Publication",
-    status: "completed",
-    raw_response: stripPatentReceipts(patent.sourceSnapshot ?? patent),
-  });
-  if (searchError) throw new Error(searchError.message);
-
-  const { error: candidateError } = await supabase.from("patent_candidates").insert({
-    id: candidateId,
-    search_id: searchId,
-    patent_number: patent.patentNumber,
-    title: patent.title,
-    jurisdiction: patent.jurisdiction,
-    application_no: patent.applicationNo,
-    publication_no: patent.publicationNo,
-    applicants: patent.applicants,
-    metadata: stripPatentReceipts(patent),
-  });
-  if (candidateError) throw new Error(candidateError.message);
-
-  const files = selectedFiles.map((file) => ({
-    file,
-    versionId: randomUUID(),
-    requestFileId: randomUUID(),
-  }));
-  const writes = [
-    supabase.from("request_patents").upsert({
-      request_id: requestId,
-      patent_number: patent.patentNumber,
-      application_no: patent.applicationNo || null,
-      publication_no: patent.publicationNo || null,
-      title: patent.title || null,
-      abstract: patent.description || null,
-      jurisdiction: patent.jurisdiction || null,
-      source: patent.source || null,
-      applicants: patent.applicants,
-      inventors: patent.inventors,
-      filing_date: patent.filingDate || null,
-      publication_date: patent.publicationDate || null,
-      language: patent.language || null,
-      first_priority_date: patent.firstPriorityDate || null,
-      international_filing_date: patent.internationalFilingDate || null,
-      grant_publication_date: patent.grantPublicationDate || null,
-      rule_71_3_communication_date: patent.rule713CommunicationDate || null,
-      filing_deadline_30_months: patent.filingDeadline30Months || null,
-      filing_deadline_31_months: patent.filingDeadline31Months || null,
-      total_pages: patent.totalPages ?? 0,
-      legal_status: patent.legalStatus || null,
-      ipc_codes: patent.ipcCodes ?? [],
-      cpc_codes: patent.cpcCodes ?? [],
-      abstract_word_count: analysis?.aggregate.abstract_words
-        ?? patent.abstractWordCount
-        ?? 0,
-      description_word_count: analysis
-        ? analysis.aggregate.description_words
-          + analysis.aggregate.description_drawings_words
-        : patent.descriptionWordCount ?? 0,
-      claims_word_count: analysis?.aggregate.claims_words
-        ?? patent.claimsWordCount
-        ?? 0,
-      claims_count: analysis?.aggregate.claims_count
-        ?? selectedFiles.reduce((sum, file) => sum + file.claimCount, 0),
-      drawing_count: selectedFiles.reduce((sum, file) => sum + file.drawingCount, 0),
-      source_snapshot: stripPatentReceipts(patent.sourceSnapshot ?? patent),
-    }, { onConflict: "request_id" }),
-  ];
-  if (files.length) {
-    writes.push(
-      supabase.from("patent_file_versions").insert(files.map((entry) => ({
-        id: entry.versionId,
-        candidate_id: candidateId,
-        version_label: entry.file.label,
-        file_type: entry.file.fileType,
-        language: entry.file.language,
-        source_url: entry.file.sourceUrl,
-        is_selected: true,
-        metadata: entry.file,
-      }))),
-      supabase.from("request_files").insert(files.map((entry) => ({
-        id: entry.requestFileId,
-        request_id: requestId,
-        source: "patent_search",
-        storage_bucket: null,
-        storage_path: null,
-        original_filename: `${entry.file.label}.${entry.file.fileType}`,
-        mime_type: entry.file.fileType === "txt"
-          ? "text/plain"
-          : "application/pdf",
-        file_role: entry.file.label,
-        language: entry.file.language,
-        version_label: entry.file.label,
-        confirmed_for_translation: true,
-        status: mode === "submit" ? "parsing" : "validated",
-        metadata: {
-          source_url: entry.file.sourceUrl,
-          patent_file: entry.file,
-        },
-      }))),
-    );
-  }
-  const results = await Promise.all(writes);
-  const writeError = results.find((result) => result.error)?.error;
-  if (writeError) throw new Error(writeError.message);
-
-  return files.map((entry) => entry.requestFileId);
+  const persistedPatent = stripPatentReceipts(patent) as Record<string, unknown>;
+  const sourceInput = {
+    p_request_id: requestId,
+    p_patent: {
+      ...persistedPatent,
+      patentQuery: payload.patentQuery,
+    },
+    p_analysis: payload.analysis ?? {},
+    p_files: selectedFiles,
+  };
+  const { data, error } = mode === "submit" && includePatentFiles
+    ? await supabase.rpc("persist_patent_source_and_parse_for_wizard", sourceInput)
+    : await supabase.rpc("persist_patent_source_for_wizard", {
+        ...sourceInput,
+        p_submit: mode === "submit",
+      });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as string[];
 }
 
-async function hasDurableDraftPatent(
+async function getDurableDraftPatentFileIds(
   supabase: SupabaseClient,
   requestId: string,
+  patentNumber: string | undefined,
+  requiresFiles: boolean,
 ) {
-  const { data: patent, error: patentError } = await supabase
-    .from("request_patents")
-    .select("request_id")
-    .eq("request_id", requestId)
-    .maybeSingle();
-  if (patentError) throw new Error(patentError.message);
-  if (patent) return true;
-
-  const { data: files, error: filesError } = await supabase
-    .from("request_files")
-    .select("id, status, patent_document_id")
-    .eq("request_id", requestId)
-    .eq("source", "patent_search");
-  if (filesError) throw new Error(filesError.message);
-  if (!files?.length || files.some((file) => (
-    file.status !== "parsed" || !file.patent_document_id
-  ))) {
-    return false;
-  }
-
-  const { data: parseResults, error: parseError } = await supabase
-    .from("file_parse_results")
-    .select("file_id, parse_status")
-    .in("file_id", files.map((file) => file.id));
-  if (parseError) throw new Error(parseError.message);
-  const parsedIds = new Set(
-    (parseResults ?? [])
-      .filter((result) => ["completed", "needs_review"].includes(result.parse_status))
-      .map((result) => result.file_id),
-  );
-  return files.every((file) => parsedIds.has(file.id));
+  if (!patentNumber) return null;
+  const { data, error } = await supabase.rpc("get_durable_draft_patent_file_ids", {
+    p_request_id: requestId,
+    p_patent_number: patentNumber,
+    p_requires_files: requiresFiles,
+  });
+  if (error) throw new Error(error.message);
+  return data as string[] | null;
 }
 
 async function assertEditableDraft(
@@ -1278,11 +1262,11 @@ async function createParseResults(
   requestFileIds: string[],
   payload: WizardPayload,
 ) {
-  const { data: requestFiles, error: requestFilesError } = await supabase
-    .from("request_files")
-    .select("id, storage_bucket, storage_path")
-    .in("id", requestFileIds);
-  if (requestFilesError) throw new Error(requestFilesError.message);
+  const needsStoredFileLocations = payload.sourceMode === "upload"
+    || isEpGrantingTranslation(payload.config);
+  const requestFiles = needsStoredFileLocations
+    ? await fetchRequestFileLocations(supabase, requestFileIds)
+    : [];
   const requestFileById = new Map((requestFiles ?? []).map((file) => [file.id, file]));
   const selectedPatentFiles = resolvePatentFiles(payload);
   const analysisFiles = payload.analysis?.files ?? [];
@@ -1376,6 +1360,19 @@ async function createParseResults(
       .in("id", requestFileIds);
     if (fileStatusError) throw new Error(fileStatusError.message);
   }
+}
+
+async function fetchRequestFileLocations(
+  supabase: SupabaseClient,
+  requestFileIds: string[],
+) {
+  if (!requestFileIds.length) return [];
+  const { data, error } = await supabase
+    .from("request_files")
+    .select("id, storage_bucket, storage_path")
+    .in("id", requestFileIds);
+  if (error) throw new Error(error.message);
+  return data ?? [];
 }
 
 function stripPatentReceipts(value: unknown): unknown {

@@ -9,6 +9,7 @@ import type { ErpActionResult, ErpCountry, PreparedErpEstimate } from "@/lib/eci
 
 import { getRequesterOrganization, toErrorMessage } from "../server-utils";
 import { verifyWizardPatentPayload } from "./patent-service";
+import { validateWizardSubmitConfiguration } from "./wizard-persistence";
 import {
   isEpGrantingTranslation,
   isVerifiedCustomerTifg,
@@ -28,6 +29,7 @@ export async function prepareErpEstimate(
   try {
     const { organization, userId, supabase } = await getRequesterOrganization();
     if (!organization) throw new Error("Your account is not linked to a customer organization.");
+    await validateWizardSubmitConfiguration(payload);
     const usesStoredPatent = await hasVerifiedStoredDraftPatent(
       supabase,
       userId,

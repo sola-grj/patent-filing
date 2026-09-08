@@ -170,6 +170,8 @@ export function NewRequestWizard({
     || uploadedFileSnapshots.length > 0
     || JSON.stringify(config) !== JSON.stringify(defaultWizardConfig);
   const directSearchStarted = useRef(false);
+  const preparedRequestIdRef = useRef<string | undefined>(undefined);
+  const submissionPreparationRef = useRef<Promise<void> | undefined>(undefined);
 
   function applyUploadedFiles(nextFiles: File[]) {
     try {
@@ -466,6 +468,13 @@ export function NewRequestWizard({
       setQuotePreview(result.data.quote);
       setQuoteReceipt(result.data.receipt);
       setQuoteReceiptExpiresAt(result.data.expiresAt);
+      preparePatentSubmissionDraft({
+        ...payload,
+        quoteCurrency: nextCurrency,
+        quotePreview: result.data.quote,
+        quoteReceipt: result.data.receipt,
+        quoteReceiptExpiresAt: result.data.expiresAt,
+      });
     } finally {
       setStepLoadingMessage(null);
     }
@@ -555,6 +564,12 @@ export function NewRequestWizard({
         setQuotePreview(result.data.quote);
         setQuoteReceipt(result.data.receipt);
         setQuoteReceiptExpiresAt(result.data.expiresAt);
+        preparePatentSubmissionDraft({
+          ...payload,
+          quotePreview: result.data.quote,
+          quoteReceipt: result.data.receipt,
+          quoteReceiptExpiresAt: result.data.expiresAt,
+        });
         setStep((current) => Math.min(current + 1, wizardSteps.length - 1));
       } finally {
         setStepLoadingMessage(null);
@@ -593,6 +608,29 @@ export function NewRequestWizard({
     setCancelOpen(true);
   }
 
+  function preparePatentSubmissionDraft(estimatePayload: WizardPayload) {
+    if (
+      estimatePayload.requestId
+      || preparedRequestIdRef.current
+      || estimatePayload.sourceMode !== "patent_search"
+      || isEpGrantingTranslation(estimatePayload.config)
+    ) return;
+
+    const preparation = saveRequestDraft(
+      toWizardFormData(estimatePayload, uploadedFiles),
+    ).then((result) => {
+      if (!result.success || !result.data?.requestId) {
+        console.warn("Unable to prepare the Request for fast submission", result.error);
+        return;
+      }
+      preparedRequestIdRef.current = result.data.requestId;
+      setRequestId(result.data.requestId);
+    }).catch((preparationError) => {
+      console.warn("Unable to prepare the Request for fast submission", preparationError);
+    });
+    submissionPreparationRef.current = preparation;
+  }
+
   async function handleSaveDraft() {
     setIsSavingDraft(true);
     setStepLoadingMessage(
@@ -616,6 +654,8 @@ export function NewRequestWizard({
 
   function resetWizard() {
     analysis.reset();
+    preparedRequestIdRef.current = undefined;
+    submissionPreparationRef.current = undefined;
     setStepLoadingMessage(null);
     setRequestId(undefined);
     setReferenceNo("");
@@ -654,10 +694,16 @@ export function NewRequestWizard({
       onSuccess?: (requestId: string) => void;
     },
   ) {
+    const waitForPreparedDraft = action === submitRequestFromWizard
+      ? submissionPreparationRef.current
+      : undefined;
+    const persistPayload = action === submitRequestFromWizard && preparedRequestIdRef.current
+      ? { ...payload, requestId: preparedRequestIdRef.current }
+      : payload;
     const validationError =
       action === saveRequestDraft
         ? null
-        : validateWizardPayload(payload, dictionaries.epCountries);
+        : validateWizardPayload(persistPayload, dictionaries.epCountries);
     if (validationError) {
       setError(validationError);
       return Promise.resolve(false);
@@ -665,8 +711,12 @@ export function NewRequestWizard({
 
     return new Promise<boolean>((resolve) => {
       startTransition(async () => {
+        await waitForPreparedDraft;
+        const effectivePayload = action === submitRequestFromWizard && preparedRequestIdRef.current
+          ? { ...payload, requestId: preparedRequestIdRef.current }
+          : payload;
         const formData =
-          options?.buildFormData?.() ?? toWizardFormData(payload, uploadedFiles);
+          options?.buildFormData?.() ?? toWizardFormData(effectivePayload, uploadedFiles);
         const result = await action(formData);
         setError(result.error ?? null);
 

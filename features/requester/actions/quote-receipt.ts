@@ -18,7 +18,9 @@ export {
   signReceiptClaims,
 } from "./quote-receipt-core";
 
-const RECEIPT_VERSION = 1;
+// Version 2 receipts are minted only after server-side submit configuration
+// validation in prepareErpEstimate. Older receipts expire within 15 minutes.
+const RECEIPT_VERSION = 2;
 const RECEIPT_TTL_MS = 15 * 60 * 1000;
 
 type QuoteReceiptClaims = {
