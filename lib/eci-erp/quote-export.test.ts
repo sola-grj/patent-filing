@@ -6,7 +6,6 @@ import JSZip from "jszip";
 import { PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 
 import { buildEpGrantingQuoteTable, quoteValidUntilTimestamp } from "./ep-granting-quote.ts";
-import { optServiceStatusForCountry } from "./opt-service-status.ts";
 import {
   generateQuoteExport,
   quoteExportFileName,
@@ -112,13 +111,13 @@ test("generates a readable PDF estimate", async () => {
   assert.match(content, /Official Fee Subtotal/);
   assert.match(content, /Service Fee Subtotal/);
   assert.match(content, /Translation Fee Subtotal/);
-  assert.match(content, /Country \/ Service State/);
+  assert.match(content, /Country/);
   assert.match(content, /Quotation Date/);
   assert.match(content, /Aug 25, 2026/);
   assert.match(content, /Quotation Date: Aug 25, 2026/);
   assert.doesNotMatch(content, /^QUOTATION$/m);
   assert.match(content, /Company contact details/);
-  assert.match(content, /Opt Out/);
+  assert.doesNotMatch(content, /Opt Out|Opt In/);
   assert.match(content, /USD 1,807\.76/);
   assert.match(content, /Terms and Conditions/);
   assert.match(content, /11\. Assignment/);
@@ -239,13 +238,6 @@ test("places EP Granting subtotals after all fee detail rows", async () => {
   assert.ok(content.indexOf("Translation Fee Subtotal") < content.indexOf("Quotation Total"));
 });
 
-test("maps service items to Opt Out and Opt In labels", () => {
-  assert.equal(optServiceStatusForCountry("traditional_validation_opt_out"), "Opt Out");
-  assert.equal(optServiceStatusForCountry("opt_out_only"), "Opt Out");
-  assert.equal(optServiceStatusForCountry("opt_in_only"), "Opt In");
-  assert.equal(optServiceStatusForCountry("traditional_validation"), null);
-});
-
 test("keeps each traditional-validation country as a separate row without language detail lines", async () => {
   const rows = [
     { ...quote.rows[0], countryId: 58, countryName: "Albania", total: 618.4 },
@@ -257,8 +249,9 @@ test("keeps each traditional-validation country as a separate row without langua
   });
   const content = extractPdfContent(await PDFDocument.load(pdf));
 
-  assert.match(content, /Albania - Opt Out/);
-  assert.match(content, /Austria - Opt Out/);
+  assert.match(content, /Albania/);
+  assert.match(content, /Austria/);
+  assert.doesNotMatch(content, /Opt Out|Opt In/);
   assert.match(content, /Translation Fee/);
   assert.doesNotMatch(content, /German \(Germany\)/);
 });
@@ -281,8 +274,42 @@ test("repeats the branded table header on later pages and omits unrelated Opt la
   const document = await PDFDocument.load(pdf);
   const content = extractPdfContent(document);
   assert.ok(document.getPageCount() > 1);
-  assert.ok(content.split("Country / Service State").length - 1 >= 2);
+  assert.ok(content.split("Country").length - 1 >= 2);
   assert.doesNotMatch(content, /Opt Out|Opt In/);
+});
+
+test("uses dashes only for Opt quote rows", async () => {
+  const ordinaryNoTranslationFeeRow = {
+    ...quote.rows[0],
+    countryId: 137,
+    countryName: "Belgium",
+    translationFees: {},
+    translationFee: 0,
+    translationFeeDetails: [],
+    total: 373.46,
+  };
+  const noTranslationFeeRow = {
+    ...quote.rows[0],
+    countryId: -1,
+    countryName: "EPV - Opt",
+    translationFees: {},
+    translationFee: 0,
+    translationFeeDetails: [],
+    total: 7.76,
+  };
+  const optQuote = {
+    ...quote,
+    rows: [ordinaryNoTranslationFeeRow, noTranslationFeeRow],
+    total: 381.22,
+  };
+  const pdf = await generateQuoteExport("pdf", optQuote, metadata);
+  assert.match(extractPdfContent(await PDFDocument.load(pdf)), /--/);
+
+  const xlsx = await generateQuoteExport("xlsx", optQuote, metadata);
+  const zip = await JSZip.loadAsync(xlsx);
+  const sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+  assert.match(sheet, /<c r="D11" s="2"><v>0<\/v><\/c>/);
+  assert.match(sheet, /<c r="D12" t="inlineStr" s="0"><is><t>--<\/t><\/is><\/c>/);
 });
 
 function extractPdfContent(document: PDFDocument) {

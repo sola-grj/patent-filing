@@ -2,7 +2,6 @@ import JSZip from "jszip";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
 import { buildEpGrantingQuoteTable, type EpGrantingFeeLine } from "./ep-granting-quote.ts";
-import { optServiceStatusForCountry } from "./opt-service-status.ts";
 import { quoteTermsSections } from "./quote-terms.ts";
 import type { ErpQuotePreview, ErpQuoteRow } from "./types";
 
@@ -339,7 +338,7 @@ async function generateQuotePdf(
       page = addStandardQuotePage(document, layout, true);
       y = 680;
     }
-    drawPdfRow(page, row, regular, bold, y, metadata);
+    drawPdfRow(page, row, regular, bold, y);
     y -= rowHeight;
   }
 
@@ -419,7 +418,7 @@ function drawPdfTableHeader(
   colors: ReturnType<typeof quotePdfColors>,
 ) {
   page.drawRectangle({ x: 40, y: y - 7, width: 515, height: 22, color: colors.navy });
-  page.drawText("Country / Service State", { x: 44, y, size: 8, font, color: colors.white });
+  page.drawText("Country", { x: 44, y, size: 8, font, color: colors.white });
   page.drawText("Official Fee", { x: 264, y, size: 8, font, color: colors.white });
   page.drawText("Service Fee", { x: 344, y, size: 8, font, color: colors.white });
   page.drawText("Translation Fee", { x: 424, y, size: 8, font, color: colors.white });
@@ -432,7 +431,6 @@ function drawPdfRow(
   regular: PDFFont,
   bold: PDFFont,
   y: number,
-  metadata: QuoteExportMetadata,
 ) {
   const columns = traditionalQuoteColumns;
   const border = rgb(0.72, 0.78, 0.82);
@@ -445,10 +443,10 @@ function drawPdfRow(
     borderColor: border,
     borderWidth: 0.5,
   });
-  page.drawText(pdfText(countryServiceLabel(row, metadata)), { x: 44, y, size: 8, font: bold });
+  page.drawText(pdfText(row.countryName), { x: 44, y, size: 8, font: bold });
   drawRightAligned(page, formatAmount(row.officialFee), 332, y, 8, regular);
   drawRightAligned(page, formatAmount(row.serviceFee), 412, y, 8, regular);
-  drawRightAligned(page, formatAmount(row.translationFee), 497, y, 8, regular);
+  drawRightAligned(page, formatTranslationFee(row), 497, y, 8, regular);
   drawRightAligned(page, formatAmount(row.total), 547, y, 8, regular);
   drawTraditionalRowBorders(page, columns, y, border);
 }
@@ -596,7 +594,7 @@ function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
       row.countryName,
       String(row.officialFee),
       String(row.serviceFee),
-      String(row.translationFee),
+      translationFeeCellValue(row),
       translationDetail(row, quote.currency),
       String(row.total),
     ]);
@@ -612,7 +610,8 @@ function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
     const cells = values.map((value, columnIndex) => {
       const reference = `${columnName(columnIndex + 1)}${rowNumber}`;
       const isMoneyCell = rowNumber >= 11
-        && [2, 3, 4, 6].includes(columnIndex + 1);
+        && [2, 3, 4, 6].includes(columnIndex + 1)
+        && value !== "--";
       const style = rowNumber === 1 ? 3 : rowNumber === 10 ? 1 : rowNumber > 10 + quote.rows.length ? 3 : isMoneyCell ? 2 : 0;
       return isMoneyCell
         ? `<c r="${reference}" s="${style}"><v>${Number(value)}</v></c>`
@@ -680,11 +679,12 @@ function translationDetail(row: ErpQuoteRow, currency: string) {
     .join("; ");
 }
 
-function countryServiceLabel(row: ErpQuoteRow, metadata: QuoteExportMetadata) {
-  const serviceStatus = optServiceStatusForCountry(
-    metadata.serviceItem,
-  );
-  return serviceStatus ? `${row.countryName} - ${serviceStatus}` : row.countryName;
+function translationFeeCellValue(row: ErpQuoteRow) {
+  return row.countryId === -1 ? "--" : String(row.translationFee);
+}
+
+function formatTranslationFee(row: ErpQuoteRow) {
+  return row.countryId === -1 ? "--" : formatAmount(row.translationFee);
 }
 
 function money(value: number, currency: string) {

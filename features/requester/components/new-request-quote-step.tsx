@@ -17,7 +17,6 @@ import {
 import { StepShell } from "./new-request-wizard-shared";
 import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
 import { EpGrantingQuotation } from "./ep-granting-quotation";
-import { optServiceStatusForCountry } from "@/lib/eci-erp/opt-service-status";
 import { PatentBasicInfo } from "./patent-basic-info";
 import { QuoteCurrencySelect } from "./quote-currency-select";
 import { getEpoServiceAvailability } from "@/features/requester/deadlines";
@@ -133,20 +132,9 @@ export function QuoteStepContent({
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
-                  {estimate.rows.map((row) => {
-                    const serviceStatus = optServiceStatusForCountry(
-                      payload.config.serviceItem || undefined,
-                    );
-                    return (
+                  {estimate.rows.map((row) => (
                       <Table.Row key={row.countryId}>
-                        <Table.RowHeaderCell className="font-medium">
-                          <span>{row.countryName}</span>
-                          {serviceStatus ? (
-                            <span className="ml-2 whitespace-nowrap rounded-full border border-brand-border bg-brand/10 px-2 py-0.5 text-[10px] font-semibold text-brand">
-                              {serviceStatus}
-                            </span>
-                          ) : null}
-                        </Table.RowHeaderCell>
+                        <Table.RowHeaderCell className="font-medium">{row.countryName}</Table.RowHeaderCell>
                         <Table.Cell className="whitespace-nowrap" justify="end">
                           {formatAmount(row.officialFee)}
                         </Table.Cell>
@@ -155,15 +143,14 @@ export function QuoteStepContent({
                         </Table.Cell>
                         {showTranslationFee ? (
                           <Table.Cell className="whitespace-nowrap" justify="end">
-                            {formatAmount(row.translationFee)}
+                            {formatTranslationFee(row.translationFee, row.countryId === -1)}
                           </Table.Cell>
                         ) : null}
                         <Table.Cell justify="end" className="whitespace-nowrap font-semibold">
                           {formatAmount(row.total)}
                         </Table.Cell>
                       </Table.Row>
-                    );
-                  })}
+                  ))}
                   {showSubtotals ? (
                     <>
                       <QuoteSubtotalRow
@@ -314,6 +301,10 @@ function formatAmount(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function formatTranslationFee(value: number, isOptRow: boolean) {
+  return isOptRow ? "--" : formatAmount(value);
 }
 
 function formatPatentDate(value?: string) {

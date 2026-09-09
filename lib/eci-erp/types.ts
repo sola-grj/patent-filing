@@ -61,6 +61,7 @@ export type ErpPriceRequest = {
 
 export type ErpPriceRow = {
   countryId: number;
+  countryName: string;
   officialFee: number;
   serviceFee: number;
   translationFees: Record<string, number>;

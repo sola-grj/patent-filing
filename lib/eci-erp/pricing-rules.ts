@@ -199,34 +199,20 @@ function requiredLanguageId(value: number | undefined, label: string) {
 }
 
 export function validatePriceRows(input: {
-  categoryId: number;
-  requestedCountryIds: number[];
   requestedTargetLangIds: number[];
 }, rows: ErpPriceRow[]) {
   if (!rows.length) throw new Error("The pricing service returned no quote rows.");
-  const allowed = new Set(input.requestedCountryIds);
-  if ([83, 84, 8283].includes(input.categoryId)) allowed.add(1001);
-  const seen = new Set<number>();
   const seenTargetLanguages = new Set<number>();
   for (const row of rows) {
-    if (!Number.isInteger(row.countryId) || row.countryId <= 0) {
-      throw new Error("The pricing service returned an invalid country ID.");
+    if (typeof row.countryName !== "string" || !row.countryName.trim()) {
+      throw new Error("The pricing service returned a quote row without a country name.");
     }
-    if (
-      [82, 8283].includes(input.categoryId)
-      && input.requestedCountryIds.length
-      && !allowed.has(row.countryId)
-    ) {
-      throw new Error(`The pricing service returned unexpected country ${row.countryId}.`);
-    }
-    if (seen.has(row.countryId)) throw new Error(`The pricing service returned duplicate country ${row.countryId}.`);
-    seen.add(row.countryId);
     for (const [label, amount] of [
       ["officialFee", row.officialFee],
       ["serviceFee", row.serviceFee],
     ] as const) {
       if (!Number.isFinite(amount) || amount < 0) {
-        throw new Error(`The pricing service returned an invalid ${label} for country ${row.countryId}.`);
+        throw new Error(`The pricing service returned an invalid ${label} for ${row.countryName}.`);
       }
     }
     if (
@@ -234,7 +220,7 @@ export function validatePriceRows(input: {
       || row.translationFees === null
       || Array.isArray(row.translationFees)
     ) {
-      throw new Error(`The pricing service returned invalid translationFees for country ${row.countryId}.`);
+      throw new Error(`The pricing service returned invalid translationFees for ${row.countryName}.`);
     }
     for (const [languageIdValue, amount] of Object.entries(row.translationFees)) {
       const languageId = Number(languageIdValue);
@@ -252,11 +238,6 @@ export function validatePriceRows(input: {
       }
       seenTargetLanguages.add(languageId);
     }
-  }
-  const missing = input.requestedCountryIds.filter((id) => !seen.has(id));
-  if (missing.length) throw new Error(`The quote is missing countries: ${missing.join(", ")}.`);
-  if (input.categoryId === 8283 && !seen.has(1001)) {
-    throw new Error("The quote is missing the Unitary Patent Europe row.");
   }
   const missingLanguages = input.requestedTargetLangIds.filter(
     (id) => !seenTargetLanguages.has(id),

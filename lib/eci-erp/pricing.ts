@@ -241,19 +241,13 @@ export async function executeErpQuote(input: {
   const categoryId = request.categoryId;
   const response = await getErpPrice(request);
   const validatedRows = validatePriceRows({
-    categoryId,
-    requestedCountryIds: request.countryIdList ?? [],
     requestedTargetLangIds: request.targetLangIds ?? [],
   }, response);
   const quoteRows = applyTranslationSelection(validatedRows, input.translationRequired);
-  const responseCountryIds = uniqueIntegers(quoteRows.map((row) => row.countryId));
   const responseLanguageIds = uniqueIntegers(quoteRows.flatMap((row) =>
     Object.keys(row.translationFees).map(Number)
   ));
-  const [countries, languageNames] = await Promise.all([
-    resolveCountryNames(responseCountryIds),
-    resolveLanguageNames(responseLanguageIds),
-  ]);
+  const languageNames = await resolveLanguageNames(responseLanguageIds);
   const rows = quoteRows.map((row) => {
     const translationFeeDetails = Object.entries(row.translationFees).map(
       ([languageIdValue, amount]) => {
@@ -271,7 +265,6 @@ export async function executeErpQuote(input: {
     );
     return {
       ...row,
-      countryName: countries.get(row.countryId)!,
       translationFee,
       translationFeeDetails,
       total: sumMoney([row.officialFee, row.serviceFee, translationFee]),
@@ -384,21 +377,6 @@ async function resolveTargetLangIds(targetLanguages: string[]) {
   const missing = shortNames.filter((shortName) => !idsByShortName.has(shortName));
   if (missing.length) throw new Error("One or more target languages are not available in the pricing service.");
   return shortNames.map((shortName) => idsByShortName.get(shortName)!);
-}
-
-async function resolveCountryNames(ids: number[]) {
-  if (!ids.length) return new Map<number, string>();
-  const service = createServiceClient();
-  const { data, error } = await service
-    .from("ep_countries")
-    .select("id, name")
-    .eq("enabled", true)
-    .in("id", ids);
-  if (error) throw new Error("Unable to validate the selected countries.");
-  const result = new Map((data ?? []).map((country) => [country.id, country.name]));
-  const missing = ids.filter((id) => !result.has(id));
-  if (missing.length) throw new Error("One or more selected countries are not supported locally.");
-  return result;
 }
 
 async function resolveLocalCountryRequirements(ids: number[]) {

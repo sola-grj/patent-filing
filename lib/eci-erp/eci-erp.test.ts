@@ -23,9 +23,9 @@ import type { ErpPriceRow } from "./types.ts";
 import { divideMoney, multiplyMoney, sumMoney } from "./money.ts";
 
 const sampleRows = [
-  { countryId: 189, officialFee: 1000, serviceFee: 2000, translationFees: { "15": 3000 } },
-  { countryId: 183, officialFee: 1100, serviceFee: 2100, translationFees: { "15": 3100 } },
-  { countryId: 171, officialFee: 1200, serviceFee: 2200, translationFees: { "15": 7319.26 } },
+  { countryId: 189, countryName: "Bosnia and Herzegovina", officialFee: 1000, serviceFee: 2000, translationFees: { "15": 3000 } },
+  { countryId: 183, countryName: "Croatia", officialFee: 1100, serviceFee: 2100, translationFees: { "15": 3100 } },
+  { countryId: 171, countryName: "Cyprus", officialFee: 1200, serviceFee: 2200, translationFees: { "15": 7319.26 } },
 ];
 
 test("maps supported ERP categories and blocks unmapped services", () => {
@@ -39,13 +39,27 @@ test("maps supported ERP categories and blocks unmapped services", () => {
   assert.equal(quoteAvailabilityError({ channelCode: "ep", serviceTypes: ["european_patent_grant_registration"], epServiceType: "ep_granting" }), null);
 });
 
-test("validates every country and reproduces the documented total", () => {
-  const input = { categoryId: 82, requestedCountryIds: [189, 183, 171], requestedTargetLangIds: [] };
+test("validates quote fees and target languages without requiring country ID parity", () => {
+  const input = { requestedTargetLangIds: [] };
   assert.equal(priceTotal(validatePriceRows(input, sampleRows)), 23019.26);
-  assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189, 183] }, [sampleRows[0]]), /missing countries/);
-  assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189] }, [sampleRows[0], sampleRows[0]]), /duplicate country/);
-  assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189] }, [{ ...sampleRows[0], serviceFee: -1 }]), /invalid serviceFee/);
-  assert.throws(() => validatePriceRows({ ...input, requestedCountryIds: [189] }, [{ ...sampleRows[0], translationFees: { "15": -1 } }]), /invalid translation fee/);
+  assert.throws(() => validatePriceRows(input, [{ ...sampleRows[0], serviceFee: -1 }]), /invalid serviceFee/);
+  assert.throws(() => validatePriceRows(input, [{ ...sampleRows[0], translationFees: { "15": -1 } }]), /invalid translation fee/);
+});
+
+test("accepts ERP Opt rows in traditional and combined quotes", () => {
+  const optRow = {
+    countryId: -1,
+    countryName: "EPV - Opt",
+    officialFee: 0,
+    serviceFee: 60,
+    translationFees: {},
+  };
+  assert.doesNotThrow(() => validatePriceRows({
+    requestedTargetLangIds: [],
+  }, [sampleRows[0], optRow]));
+  assert.doesNotThrow(() => validatePriceRows({
+    requestedTargetLangIds: [],
+  }, [optRow]));
 });
 
 test("excludes translation fees from the quote total when translation is not selected", () => {
@@ -265,18 +279,16 @@ test("uses the union of traditional-validation country translation requirements"
 
 test("normalizes the documented combined quote response", () => {
   const rows: ErpPriceRow[] = [
-    { countryId: 133, officialFee: 10, serviceFee: 200, translationFees: { "58": 0 } },
-    { countryId: 135, officialFee: 10, serviceFee: 55, translationFees: { "17": 0 } },
-    { countryId: 157, officialFee: 15.53, serviceFee: 22, translationFees: {} },
-    { countryId: 26, officialFee: 20, serviceFee: 44, translationFees: { "15": 0 } },
-    { countryId: 41, officialFee: 236.07, serviceFee: 22, translationFees: { "15": 0 } },
-    { countryId: 137, officialFee: 232.93, serviceFee: 140, translationFees: {} },
-    { countryId: 138, officialFee: 640, serviceFee: 2000, translationFees: {} },
-    { countryId: 1001, officialFee: 0, serviceFee: 7.76, translationFees: { "17": 500, "58": 700, "15": 600 } },
+    { countryId: 133, countryName: "Albania", officialFee: 10, serviceFee: 200, translationFees: { "58": 0 } },
+    { countryId: 135, countryName: "Austria", officialFee: 10, serviceFee: 55, translationFees: { "17": 0 } },
+    { countryId: 157, countryName: "Monaco", officialFee: 15.53, serviceFee: 22, translationFees: {} },
+    { countryId: 26, countryName: "Morocco", officialFee: 20, serviceFee: 44, translationFees: { "15": 0 } },
+    { countryId: 41, countryName: "Tunisia", officialFee: 236.07, serviceFee: 22, translationFees: { "15": 0 } },
+    { countryId: 137, countryName: "Belgium", officialFee: 232.93, serviceFee: 140, translationFees: {} },
+    { countryId: 138, countryName: "Bulgaria", officialFee: 640, serviceFee: 2000, translationFees: {} },
+    { countryId: 1001, countryName: "Europe", officialFee: 0, serviceFee: 7.76, translationFees: { "17": 500, "58": 700, "15": 600 } },
   ];
   const validated = validatePriceRows({
-    categoryId: 8283,
-    requestedCountryIds: [133, 135, 157, 26, 41, 137, 138],
     requestedTargetLangIds: [17, 15, 58],
   }, rows);
   assert.equal(Object.values(validated.at(-1)!.translationFees).reduce((sum, fee) => sum + fee, 0), 1800);

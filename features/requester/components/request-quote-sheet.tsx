@@ -167,7 +167,7 @@ export function RequestQuoteSheet({
                     <Table.RowHeaderCell className="font-medium">{row.countryName}</Table.RowHeaderCell>
                     <Table.Cell justify="end"><ChangedAmount value={row.officialFee} previous={previousRows.get(row.countryId)?.officialFee} /></Table.Cell>
                     <Table.Cell justify="end"><ChangedAmount value={row.serviceFee} previous={previousRows.get(row.countryId)?.serviceFee} /></Table.Cell>
-                    <Table.Cell justify="end"><ChangedAmount value={row.translationFee} previous={previousRows.get(row.countryId)?.translationFee} /></Table.Cell>
+                    <Table.Cell justify="end"><ChangedAmount value={row.translationFee} previous={previousRows.get(row.countryId)?.translationFee} displayNotApplicable={row.countryId === -1} /></Table.Cell>
                     <Table.Cell justify="end" className="font-semibold"><ChangedAmount value={row.total} previous={previousRows.get(row.countryId)?.total} /></Table.Cell>
                   </Table.Row>
                 ))}
@@ -265,7 +265,16 @@ function SubtotalLabel({ label, discountPercent }: { label: string; discountPerc
   );
 }
 
-function ChangedAmount({ value, previous }: { value: number | null; previous?: number | null }) {
+function ChangedAmount({
+  value,
+  previous,
+  displayNotApplicable = false,
+}: {
+  value: number | null;
+  previous?: number | null;
+  displayNotApplicable?: boolean;
+}) {
+  if (displayNotApplicable) return "--";
   const formatted = formatOptionalAmount(value);
   if (value === null || previous === undefined || previous === null || value === previous) return formatted;
   return (
