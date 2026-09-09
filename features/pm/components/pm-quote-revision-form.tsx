@@ -13,7 +13,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { calculatePmQuotation, revisePmQuotationFormState, type PmQuoteRevisionRow } from "@/features/pm/actions";
+import { revisePmQuotationFormState, type PmQuoteRevisionRow } from "@/features/pm/actions";
+import { requestPmQuotation } from "@/features/pm/erp-browser";
 import { PmQuoteSendAction } from "./pm-quote-send-action";
 import type { ActionResult } from "@/lib/validators/requester";
 
@@ -172,12 +173,18 @@ export function PmQuoteRevisionFormFields({
           const formData = new FormData(formRef.current);
           setCalculationError(null);
           startCalculation(async () => {
-            const result = await calculatePmQuotation(formData);
-            if (!result.success || !result.data) {
+            const result = await requestPmQuotation(formData);
+            if (!result.success) {
               setCalculationError(result.error ?? "Unable to calculate the quotation.");
               return;
             }
-            setAdjustedRows(result.data.rows);
+            setAdjustedRows(result.data.rows.map((row) => ({
+              countryId: row.countryId,
+              countryName: row.countryName,
+              officialFee: row.officialFee,
+              serviceFee: row.serviceFee,
+              translationFee: row.translationFee,
+            })));
             setTranslationFeesAreDiscounted(false);
             setHasUnsavedChanges(true);
           });

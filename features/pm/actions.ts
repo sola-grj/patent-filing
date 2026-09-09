@@ -23,12 +23,13 @@ import { safeFileName } from "@/features/requester/server-utils";
 import { createServiceClient } from "@/lib/supabase/server";
 import { executeErpQuote } from "@/lib/eci-erp/pricing";
 import { reviseErpQuote, type CountryFeeOverride } from "@/lib/eci-erp/quote-revision";
-import type { ErpPriceRequest } from "@/lib/eci-erp/types";
+import type { ErpActionResult, ErpPriceRequest, PreparedErpEstimate } from "@/lib/eci-erp/types";
 import { sendQuoteConfirmationEmail } from "./quote-confirmation-email";
 import { usesSingleEpDelivery } from "@/features/requester/request-paths";
 import { ensureCompletedRequestNotification } from "@/features/requester/notification-reconciliation";
 
 import { requirePmContext, toPmErrorMessage } from "./server-utils";
+import { signPreparedPmErpQuote } from "./erp-quote-receipt";
 
 type SupabaseClient = Awaited<ReturnType<typeof requirePmContext>>["supabase"];
 type QuoteSeed = {
@@ -192,7 +193,7 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
       },
     );
     if (revisionError) throw new Error(revisionError.message);
-    await writeRequestEvent(context.supabase, requestId, context.userId, "quote.revised.pm", request.workflow_stage, "quoted", {
+    await writeRequestEvent(context.supabase, requestId, context.userId, "quote.revised.pm", request.workflow_stage, "negotiation", {
       quoteId,
       translationDiscountPercent: discountPercent,
       adjustedDescriptionWords,
@@ -1012,9 +1013,11 @@ function erpRequestFromSnapshot(value: unknown): ErpPriceRequest | null {
     : null;
 }
 
-export async function calculatePmQuotation(formData: FormData): Promise<ActionResult<{ rows: PmQuoteRevisionRow[] }>> {
+export async function preparePmQuotation(formData: FormData): Promise<ErpActionResult<PreparedErpEstimate>> {
   try {
     const context = await assertPm();
+    const supplierOrganizationId = context.organization?.id;
+    if (!supplierOrganizationId) throw new Error("Your PM account is not linked to a supplier organization.");
     const requestId = requiredString(formData.get("requestId"), "Request");
     const adjustedDescriptionWords = requiredNonNegativeInteger(
       formData.get("descriptionWordCount"),
@@ -1025,6 +1028,7 @@ export async function calculatePmQuotation(formData: FormData): Promise<ActionRe
       .from("translation_requests")
       .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count), quotes(version_no, currency, pricing_snapshot, quote_factor_snapshots(factors))")
       .eq("id", requestId)
+      .eq("supplier_organization_id", supplierOrganizationId)
       .single();
     if (requestError) throw new Error(requestError.message);
     if (request.workflow_stage === "completed") throw new Error("Completed Requests cannot be repriced.");
@@ -1041,23 +1045,17 @@ export async function calculatePmQuotation(formData: FormData): Promise<ActionRe
     const adjustedTotalWords = latestTotalWords - latestAdjustedDescriptionWords + adjustedDescriptionWords;
     if (!Number.isInteger(adjustedTotalWords) || adjustedTotalWords < 0) throw new Error("The adjusted total word count is invalid.");
     const customer = await resolveErpCustomer(request.organization_id, request.requester_id);
-    const baseQuote = await executeErpQuote({
-      request: { ...storedRequest, patTotalWords: adjustedTotalWords, clientId: customer.clientId },
-      currency: latestQuote.currency ?? "USD",
-      customerName: customer.clientName,
-      translationRequired: storedRequest.isTranslate === 1,
-    });
     return {
       success: true,
-      data: {
-        rows: baseQuote.rows.map((row) => ({
-          countryId: row.countryId,
-          countryName: row.countryName,
-          officialFee: row.officialFee,
-          serviceFee: row.serviceFee,
-          translationFee: row.translationFee,
-        })),
-      },
+      data: signPreparedPmErpQuote({
+        userId: context.userId,
+        supplierOrganizationId,
+        requestId,
+        request: { ...storedRequest, patTotalWords: adjustedTotalWords, clientId: customer.clientId },
+        currency: latestQuote.currency ?? "USD",
+        customerName: customer.clientName,
+        translationRequired: storedRequest.isTranslate === 1,
+      }),
     };
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };

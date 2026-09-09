@@ -3,7 +3,6 @@ export const requestStatusOptions = [
   { value: "responding", label: "Responding" },
   { value: "negotiation", label: "Negotiating" },
   { value: "in_progress", label: "In progress" },
-  { value: "rejected", label: "Rejected" },
   { value: "completed", label: "Completed" },
 ];
 
