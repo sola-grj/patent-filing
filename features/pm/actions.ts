@@ -121,7 +121,7 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
     if (!latestQuote || !storedRequest) {
       throw new Error("This Request has no ERP quotation available for revision.");
     }
-    const parsedDescriptionWords = Number(request.request_patents?.[0]?.description_word_count ?? 0);
+    const parsedDescriptionWords = Number(firstRelation(request.request_patents)?.description_word_count ?? 0);
     const latestAdjustedDescriptionWords = adjustedDescriptionWordsFromSnapshot(
       latestQuote.pricing_snapshot,
       parsedDescriptionWords,
@@ -1036,7 +1036,7 @@ export async function preparePmQuotation(formData: FormData): Promise<ErpActionR
     const storedRequest = erpRequestFromSnapshot(latestQuote?.pricing_snapshot)
       ?? erpRequestFromSnapshot(quoteFactorSnapshot(latestQuote?.quote_factor_snapshots));
     if (!latestQuote || !storedRequest) throw new Error("This Request has no ERP quotation available for revision.");
-    const parsedDescriptionWords = Number(request.request_patents?.[0]?.description_word_count ?? 0);
+    const parsedDescriptionWords = Number(firstRelation(request.request_patents)?.description_word_count ?? 0);
     const latestAdjustedDescriptionWords = adjustedDescriptionWordsFromSnapshot(latestQuote.pricing_snapshot, parsedDescriptionWords);
     const latestTotalWords = Number(storedRequest.patTotalWords ?? 0);
     if (!Number.isInteger(parsedDescriptionWords) || parsedDescriptionWords < 0 || !latestTotalWords) {
