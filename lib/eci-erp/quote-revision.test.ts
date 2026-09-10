@@ -50,3 +50,36 @@ test("allows a PM to override the pre-discount translate fee", () => {
   assert.equal(result.translationFeeBeforeDiscount, 80);
   assert.equal(result.quote.total, 222);
 });
+
+test("allows EP Granting translation fees to be revised per language", () => {
+  const result = reviseErpQuote({
+    source: "eci_erp",
+    currency: "USD",
+    quotedAt: "2026-09-10T00:00:00.000Z",
+    customerName: "Customer",
+    request: { categoryId: 84, isTranslate: 1, patFilingRouteId: 1, patFilingTypeId: 1, clientId: 7, priceCurrencyId: 2, patClaimWords: 500 },
+    response: [],
+    total: 315.54,
+    rows: [{
+      countryId: 1001,
+      countryName: "Europe",
+      officialFee: 63.78,
+      serviceFee: 1.16,
+      translationFees: { "15": 136.69, "17": 113.91 },
+      translationFeeDetails: [
+        { languageId: 15, languageName: "French (France)", amount: 136.69 },
+        { languageId: 17, languageName: "German (Germany)", amount: 113.91 },
+      ],
+      translationFee: 250.6,
+      total: 315.54,
+    }],
+  }, {
+    countryOverrides: [{ countryId: 1001, translationFees: { 15: 140, 17: 120 } }],
+    translationDiscountPercent: 10,
+  });
+
+  assert.deepEqual(result.quote.rows[0].translationFeeDetails.map((fee) => fee.amount), [126, 108]);
+  assert.equal(result.translationFeeBeforeDiscount, 260);
+  assert.equal(result.quote.rows[0].translationFee, 234);
+  assert.equal(result.quote.total, 298.94);
+});

@@ -9,6 +9,7 @@ import {
 import { DraftFilterForm } from "@/features/requester/components/draft-filter-form";
 import {
   DraftBulkDeleteControl,
+  DraftSelectAllCheckbox,
   DraftSelectionCheckbox,
   DraftSelectionProvider,
 } from "@/features/requester/components/draft-list-actions";
@@ -92,7 +93,7 @@ async function DraftsContent({
         </div>
         <RequestListTable
         columns={[
-          <span key="select" aria-label="Select drafts" />,
+          <DraftSelectAllCheckbox key="select" draftIds={drafts.map((draft) => draft.id)} />,
           "Matter / Request No.",
           "Channel",
           "Service",

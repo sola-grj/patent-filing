@@ -23,7 +23,7 @@ import { safeFileName } from "@/features/requester/server-utils";
 import { createServiceClient } from "@/lib/supabase/server";
 import { executeErpQuote } from "@/lib/eci-erp/pricing";
 import { reviseErpQuote, type CountryFeeOverride } from "@/lib/eci-erp/quote-revision";
-import type { ErpActionResult, ErpPriceRequest, PreparedErpEstimate } from "@/lib/eci-erp/types";
+import type { ErpActionResult, ErpPriceRequest, ErpQuoteRow, PreparedErpEstimate } from "@/lib/eci-erp/types";
 import { sendQuoteConfirmationEmail } from "./quote-confirmation-email";
 import { usesSingleEpDelivery } from "@/features/requester/request-paths";
 import { ensureCompletedRequestNotification } from "@/features/requester/notification-reconciliation";
@@ -46,6 +46,11 @@ export type PmQuoteRevisionRow = {
   officialFee: number;
   serviceFee: number;
   translationFee: number;
+  translationFeeDetails: Array<{
+    languageId: number;
+    languageName: string;
+    amount: number;
+  }>;
 };
 
 export async function generatePmQuote(formData: FormData): Promise<ActionResult> {
@@ -100,15 +105,15 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
   try {
     const context = await assertPm();
     const requestId = requiredString(formData.get("requestId"), "Request");
-    const adjustedDescriptionWords = requiredNonNegativeInteger(
-      formData.get("descriptionWordCount"),
-      "Description word count",
+    const adjustedWordCount = requiredNonNegativeInteger(
+      formData.get("adjustedWordCount") ?? formData.get("descriptionWordCount"),
+      "Adjusted word count",
     );
     const discountPercent = requiredPercent(formData.get("translationDiscountPercent"));
     const notes = requiredString(formData.get("adjustmentNotes"), "Adjustment reason");
     const { data: request, error: requestError } = await context.supabase
       .from("translation_requests")
-      .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count), quotes(id, version_no, currency, estimated_delivery_at, pricing_snapshot, quote_factor_snapshots(factors))")
+      .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count, claims_word_count), quotes(id, version_no, currency, estimated_delivery_at, pricing_snapshot, quote_factor_snapshots(factors))")
       .eq("id", requestId)
       .single();
     if (requestError) throw new Error(requestError.message);
@@ -121,23 +126,13 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
     if (!latestQuote || !storedRequest) {
       throw new Error("This Request has no ERP quotation available for revision.");
     }
-    const parsedDescriptionWords = Number(firstRelation(request.request_patents)?.description_word_count ?? 0);
-    const latestAdjustedDescriptionWords = adjustedDescriptionWordsFromSnapshot(
+    const wordAdjustment = adjustErpWordCount(
+      storedRequest,
       latestQuote.pricing_snapshot,
-      parsedDescriptionWords,
+      firstRelation(request.request_patents),
+      adjustedWordCount,
     );
-    const latestTotalWords = Number(storedRequest.patTotalWords ?? 0);
-    if (!Number.isInteger(parsedDescriptionWords) || parsedDescriptionWords < 0 || !latestTotalWords) {
-      throw new Error("The verified description word count is unavailable for this Request.");
-    }
-    const adjustedTotalWords = latestTotalWords - latestAdjustedDescriptionWords + adjustedDescriptionWords;
-    if (!Number.isInteger(adjustedTotalWords) || adjustedTotalWords < 0) {
-      throw new Error("The adjusted total word count is invalid.");
-    }
-    const revisedRequest: ErpPriceRequest = {
-      ...storedRequest,
-      patTotalWords: adjustedTotalWords,
-    };
+    const revisedRequest = wordAdjustment.request;
     const customer = await resolveErpCustomer(request.organization_id, request.requester_id);
     const baseQuote = await executeErpQuote({
       request: { ...revisedRequest, clientId: customer.clientId },
@@ -145,7 +140,7 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
       customerName: customer.clientName,
       translationRequired: revisedRequest.isTranslate === 1,
     });
-    const countryOverrides = parseCountryOverrides(formData, baseQuote.rows.map((row) => row.countryId));
+    const countryOverrides = parseCountryOverrides(formData, baseQuote.rows);
     const revision = reviseErpQuote(baseQuote, {
       countryOverrides,
       translationDiscountPercent: discountPercent,
@@ -159,9 +154,7 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
       response: revision.quote.rows,
       revision: {
         sourceQuoteId: latestQuote.id,
-        parsedDescriptionWords,
-        latestAdjustedDescriptionWords,
-        adjustedDescriptionWords,
+        ...wordAdjustment.snapshot,
         countryOverrides,
         translationDiscountPercent: discountPercent,
         translationFeeBeforeDiscount: revision.translationFeeBeforeDiscount,
@@ -196,7 +189,7 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
     await writeRequestEvent(context.supabase, requestId, context.userId, "quote.revised.pm", request.workflow_stage, "negotiation", {
       quoteId,
       translationDiscountPercent: discountPercent,
-      adjustedDescriptionWords,
+      ...wordAdjustment.event,
     });
     revalidatePmRequest(requestId);
     revalidatePath(`/requester/requests/${requestId}`);
@@ -1019,14 +1012,14 @@ export async function preparePmQuotation(formData: FormData): Promise<ErpActionR
     const supplierOrganizationId = context.organization?.id;
     if (!supplierOrganizationId) throw new Error("Your PM account is not linked to a supplier organization.");
     const requestId = requiredString(formData.get("requestId"), "Request");
-    const adjustedDescriptionWords = requiredNonNegativeInteger(
-      formData.get("descriptionWordCount"),
-      "Description word count",
+    const adjustedWordCount = requiredNonNegativeInteger(
+      formData.get("adjustedWordCount") ?? formData.get("descriptionWordCount"),
+      "Adjusted word count",
     );
     requiredPercent(formData.get("translationDiscountPercent"));
     const { data: request, error: requestError } = await context.supabase
       .from("translation_requests")
-      .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count), quotes(version_no, currency, pricing_snapshot, quote_factor_snapshots(factors))")
+      .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count, claims_word_count), quotes(version_no, currency, pricing_snapshot, quote_factor_snapshots(factors))")
       .eq("id", requestId)
       .eq("supplier_organization_id", supplierOrganizationId)
       .single();
@@ -1036,14 +1029,12 @@ export async function preparePmQuotation(formData: FormData): Promise<ErpActionR
     const storedRequest = erpRequestFromSnapshot(latestQuote?.pricing_snapshot)
       ?? erpRequestFromSnapshot(quoteFactorSnapshot(latestQuote?.quote_factor_snapshots));
     if (!latestQuote || !storedRequest) throw new Error("This Request has no ERP quotation available for revision.");
-    const parsedDescriptionWords = Number(firstRelation(request.request_patents)?.description_word_count ?? 0);
-    const latestAdjustedDescriptionWords = adjustedDescriptionWordsFromSnapshot(latestQuote.pricing_snapshot, parsedDescriptionWords);
-    const latestTotalWords = Number(storedRequest.patTotalWords ?? 0);
-    if (!Number.isInteger(parsedDescriptionWords) || parsedDescriptionWords < 0 || !latestTotalWords) {
-      throw new Error("The verified description word count is unavailable for this Request.");
-    }
-    const adjustedTotalWords = latestTotalWords - latestAdjustedDescriptionWords + adjustedDescriptionWords;
-    if (!Number.isInteger(adjustedTotalWords) || adjustedTotalWords < 0) throw new Error("The adjusted total word count is invalid.");
+    const wordAdjustment = adjustErpWordCount(
+      storedRequest,
+      latestQuote.pricing_snapshot,
+      firstRelation(request.request_patents),
+      adjustedWordCount,
+    );
     const customer = await resolveErpCustomer(request.organization_id, request.requester_id);
     return {
       success: true,
@@ -1051,7 +1042,7 @@ export async function preparePmQuotation(formData: FormData): Promise<ErpActionR
         userId: context.userId,
         supplierOrganizationId,
         requestId,
-        request: { ...storedRequest, patTotalWords: adjustedTotalWords, clientId: customer.clientId },
+        request: { ...wordAdjustment.request, clientId: customer.clientId },
         currency: latestQuote.currency ?? "USD",
         customerName: customer.clientName,
         translationRequired: storedRequest.isTranslate === 1,
@@ -1112,11 +1103,51 @@ function quoteFactorSnapshot(value: unknown): unknown {
   return (value as { factors?: unknown }).factors ?? null;
 }
 
-function adjustedDescriptionWordsFromSnapshot(value: unknown, fallback: number) {
+function adjustErpWordCount(
+  storedRequest: ErpPriceRequest,
+  pricingSnapshot: unknown,
+  patent: { description_word_count?: number | null; claims_word_count?: number | null } | null,
+  adjustedWordCount: number,
+) {
+  const isClaimWords = storedRequest.categoryId === 84;
+  const parsedWordCount = Number(isClaimWords
+    ? patent?.claims_word_count ?? 0
+    : patent?.description_word_count ?? 0);
+  const latestAdjustedWordCount = adjustedWordCountFromSnapshot(
+    pricingSnapshot,
+    parsedWordCount,
+    isClaimWords,
+  );
+  const storedWordCount = Number(isClaimWords ? storedRequest.patClaimWords : storedRequest.patTotalWords);
+  const label = isClaimWords ? "claim" : "description";
+  if (!Number.isInteger(parsedWordCount) || parsedWordCount < 0 || !Number.isInteger(storedWordCount) || storedWordCount < 0) {
+    throw new Error(`The verified ${label} word count is unavailable for this Request.`);
+  }
+  const revisedWordCount = storedWordCount - latestAdjustedWordCount + adjustedWordCount;
+  if (!Number.isInteger(revisedWordCount) || revisedWordCount < 0) {
+    throw new Error(`The adjusted ${label} word count is invalid.`);
+  }
+  return {
+    request: isClaimWords
+      ? { ...storedRequest, patClaimWords: revisedWordCount }
+      : { ...storedRequest, patTotalWords: revisedWordCount },
+    snapshot: isClaimWords
+      ? { parsedClaimWords: parsedWordCount, latestAdjustedClaimWords: latestAdjustedWordCount, adjustedClaimWords: adjustedWordCount }
+      : { parsedDescriptionWords: parsedWordCount, latestAdjustedDescriptionWords: latestAdjustedWordCount, adjustedDescriptionWords: adjustedWordCount },
+    event: isClaimWords
+      ? { adjustedClaimWords: adjustedWordCount }
+      : { adjustedDescriptionWords: adjustedWordCount },
+  };
+}
+
+function adjustedWordCountFromSnapshot(value: unknown, fallback: number, isClaimWords: boolean) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
   const revision = (value as { revision?: unknown }).revision;
   if (!revision || typeof revision !== "object" || Array.isArray(revision)) return fallback;
-  const amount = Number((revision as { adjustedDescriptionWords?: unknown }).adjustedDescriptionWords);
+  const fields = revision as { adjustedClaimWords?: unknown; adjustedDescriptionWords?: unknown };
+  const amount = Number(isClaimWords
+    ? fields.adjustedClaimWords ?? fields.adjustedDescriptionWords
+    : fields.adjustedDescriptionWords);
   return Number.isInteger(amount) && amount >= 0 ? amount : fallback;
 }
 
@@ -1124,16 +1155,25 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
 
-function parseCountryOverrides(formData: FormData, countryIds: number[]): CountryFeeOverride[] {
-  return countryIds.map((countryId) => {
+function parseCountryOverrides(formData: FormData, rows: ErpQuoteRow[]): CountryFeeOverride[] {
+  return rows.map((row) => {
+    const countryId = row.countryId;
     const officialFee = parseOptionalMoney(formData.get(`officialFee-${countryId}`), "Official fee");
     const serviceFee = parseOptionalMoney(formData.get(`serviceFee-${countryId}`), "Service fee");
     const translationFee = parseOptionalMoney(formData.get(`translationFee-${countryId}`), "Translate fee");
+    const translationFees = Object.fromEntries(row.translationFeeDetails.flatMap((fee) => {
+      const amount = parseOptionalMoney(
+        formData.get(`translationFee-${countryId}-${fee.languageId}`),
+        `${fee.languageName} translation fee`,
+      );
+      return amount === null ? [] : [[fee.languageId, amount]];
+    }));
     return {
       countryId,
       ...(officialFee === null ? {} : { officialFee }),
       ...(serviceFee === null ? {} : { serviceFee }),
       ...(translationFee === null ? {} : { translationFee }),
+      ...(Object.keys(translationFees).length ? { translationFees } : {}),
     };
   });
 }

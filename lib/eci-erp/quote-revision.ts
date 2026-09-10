@@ -6,6 +6,7 @@ export type CountryFeeOverride = {
   officialFee?: number;
   serviceFee?: number;
   translationFee?: number;
+  translationFees?: Record<number, number>;
 };
 
 export type QuoteRevisionInput = {
@@ -25,9 +26,12 @@ export function reviseErpQuote(
 ): QuoteRevisionResult {
   const overrides = new Map(input.countryOverrides.map((item) => [item.countryId, item]));
   const discountRate = input.translationDiscountPercent / 100;
-  const translationFeeBeforeDiscount = sumMoney(base.rows.map((row) =>
-    overrides.get(row.countryId)?.translationFee ?? row.translationFee,
-  ));
+  const translationFeeBeforeDiscount = sumMoney(base.rows.map((row) => {
+    const override = overrides.get(row.countryId);
+    return override?.translationFees
+      ? sumMoney(row.translationFeeDetails.map((fee) => override.translationFees?.[fee.languageId] ?? fee.amount))
+      : override?.translationFee ?? row.translationFee;
+  }));
   const rows = base.rows.map((row) => reviseRow(row, overrides.get(row.countryId), discountRate));
   const total = sumMoney(rows.map((row) => row.total));
   const discountedTranslationFee = sumMoney(rows.map((row) => row.translationFee));
@@ -57,6 +61,7 @@ function reviseRow(
   const translationFeeDetails = withTranslationFeeOverride(
     row.translationFeeDetails,
     override?.translationFee,
+    override?.translationFees,
   ).map((fee) => ({
     ...fee,
     amount: roundMoney(fee.amount * (1 - discountRate)),
@@ -80,7 +85,14 @@ function reviseRow(
 function withTranslationFeeOverride(
   fees: ErpQuoteRow["translationFeeDetails"],
   translationFee: number | undefined,
+  translationFees: Record<number, number> | undefined,
 ) {
+  if (translationFees) {
+    return fees.map((fee) => ({
+      ...fee,
+      amount: translationFees[fee.languageId] ?? fee.amount,
+    }));
+  }
   if (translationFee === undefined || !fees.length) return fees;
   const originalTotal = sumMoney(fees.map((fee) => fee.amount));
   if (originalTotal <= 0) {

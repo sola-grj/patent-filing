@@ -219,6 +219,32 @@ test("generates an EP Granting quotation with its Terms and Conditions appendix"
   }
 });
 
+test("generates an EP Granting XLSX with the same fee breakdown as the quotation", async () => {
+  const xlsx = await generateQuoteExport("xlsx", epGrantingQuote, epGrantingMetadata);
+  const zip = await JSZip.loadAsync(xlsx);
+  const sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+
+  for (const expected of [
+    "Fee Category",
+    "Fee Item",
+    "Language / Scope",
+    "Pricing Method",
+    "Professional Service Fee",
+    "EPO Official Fee",
+    "Claims Translation",
+    "Base Fee Subtotal",
+    "Translation Fee Subtotal",
+    "Quotation Total",
+  ]) {
+    assert.match(sheet, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.doesNotMatch(sheet, /Countries|Official Fee Subtotal|Service Fee Subtotal/);
+  assert.match(sheet, /<c r="E15" s="5"><v>434\.8<\/v><\/c>/);
+  assert.match(sheet, /<c r="E16" s="5"><v>300<\/v><\/c>/);
+  assert.match(sheet, /<c r="E17" s="5"><v>734\.8<\/v><\/c>/);
+  assert.match(sheet, /<c r="E14" s="4"><v>0<\/v><\/c>/);
+});
+
 test("generates an EP Granting PDF without translation rows when translation is not required", async () => {
   const pdf = await generateQuoteExport(
     "pdf",

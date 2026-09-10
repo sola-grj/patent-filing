@@ -22,6 +22,7 @@ import { deleteRequesterDrafts } from "@/features/requester/actions/draft-deleti
 type DraftSelectionContextValue = {
   selectedIds: Set<string>;
   toggleDraft: (draftId: string, checked: boolean) => void;
+  toggleDrafts: (draftIds: string[], checked: boolean) => void;
   deleteDrafts: (draftIds: string[]) => void;
   error: string | null;
   isDeleting: boolean;
@@ -48,6 +49,16 @@ export function DraftSelectionProvider({
         const next = new Set(current);
         if (checked) next.add(draftId);
         else next.delete(draftId);
+        return next;
+      });
+    },
+    toggleDrafts(draftIds, checked) {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        draftIds.forEach((draftId) => {
+          if (checked) next.add(draftId);
+          else next.delete(draftId);
+        });
         return next;
       });
     },
@@ -84,6 +95,22 @@ export function DraftSelectionCheckbox({ draftId }: { draftId: string }) {
       checked={selectedIds.has(draftId)}
       onCheckedChange={(checked) => toggleDraft(draftId, checked === true)}
       onClick={(event) => event.stopPropagation()}
+    />
+  );
+}
+
+export function DraftSelectAllCheckbox({ draftIds }: { draftIds: string[] }) {
+  const { selectedIds, toggleDrafts } = useDraftSelection();
+  const selectedCount = draftIds.filter((draftId) => selectedIds.has(draftId)).length;
+  const checked = selectedCount === draftIds.length && draftIds.length > 0;
+
+  return (
+    <Checkbox
+      aria-label={checked ? "Deselect all drafts on this page" : "Select all drafts on this page"}
+      checked={selectedCount > 0 && !checked ? "indeterminate" : checked}
+      className="block"
+      disabled={!draftIds.length}
+      onCheckedChange={(nextChecked) => toggleDrafts(draftIds, nextChecked === true)}
     />
   );
 }

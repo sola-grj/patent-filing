@@ -1,4 +1,4 @@
-import { History, MessageSquareMore, ReceiptText } from "lucide-react";
+import { MessageSquareMore, ReceiptText } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,6 @@ import {
   formatCurrency,
   formatDate,
 } from "@/features/requester/format";
-import {
-  formatRequestEventTitle,
-  formatRequestEventTransition,
-} from "@/features/pm/request-event-copy";
 import type { RequesterQuoteHistoryEntry } from "@/features/requester/queries";
 import {
   RequestFileInformation,
@@ -160,15 +156,6 @@ type Order = {
   }> | null;
 };
 
-type RequestEvent = {
-  id: string;
-  event_type: string;
-  from_status?: string | null;
-  to_status?: string | null;
-  payload?: Record<string, unknown> | null;
-  created_at: string;
-};
-
 type NegotiationPoint = {
   amount: number | string | null;
   deliveryAt: string | null;
@@ -196,7 +183,6 @@ type PmRequestDetailProps = {
     quotes?: Quote[] | null;
     quote_negotiations?: Negotiation[] | null;
     orders?: Order | Order[] | null;
-    request_events?: RequestEvent[] | null;
     filing_signature_requests?: FilingSignatureRequest[] | null;
     ep_countries?: Array<{
       id: number;
@@ -245,9 +231,6 @@ export function PmRequestDetail({
     latestOpenNegotiation?.quote_id
       ? quoteById.get(latestOpenNegotiation.quote_id) ?? null
       : latestQuote;
-  const events = [...(request.request_events ?? [])].sort((left, right) =>
-    new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
-  );
   const headerTitle =
     (isPatentSearch
       ? patent?.patent_number?.trim() || patentCandidate?.patentNumber?.trim()
@@ -322,33 +305,6 @@ export function PmRequestDetail({
                   request={request}
                   showHeader={false}
                 />
-                <Section
-                  title="Event timeline"
-                  icon={<History className="size-5" />}
-                  cardClassName="flex min-h-0 max-h-[24rem] flex-col overflow-hidden"
-                  headerClassName="sticky top-0 z-10 shrink-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85"
-                  contentClassName="hide-scrollbar min-h-0 flex-1 overflow-y-auto"
-                >
-                  {events.length ? (
-                    <div className="divide-y rounded-md border">
-                      {events.map((event) => (
-                        <div key={event.id} className="flex items-center justify-between gap-4 p-3 text-sm">
-                          <span>
-                            <span className="font-medium">
-                              {formatRequestEventTitle(event.event_type, event.payload)}
-                            </span>
-                            <span className="block text-xs text-muted-foreground">
-                              {formatRequestEventTransition(event.from_status, event.to_status)}
-                            </span>
-                          </span>
-                          <span className="text-muted-foreground">{formatEventDateTime(event.created_at)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState>No events recorded.</EmptyState>
-                  )}
-                </Section>
               </div>
             )}
             quotation={(
@@ -361,7 +317,9 @@ export function PmRequestDetail({
                   editAction={(
                     <PmQuoteRevisionDialog
                       quote={latestQuote}
+                      claimWordCount={Number(patent?.claims_word_count ?? 0)}
                       descriptionWordCount={Number(patent?.description_word_count ?? 0)}
+                      isEpGranting={config.epServiceType === "ep_granting"}
                       requestId={request.id}
                       requestStage={request.workflow_stage}
                     />
@@ -801,22 +759,6 @@ function resolveRequestConfig(
     customScope:
       snapshot.customScope ?? requirement?.scope_details?.customScope ?? undefined,
   };
-}
-
-function formatEventDateTime(value?: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(new Date(value));
 }
 
 function mapPmNegotiationHistoryEntry(

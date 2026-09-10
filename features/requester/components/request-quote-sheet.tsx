@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EpGrantingQuotation } from "./ep-granting-quotation";
+import { SavedEpGrantingQuotation } from "./saved-ep-granting-quotation";
 import {
   isErpQuoteCurrencyCode,
   type ErpQuotePreview,
@@ -83,6 +83,7 @@ export function RequestQuoteSheet({
   const translationDiscountPercent = revisionNumber(selectedQuote, "translationDiscountPercent");
   const adjustmentReason = revisionText(selectedQuote, "adjustmentNotes");
   const epGrantingQuote = isEpGranting ? savedErpQuote(selectedQuote) : null;
+  const previousEpGrantingQuote = isEpGranting ? savedErpQuote(previousQuote) : null;
   const canConfirmSelectedQuote = Boolean(
     confirmation
     && selectedQuote?.id === versions[0]?.id
@@ -119,13 +120,16 @@ export function RequestQuoteSheet({
             <p className="mt-2 text-sm text-muted-foreground">Saved quote</p>
           </div>
           <div className="flex items-center gap-2">{versionSelector}<QuoteDownloadMenu quoteId={selectedQuote?.id} />{editAction}</div>
-        </CardHeader> : versionSelector ? <CardHeader className="py-3">{versionSelector}</CardHeader> : null}
-        <CardContent className="p-0">
-          <EpGrantingQuotation
+        </CardHeader> : null}
+        {!showHeader && versionSelector ? <CardHeader className="px-6 pt-6">{versionSelector}</CardHeader> : null}
+        <CardContent className={showHeader ? "px-6 pb-6 pt-0" : "p-6"}>
+          <SavedEpGrantingQuotation
             estimate={epGrantingQuote}
+            previousEstimate={previousEpGrantingQuote}
             translationRequired={translationRequired}
-            currency={epGrantingQuote.currency}
-            readOnly
+            adjustmentReason={adjustmentReason}
+            translationDiscountPercent={translationDiscountPercent}
+            translationFeeBeforeDiscount={translationFeeBeforeDiscount}
           />
           <QuoteConfirmationAction
             canConfirm={confirmation?.canConfirm ?? false}

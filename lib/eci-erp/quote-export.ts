@@ -576,6 +576,50 @@ async function generateQuoteXlsx(
 }
 
 function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
+  return metadata.serviceType === "ep_granting"
+    ? epGrantingWorksheetXml(quote, metadata)
+    : traditionalWorksheetXml(quote, metadata);
+}
+
+function epGrantingWorksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
+  const patent = metadata.patentDetails;
+  const table = buildEpGrantingQuoteTable(quote, metadata.translationRequired);
+  const feeLines = [...table.baseFees, ...table.translationFees];
+  const rows: string[][] = [
+    ["Pat Estimate Sheet"],
+    ["Service", metadata.serviceName],
+    ["Patent", metadata.patentNumber || "-"],
+    ["Generated", formatDate(quote.quotedAt)],
+    ["Currency", quote.currency],
+    ["Title", patent?.title || "-"],
+    ["Application No.", metadata.applicationNumber || metadata.patentNumber || "-"],
+    ["Legal Deadline", patent?.legalDeadline || "-"],
+    [],
+    ["Fee Category", "Fee Item", "Language / Scope", "Pricing Method", "Amount"],
+    ...feeLines.map((line) => [
+      line.category,
+      line.item,
+      line.scope,
+      line.pricingMethod,
+      String(line.amount),
+    ]),
+  ];
+  const showSubtotals = feeLines.length > 1;
+  if (showSubtotals) {
+    rows.push(["", "", "", "Base Fee Subtotal", String(table.baseFeeSubtotal)]);
+    if (table.translationFees.length) {
+      rows.push(["", "", "", "Translation Fee Subtotal", String(table.translationFeeSubtotal)]);
+    }
+  }
+  rows.push(["", "", "", "Quotation Total", String(table.total)]);
+
+  const waivedRows = new Set(table.translationFees
+    .map((line, index) => line.waived ? 11 + table.baseFees.length + index : 0)
+    .filter(Boolean));
+  return buildWorksheetXml(rows, 10 + feeLines.length, [5], waivedRows, 5);
+}
+
+function traditionalWorksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
   const patent = metadata.patentDetails;
   const rows: string[][] = [
     ["Pat Estimate Sheet"],
@@ -605,14 +649,30 @@ function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
   rows.push(["", "", "", "", "Translation Fee Subtotal", String(totals.translationFee)]);
   rows.push(["", "", "", "", "Quotation Total", String(quote.total)]);
 
+  return buildWorksheetXml(rows, 10 + quote.rows.length, [2, 3, 4, 6], new Set(), 6);
+}
+
+function buildWorksheetXml(
+  rows: string[][],
+  detailEndRow: number,
+  moneyColumns: number[],
+  waivedRows: Set<number>,
+  columnCount: number,
+) {
   const sheetRows = rows.map((values, rowIndex) => {
     const rowNumber = rowIndex + 1;
     const cells = values.map((value, columnIndex) => {
       const reference = `${columnName(columnIndex + 1)}${rowNumber}`;
       const isMoneyCell = rowNumber >= 11
-        && [2, 3, 4, 6].includes(columnIndex + 1)
+        && moneyColumns.includes(columnIndex + 1)
         && value !== "--";
-      const style = rowNumber === 1 ? 3 : rowNumber === 10 ? 1 : rowNumber > 10 + quote.rows.length ? 3 : isMoneyCell ? 2 : 0;
+      const style = rowNumber === 1 || (rowNumber > detailEndRow && !isMoneyCell)
+        ? 3
+        : rowNumber === 10
+          ? 1
+          : isMoneyCell
+            ? rowNumber > detailEndRow ? 5 : waivedRows.has(rowNumber) ? 4 : 2
+            : 0;
       return isMoneyCell
         ? `<c r="${reference}" s="${style}"><v>${Number(value)}</v></c>`
         : `<c r="${reference}" t="inlineStr" s="${style}"><is><t>${xml(value)}</t></is></c>`;
@@ -623,9 +683,11 @@ function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="10" topLeftCell="A11" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
-  <cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="4" width="16" customWidth="1"/><col min="5" max="5" width="55" customWidth="1"/><col min="6" max="6" width="16" customWidth="1"/></cols>
+  <cols>${columnCount === 5
+    ? '<col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="30" customWidth="1"/><col min="3" max="4" width="24" customWidth="1"/><col min="5" max="5" width="16" customWidth="1"/>'
+    : '<col min="1" max="1" width="28" customWidth="1"/><col min="2" max="4" width="16" customWidth="1"/><col min="5" max="5" width="55" customWidth="1"/><col min="6" max="6" width="16" customWidth="1"/>'}</cols>
   <sheetData>${sheetRows}</sheetData>
-  <mergeCells count="1"><mergeCell ref="A1:F1"/></mergeCells>
+  <mergeCells count="1"><mergeCell ref="A1:${columnName(columnCount)}1"/></mergeCells>
 </worksheet>`;
 }
 
@@ -659,7 +721,7 @@ function workbookRelationshipsXml() {
 
 function stylesXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="0.00"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEAF2EF"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="0.00"/><numFmt numFmtId="165" formatCode="&quot;Waived&quot; 0.00"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEAF2EF"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 }
 
 function corePropertiesXml(quotedAt: string) {
