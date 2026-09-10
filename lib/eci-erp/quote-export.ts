@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
 import { buildEpGrantingQuoteTable, type EpGrantingFeeLine } from "./ep-granting-quote.ts";
+import { quoteCountryName } from "./quote-country-name.ts";
 import { quoteTermsSections } from "./quote-terms.ts";
 import type { ErpQuotePreview, ErpQuoteRow } from "./types";
 
@@ -338,7 +339,7 @@ async function generateQuotePdf(
       page = addStandardQuotePage(document, layout, true);
       y = 680;
     }
-    drawPdfRow(page, row, regular, bold, y);
+    drawPdfRow(page, row, metadata.serviceType, regular, bold, y);
     y -= rowHeight;
   }
 
@@ -428,6 +429,7 @@ function drawPdfTableHeader(
 function drawPdfRow(
   page: PDFPage,
   row: ErpQuoteRow,
+  serviceType: string,
   regular: PDFFont,
   bold: PDFFont,
   y: number,
@@ -443,7 +445,7 @@ function drawPdfRow(
     borderColor: border,
     borderWidth: 0.5,
   });
-  page.drawText(pdfText(row.countryName), { x: 44, y, size: 8, font: bold });
+  page.drawText(pdfText(quoteCountryName(row.countryName, serviceType)), { x: 44, y, size: 8, font: bold });
   drawRightAligned(page, formatAmount(row.officialFee), 332, y, 8, regular);
   drawRightAligned(page, formatAmount(row.serviceFee), 412, y, 8, regular);
   drawRightAligned(page, formatTranslationFee(row), 497, y, 8, regular);
@@ -635,7 +637,7 @@ function traditionalWorksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMe
   ];
   for (const row of quote.rows) {
     rows.push([
-      row.countryName,
+      quoteCountryName(row.countryName, metadata.serviceType),
       String(row.officialFee),
       String(row.serviceFee),
       translationFeeCellValue(row),

@@ -431,6 +431,19 @@ export function NewRequestWizard({
 
   function handleConfigChange(nextConfig: WizardConfig) {
     const normalizedConfig = normalizeWizardConfig(nextConfig, dictionaries.epCountries);
+    if (step === 1 && showConfigValidation) {
+      const nextValidationError = validateWizardStep(
+        step,
+        { ...payload, config: normalizedConfig },
+        dictionaries.epCountries,
+      );
+      setError(nextValidationError);
+      if (!nextValidationError) {
+        setShowConfigValidation(false);
+      }
+    } else {
+      clearStepError(1);
+    }
     setQuotePreview(null);
     setQuoteReceipt(undefined);
     setQuoteReceiptExpiresAt(undefined);

@@ -28,6 +28,7 @@ import {
 import { PmQuoteSendAction } from "./pm-quote-send-action";
 import { PmEpGrantingQuoteRevisionTable } from "./pm-ep-granting-quote-revision-table";
 import type { ActionResult } from "@/lib/validators/requester";
+import { quoteCountryName } from "@/lib/eci-erp/quote-country-name.ts";
 
 type RevisionRow = PmQuoteRevisionRow;
 
@@ -38,6 +39,7 @@ export function PmQuoteRevisionDialog({
   claimWordCount,
   descriptionWordCount,
   isEpGranting,
+  isUnitaryPatent = false,
   requestId,
   requestStage,
 }: {
@@ -45,6 +47,7 @@ export function PmQuoteRevisionDialog({
   claimWordCount: number;
   descriptionWordCount: number;
   isEpGranting: boolean;
+  isUnitaryPatent?: boolean;
   requestId: string;
   requestStage?: string | null;
 }) {
@@ -91,6 +94,7 @@ export function PmQuoteRevisionDialog({
           requestId={requestId}
           rows={rows}
           isEpGranting={isEpGranting}
+          isUnitaryPatent={isUnitaryPatent}
           draftQuoteId={draftQuoteId}
           onSavedQuote={setDraftQuoteId}
         />
@@ -107,6 +111,7 @@ export function PmQuoteRevisionFormFields({
   requestId,
   rows,
   isEpGranting,
+  isUnitaryPatent = false,
   draftQuoteId,
   onSavedQuote,
 }: {
@@ -117,6 +122,7 @@ export function PmQuoteRevisionFormFields({
   requestId: string;
   rows: RevisionRow[];
   isEpGranting: boolean;
+  isUnitaryPatent?: boolean;
   draftQuoteId?: string;
   onSavedQuote: (quoteId: string) => void;
 }) {
@@ -167,7 +173,9 @@ export function PmQuoteRevisionFormFields({
           <thead className="bg-muted/40 text-left"><tr><th className="p-3">Country</th><th className="p-3">Official fee</th><th className="p-3">Service fee</th><th className="p-3">Translate fee</th></tr></thead>
           <tbody>{adjustedRows.map((row) => (
             <tr key={row.countryId} className="border-t">
-              <td className="p-3 font-medium">{row.countryName}</td>
+              <td className="p-3 font-medium">
+                {quoteCountryName(row.countryName, isUnitaryPatent ? "unitary_patent" : undefined)}
+              </td>
               <td className="p-3"><input className="h-9 w-28 rounded-md border bg-background px-2" name={`officialFee-${row.countryId}`} type="number" min="0" step="0.01" value={row.officialFee} onChange={(event) => { setAdjustedRows((current) => updateRevisionFee(current, row.countryId, "officialFee", event.target.value)); setHasUnsavedChanges(true); }} required /></td>
               <td className="p-3"><input className="h-9 w-28 rounded-md border bg-background px-2" name={`serviceFee-${row.countryId}`} type="number" min="0" step="0.01" value={row.serviceFee} onChange={(event) => { setAdjustedRows((current) => updateRevisionFee(current, row.countryId, "serviceFee", event.target.value)); setHasUnsavedChanges(true); }} required /></td>
               <td className="p-3"><input className="h-9 w-28 rounded-md border bg-background px-2" name={`translationFee-${row.countryId}`} type="number" min="0" step="0.01" value={row.translationFee} onChange={(event) => { setAdjustedRows((current) => updateRevisionFee(current, row.countryId, "translationFee", event.target.value)); setHasUnsavedChanges(true); }} required /></td>

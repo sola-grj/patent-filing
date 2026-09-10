@@ -185,6 +185,8 @@ async function RequestsContent({
                 <RequestServiceBadge
                   serviceTypes={requirement?.service_types ?? []}
                   serviceOptions={dictionaries?.serviceTypes ?? []}
+                  epvType={requirement?.epv_type_code}
+                  epServiceType={requirement?.ep_service_type_code}
                 />
               </span>
               <RequesterStatusBadge status={request.requester_status} size="compact" />

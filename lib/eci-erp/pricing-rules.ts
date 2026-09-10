@@ -200,6 +200,7 @@ function requiredLanguageId(value: number | undefined, label: string) {
 
 export function validatePriceRows(input: {
   requestedTargetLangIds: number[];
+  validateTargetLanguageCoverage?: boolean;
 }, rows: ErpPriceRow[]) {
   if (!rows.length) throw new Error("The pricing service returned no quote rows.");
   const seenTargetLanguages = new Set<number>();
@@ -231,6 +232,8 @@ export function validatePriceRows(input: {
         throw new Error(`The pricing service returned an invalid translation fee for language ${languageId}.`);
       }
       if (
+        input.validateTargetLanguageCoverage !== false
+        &&
         input.requestedTargetLangIds.length
         && !input.requestedTargetLangIds.includes(languageId)
       ) {
@@ -239,11 +242,13 @@ export function validatePriceRows(input: {
       seenTargetLanguages.add(languageId);
     }
   }
-  const missingLanguages = input.requestedTargetLangIds.filter(
-    (id) => !seenTargetLanguages.has(id),
-  );
-  if (missingLanguages.length) {
-    throw new Error(`The quote is missing target languages: ${missingLanguages.join(", ")}.`);
+  if (input.validateTargetLanguageCoverage !== false) {
+    const missingLanguages = input.requestedTargetLangIds.filter(
+      (id) => !seenTargetLanguages.has(id),
+    );
+    if (missingLanguages.length) {
+      throw new Error(`The quote is missing target languages: ${missingLanguages.join(", ")}.`);
+    }
   }
   return rows;
 }

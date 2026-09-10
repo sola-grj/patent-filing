@@ -14,6 +14,7 @@ import {
   type ErpQuoteCurrencyCode,
   type ErpQuotePreview,
 } from "@/lib/eci-erp/types";
+import { quoteCountryName } from "@/lib/eci-erp/quote-country-name.ts";
 import { StepShell } from "./new-request-wizard-shared";
 import { hasUsablePatentAnalysis } from "./new-request-wizard-utils";
 import { EpGrantingQuotation } from "./ep-granting-quotation";
@@ -134,7 +135,9 @@ export function QuoteStepContent({
                 <Table.Body>
                   {estimate.rows.map((row) => (
                       <Table.Row key={row.countryId}>
-                        <Table.RowHeaderCell className="font-medium">{row.countryName}</Table.RowHeaderCell>
+                        <Table.RowHeaderCell className="font-medium">
+                          {quoteCountryName(row.countryName, payload.config.epServiceType)}
+                        </Table.RowHeaderCell>
                         <Table.Cell className="whitespace-nowrap" justify="end">
                           {formatAmount(row.officialFee)}
                         </Table.Cell>

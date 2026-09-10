@@ -21,7 +21,7 @@ import { buildFreshRequestHref } from "@/features/requester/requester-routes";
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
 
 const requestGridClassName =
-  "grid grid-cols-[minmax(15rem,1.6fr)_minmax(12rem,1.15fr)_minmax(7rem,0.7fr)_minmax(11rem,1.1fr)_minmax(10rem,0.9fr)_minmax(7rem,0.65fr)_minmax(9rem,0.75fr)_minmax(9rem,0.75fr)]";
+  "grid grid-cols-[minmax(14rem,1.45fr)_minmax(9rem,0.85fr)_minmax(6rem,0.55fr)_minmax(18rem,1.65fr)_minmax(9rem,0.8fr)_minmax(7rem,0.62fr)_minmax(8rem,0.7fr)_minmax(8rem,0.7fr)]";
 
 type PmHomeSearchParams = {
   status?: string;
@@ -99,7 +99,7 @@ async function PmDashboardContent({
           "Updated",
         ]}
         gridClassName={requestGridClassName}
-        minWidthClassName="min-w-[1320px]"
+        minWidthClassName="min-w-[1460px]"
         hasRows={result.requests.length > 0}
         emptyState={<RequestListEmptyState actionHref={buildFreshRequestHref()} />}
       >
@@ -147,6 +147,8 @@ async function PmDashboardContent({
                 <RequestServiceBadge
                   serviceTypes={requirement?.service_types ?? []}
                   serviceOptions={result.dictionaries.serviceTypes}
+                  epvType={requirement?.epv_type_code}
+                  epServiceType={requirement?.ep_service_type_code}
                 />
               </span>
               <RequesterStatusBadge status={request.pm_status} size="compact" />

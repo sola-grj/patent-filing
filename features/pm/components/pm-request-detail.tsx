@@ -313,6 +313,7 @@ export function PmRequestDetail({
                   quote={latestQuote}
                   quotes={request.quotes}
                   isEpGranting={config.epServiceType === "ep_granting"}
+                  isUnitaryPatent={config.epServiceType === "unitary_patent"}
                   translationRequired={config.translationRequired}
                   editAction={(
                     <PmQuoteRevisionDialog
@@ -320,6 +321,7 @@ export function PmRequestDetail({
                       claimWordCount={Number(patent?.claims_word_count ?? 0)}
                       descriptionWordCount={Number(patent?.description_word_count ?? 0)}
                       isEpGranting={config.epServiceType === "ep_granting"}
+                      isUnitaryPatent={config.epServiceType === "unitary_patent"}
                       requestId={request.id}
                       requestStage={request.workflow_stage}
                     />

@@ -10,6 +10,7 @@ import {
   generateQuoteExport,
   quoteExportFileName,
 } from "./quote-export.ts";
+import { quoteCountryName } from "./quote-country-name.ts";
 import type { ErpQuotePreview } from "./types.ts";
 
 const quote: ErpQuotePreview = {
@@ -99,6 +100,12 @@ const epGrantingMetadata = {
   },
 };
 
+const unitaryPatentMetadata = {
+  ...metadata,
+  serviceName: "Unitary Patent",
+  serviceType: "unitary_patent",
+};
+
 test("generates a readable PDF estimate", async () => {
   const pdf = await generateQuoteExport("pdf", quote, metadata);
   assert.equal(Buffer.from(pdf).subarray(0, 5).toString(), "%PDF-");
@@ -148,6 +155,22 @@ test("generates an XLSX estimate with totals and language details", async () => 
     quoteExportFileName("xlsx", quote, metadata),
     "Pat-estimate-EP4279487B1-USD-20260825.xlsx",
   );
+});
+
+test("labels the single Unitary Patent quotation row consistently in PDF and XLSX", async () => {
+  const [pdf, xlsx] = await Promise.all([
+    generateQuoteExport("pdf", quote, unitaryPatentMetadata),
+    generateQuoteExport("xlsx", quote, unitaryPatentMetadata),
+  ]);
+  const pdfContent = extractPdfContent(await PDFDocument.load(pdf));
+  const xlsxZip = await JSZip.loadAsync(xlsx);
+  const sheet = await xlsxZip.file("xl/worksheets/sheet1.xml")!.async("string");
+
+  assert.match(pdfContent, /Unitary Patent/);
+  assert.doesNotMatch(pdfContent, /Europe/);
+  assert.match(sheet, /Unitary Patent/);
+  assert.doesNotMatch(sheet, />Europe</);
+  assert.equal(quoteCountryName("Europe", "unitary_patent"), "Unitary Patent");
 });
 
 test("builds separate EP Granting language lines and keeps waived languages", () => {

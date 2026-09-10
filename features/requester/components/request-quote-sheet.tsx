@@ -26,6 +26,7 @@ import {
   type ErpQuotePreview,
   type ErpQuoteRow,
 } from "@/lib/eci-erp/types";
+import { quoteCountryName } from "@/lib/eci-erp/quote-country-name.ts";
 
 type SavedQuote = {
   id?: string;
@@ -55,6 +56,7 @@ export function RequestQuoteSheet({
   confirmation,
   showHeader = true,
   isEpGranting = false,
+  isUnitaryPatent = false,
   translationRequired = true,
 }: {
   quote?: SavedQuote | null;
@@ -63,6 +65,7 @@ export function RequestQuoteSheet({
   confirmation?: { requestId: string; canConfirm: boolean };
   showHeader?: boolean;
   isEpGranting?: boolean;
+  isUnitaryPatent?: boolean;
   translationRequired?: boolean;
 }) {
   const versions = useMemo(
@@ -168,7 +171,9 @@ export function RequestQuoteSheet({
               <Table.Body>
                 {rows.map((row, index) => (
                   <Table.Row key={row.countryId ?? `${row.countryName}-${index}`}>
-                    <Table.RowHeaderCell className="font-medium">{row.countryName}</Table.RowHeaderCell>
+                    <Table.RowHeaderCell className="font-medium">
+                      {quoteCountryName(row.countryName, isUnitaryPatent ? "unitary_patent" : undefined)}
+                    </Table.RowHeaderCell>
                     <Table.Cell justify="end"><ChangedAmount value={row.officialFee} previous={previousRows.get(row.countryId)?.officialFee} /></Table.Cell>
                     <Table.Cell justify="end"><ChangedAmount value={row.serviceFee} previous={previousRows.get(row.countryId)?.serviceFee} /></Table.Cell>
                     <Table.Cell justify="end"><ChangedAmount value={row.translationFee} previous={previousRows.get(row.countryId)?.translationFee} displayNotApplicable={row.countryId === -1} /></Table.Cell>
@@ -417,6 +422,7 @@ function formatCurrency(value: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
+    currencyDisplay: "narrowSymbol",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);

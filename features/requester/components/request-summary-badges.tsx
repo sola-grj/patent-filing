@@ -1,4 +1,5 @@
 import { RequesterStatusBadge } from "@/features/requester/requester-status";
+import { resolveServiceTypeSelection } from "@/features/requester/request-paths";
 import { cn } from "@/lib/utils";
 
 const channelToneClassNames: Record<string, string> = {
@@ -70,13 +71,17 @@ export function RequestChannelBadge({
 export function RequestServiceBadge({
   serviceTypes,
   serviceOptions,
+  epvType,
+  epServiceType,
 }: {
   serviceTypes: string[];
   serviceOptions: Array<{ value: string; label: string }>;
+  epvType?: string | null;
+  epServiceType?: string | null;
 }) {
   return (
     <span className="inline-flex max-w-full truncate rounded-full border bg-background px-3 py-1 text-xs font-medium text-foreground">
-      {serviceTypeLabel(serviceTypes, serviceOptions)}
+      {serviceTypeLabel(serviceTypes, serviceOptions, epvType, epServiceType)}
     </span>
   );
 }
@@ -84,7 +89,14 @@ export function RequestServiceBadge({
 export function serviceTypeLabel(
   serviceTypes: string[],
   serviceOptions: Array<{ value: string; label: string }>,
+  epvType?: string | null,
+  epServiceType?: string | null,
 ) {
+  const epServiceLabel = epServiceType
+    ? resolveServiceTypeSelection("ep", serviceTypes, epvType ?? undefined, epServiceType)?.label
+    : undefined;
+  if (epServiceLabel) return epServiceLabel;
+
   const normalizedTypes = [...serviceTypes].sort().join("|");
   const labels: Record<string, string> = {
     translation: "Translation",

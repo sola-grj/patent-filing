@@ -1,9 +1,9 @@
 export const ERP_QUOTE_CURRENCIES = [
-  { id: 1, code: "CNY", symbol: "CN¥", label: "Chinese Yuan" },
+  { id: 1, code: "CNY", symbol: "¥", label: "Chinese Yuan" },
   { id: 2, code: "USD", symbol: "$", label: "US Dollar" },
   { id: 3, code: "EUR", symbol: "€", label: "Euro" },
   { id: 4, code: "GBP", symbol: "£", label: "British Pound" },
-  { id: 5, code: "HKD", symbol: "HK$", label: "Hong Kong Dollar" },
+  { id: 5, code: "HKD", symbol: "$", label: "Hong Kong Dollar" },
 ] as const;
 
 export type ErpQuoteCurrencyCode = (typeof ERP_QUOTE_CURRENCIES)[number]["code"];

@@ -238,10 +238,10 @@ export async function executeErpQuote(input: {
   validUntil?: string;
 }): Promise<ErpQuoteResult> {
   const { request } = input;
-  const categoryId = request.categoryId;
   const response = await getErpPrice(request);
   const validatedRows = validatePriceRows({
     requestedTargetLangIds: request.targetLangIds ?? [],
+    validateTargetLanguageCoverage: request.optType !== 3 && request.optType !== 4,
   }, response);
   const quoteRows = applyTranslationSelection(validatedRows, input.translationRequired);
   const responseLanguageIds = uniqueIntegers(quoteRows.flatMap((row) =>

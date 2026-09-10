@@ -4,6 +4,7 @@ export function PmQuoteSheet({
   quote,
   quotes,
   isEpGranting = false,
+  isUnitaryPatent = false,
   translationRequired = true,
   showHeader = true,
   editAction,
@@ -31,6 +32,7 @@ export function PmQuoteSheet({
       quote_items?: Array<{ label: string; amount: number | string }> | null;
     }> | null;
   isEpGranting?: boolean;
+  isUnitaryPatent?: boolean;
   translationRequired?: boolean;
   showHeader?: boolean;
   editAction?: ReactNode;
@@ -42,6 +44,7 @@ export function PmQuoteSheet({
       editAction={editAction}
       showHeader={showHeader}
       isEpGranting={isEpGranting}
+      isUnitaryPatent={isUnitaryPatent}
       translationRequired={translationRequired}
     />
   );

@@ -458,6 +458,7 @@ export function RequestDetailView({
                   quotes={request.quotes}
                   confirmation={{ requestId: request.id, canConfirm: !isReadOnly }}
                   isEpGranting={config.epServiceType === "ep_granting"}
+                  isUnitaryPatent={config.epServiceType === "unitary_patent"}
                   translationRequired={config.translationRequired}
                 />
               </div>

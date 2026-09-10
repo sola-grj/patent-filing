@@ -60,6 +60,17 @@ test("accepts ERP Opt rows in traditional and combined quotes", () => {
   assert.doesNotThrow(() => validatePriceRows({
     requestedTargetLangIds: [],
   }, [optRow]));
+  assert.throws(
+    () => validatePriceRows({ requestedTargetLangIds: [17] }, [optRow]),
+    /missing target languages: 17/,
+  );
+  assert.doesNotThrow(() => validatePriceRows({
+    requestedTargetLangIds: [17],
+    validateTargetLanguageCoverage: false,
+  }, [
+    optRow,
+    { ...optRow, countryName: "EPV - UP", serviceFee: 7.76 },
+  ]));
 });
 
 test("excludes translation fees from the quote total when translation is not selected", () => {
@@ -72,7 +83,7 @@ test("maps selectable quote currencies to ERP currency IDs", () => {
   assert.deepEqual(erpQuoteCurrency(), {
     id: 1,
     code: "CNY",
-    symbol: "CN¥",
+    symbol: "¥",
     label: "Chinese Yuan",
   });
   assert.equal(erpQuoteCurrency("CNY").id, 1);
@@ -80,6 +91,7 @@ test("maps selectable quote currencies to ERP currency IDs", () => {
   assert.equal(erpQuoteCurrency("EUR").id, 3);
   assert.equal(erpQuoteCurrency("GBP").id, 4);
   assert.equal(erpQuoteCurrency("HKD").id, 5);
+  assert.equal(erpQuoteCurrency("HKD").symbol, "$");
   assert.throws(() => erpQuoteCurrency("CAD"), /not supported/);
 });
 
