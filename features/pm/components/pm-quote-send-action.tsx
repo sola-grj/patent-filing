@@ -14,7 +14,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { sendPmQuoteRevision } from "@/features/pm/actions";
+import {
+  resendPmQuoteRevisionEmail,
+  sendPmQuoteRevision,
+} from "@/features/pm/actions";
 
 export function PmQuoteSendAction({ quoteId, status }: { quoteId?: string; status?: string | null }) {
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +57,33 @@ export function PmQuoteSendAction({ quoteId, status }: { quoteId?: string; statu
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+export function PmQuoteResendAction({ quoteId }: { quoteId: string }) {
+  const [message, setMessage] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function resend() {
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set("quoteId", quoteId);
+      const result = await resendPmQuoteRevisionEmail(formData);
+      setMessage(result.success ? "Email resent." : result.error ?? "Email could not be resent.");
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <Button type="button" variant="outline" disabled={isPending} onClick={resend}>
+        {isPending ? "Resending..." : "Resend email"}
+      </Button>
+      {message ? (
+        <p className={message === "Email resent." ? "text-xs text-emerald-700" : "text-xs text-destructive"}>
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }

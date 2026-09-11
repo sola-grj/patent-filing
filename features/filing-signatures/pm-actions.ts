@@ -48,7 +48,7 @@ export async function savePmSignatureDraft(
         context.supabase
           .from("filing_signature_requests")
           .select(
-            "id, request_id, created_by, recipient_id, recipient_name, recipient_email, status, pm_note, due_at, sent_at, completed_at, cancelled_at, email_status, email_provider_id, email_last_error, email_sent_at, email_attempt_count, created_at, updated_at, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at)",
+            "id, request_id, created_by, recipient_id, recipient_name, recipient_email, status, pm_note, due_at, sent_at, completed_at, cancelled_at, email_status, email_provider_id, email_last_error, email_sent_at, email_attempt_count, created_at, updated_at, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at), filing_signature_country_confirmations(id, ep_country_id, confirmed_by, confirmed_at, created_at)",
           )
           .eq("request_id", requestId)
           .in("status", ["draft", "sent"])
@@ -251,6 +251,41 @@ export async function retryPmSignatureEmail(
     const result = await deliverEmail(context, signatureRequest, true);
     revalidateSignaturePaths(signatureRequest.request_id);
     return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: toPmErrorMessage(error) };
+  }
+}
+
+export async function confirmPmSignatureCountry(
+  formData: FormData,
+): Promise<ActionResult<{ completed: boolean }>> {
+  try {
+    const context = await assertPm();
+    const signatureRequestId = requiredString(
+      formData.get("signatureRequestId"),
+      "Signature request",
+    );
+    const epCountryId = Number(formData.get("epCountryId"));
+    if (!Number.isInteger(epCountryId) || epCountryId <= 0) {
+      throw new Error("Choose a valid POA country.");
+    }
+    const { data, error } = await context.supabase.rpc(
+      "confirm_filing_signature_country",
+      {
+        p_signature_request_id: signatureRequestId,
+        p_ep_country_id: epCountryId,
+      },
+    );
+    if (error) throw new Error(error.message);
+
+    const { data: signatureRequest, error: requestError } = await context.supabase
+      .from("filing_signature_requests")
+      .select("request_id")
+      .eq("id", signatureRequestId)
+      .single();
+    if (requestError) throw new Error(requestError.message);
+    revalidateSignaturePaths(signatureRequest.request_id);
+    return { success: true, data: { completed: Boolean(data) } };
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };
   }

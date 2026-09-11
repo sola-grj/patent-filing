@@ -70,18 +70,22 @@ async function generateEpGrantingQuotePdf(
   drawCaseDetails(page, quote, metadata, regular, bold, 754, colors.muted);
   drawSectionHeading(page, "Quotation Details", 28, 572, bold, colors.navy);
 
-  const columns = [28, 116, 242, 362, 459, 567];
+  const columns = [28, 382, 472, 567];
   const summaryAmountRight = 559;
   let y = 545;
   page.drawRectangle({ x: 28, y: y - 8, width: 539, height: 25, color: colors.navy });
-  const headers = ["Fee Category", "Fee Item", "Language / Scope", "Pricing Method", "Amount"];
+  const headers = ["Fee Category", "Unit", "Amount"];
   headers.forEach((header, index) => {
     const isAmount = index === headers.length - 1;
     drawPdfCellText(page, header, columns[index], columns[index + 1], y, 7.5, bold, colors.white, isAmount);
   });
   y -= 26;
 
-  for (const line of table.baseFees) {
+  for (const line of table.officialFees) {
+    drawEpGrantingFeeRow(page, line, columns, y, regular, bold, colors.paleNeutral, colors.navy);
+    y -= 27;
+  }
+  for (const line of table.serviceFees) {
     drawEpGrantingFeeRow(page, line, columns, y, regular, bold, colors.paleNeutral, colors.navy);
     y -= 27;
   }
@@ -89,10 +93,21 @@ async function generateEpGrantingQuotePdf(
     drawEpGrantingFeeRow(page, line, columns, y, regular, bold, colors.paleNeutral, colors.navy);
     y -= 27;
   }
-  drawEpGrantingSubtotal(page, "Base Fee Subtotal", table.baseFeeSubtotal, quote.currency, summaryAmountRight, y, bold, colors.navy);
+  drawEpGrantingSubtotal(page, "Official Fee Subtotal", table.officialFeeSubtotal, quote.currency, summaryAmountRight, y, bold, colors.navy);
+  y -= 27;
+  drawEpGrantingSubtotal(page, "Service Fee Subtotal", table.serviceFeeSubtotal, quote.currency, summaryAmountRight, y, bold, colors.navy);
   y -= 27;
   if (table.translationFees.length) {
-    drawEpGrantingSubtotal(page, "Translation Fee Subtotal", table.translationFeeSubtotal, quote.currency, summaryAmountRight, y, bold, colors.navy);
+    drawEpGrantingSubtotal(
+      page,
+      "Translation Fee Subtotal",
+      table.translationFeeSubtotal,
+      quote.currency,
+      summaryAmountRight,
+      y,
+      bold,
+      colors.navy,
+    );
     y -= 27;
   }
 
@@ -263,13 +278,13 @@ function drawEpGrantingFeeRow(
   background: ReturnType<typeof rgb>,
   accent: ReturnType<typeof rgb>,
 ) {
-  page.drawRectangle({ x: columns[0], y: y - 8, width: columns[5] - columns[0], height: 27, color: background });
-  const values = [line.category, line.item, line.scope, line.pricingMethod];
+  page.drawRectangle({ x: columns[0], y: y - 8, width: columns[3] - columns[0], height: 27, color: background });
+  const values = [line.feeCategory, line.unit];
   values.forEach((value, index) => {
     drawPdfCellText(page, value, columns[index], columns[index + 1], y, 7.4, index === 0 ? bold : regular, index === 0 ? accent : rgb(0.12, 0.15, 0.17));
   });
   const amount = line.waived ? `${formatAmount(line.amount)}  Waived` : formatAmount(line.amount);
-  drawPdfCellText(page, amount, columns[4], columns[5], y, 7.4, line.waived ? bold : regular, line.waived ? accent : rgb(0.12, 0.15, 0.17), true);
+  drawPdfCellText(page, amount, columns[2], columns[3], y, 7.4, line.waived ? bold : regular, line.waived ? accent : rgb(0.12, 0.15, 0.17), true);
   drawPdfRowBorders(page, columns, y);
 }
 
@@ -308,7 +323,7 @@ function drawPdfRowBorders(page: PDFPage, columns: number[], y: number) {
   for (const x of columns) {
     page.drawLine({ start: { x, y: y - 8 }, end: { x, y: y + 19 }, thickness: 0.35, color: border });
   }
-  page.drawLine({ start: { x: columns[0], y: y - 8 }, end: { x: columns[5], y: y - 8 }, thickness: 0.35, color: border });
+  page.drawLine({ start: { x: columns[0], y: y - 8 }, end: { x: columns.at(-1)!, y: y - 8 }, thickness: 0.35, color: border });
 }
 
 function fitPdfText(value: string, font: PDFFont, size: number, maxWidth: number) {
@@ -586,7 +601,11 @@ function worksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
 function epGrantingWorksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
   const patent = metadata.patentDetails;
   const table = buildEpGrantingQuoteTable(quote, metadata.translationRequired);
-  const feeLines = [...table.baseFees, ...table.translationFees];
+  const feeLines = [
+    ...table.officialFees,
+    ...table.serviceFees,
+    ...table.translationFees,
+  ];
   const rows: string[][] = [
     ["Pat Estimate Sheet"],
     ["Service", metadata.serviceName],
@@ -597,28 +616,33 @@ function epGrantingWorksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMet
     ["Application No.", metadata.applicationNumber || metadata.patentNumber || "-"],
     ["Legal Deadline", patent?.legalDeadline || "-"],
     [],
-    ["Fee Category", "Fee Item", "Language / Scope", "Pricing Method", "Amount"],
+    ["Fee Category", "Unit", "Amount"],
     ...feeLines.map((line) => [
-      line.category,
-      line.item,
-      line.scope,
-      line.pricingMethod,
+      line.feeCategory,
+      line.unit,
       String(line.amount),
     ]),
   ];
   const showSubtotals = feeLines.length > 1;
   if (showSubtotals) {
-    rows.push(["", "", "", "Base Fee Subtotal", String(table.baseFeeSubtotal)]);
+    rows.push(["", "Official Fee Subtotal", String(table.officialFeeSubtotal)]);
+    rows.push(["", "Service Fee Subtotal", String(table.serviceFeeSubtotal)]);
     if (table.translationFees.length) {
-      rows.push(["", "", "", "Translation Fee Subtotal", String(table.translationFeeSubtotal)]);
+      rows.push([
+        "",
+        "Translation Fee Subtotal",
+        String(table.translationFeeSubtotal),
+      ]);
     }
   }
-  rows.push(["", "", "", "Quotation Total", String(table.total)]);
+  rows.push(["", "Quotation Total", String(table.total)]);
 
   const waivedRows = new Set(table.translationFees
-    .map((line, index) => line.waived ? 11 + table.baseFees.length + index : 0)
+    .map((line, index) => line.waived
+      ? 11 + table.officialFees.length + table.serviceFees.length + index
+      : 0)
     .filter(Boolean));
-  return buildWorksheetXml(rows, 10 + feeLines.length, [5], waivedRows, 5);
+  return buildWorksheetXml(rows, 10 + feeLines.length, [3], waivedRows, 3);
 }
 
 function traditionalWorksheetXml(quote: ErpQuotePreview, metadata: QuoteExportMetadata) {
@@ -685,8 +709,8 @@ function buildWorksheetXml(
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="10" topLeftCell="A11" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
-  <cols>${columnCount === 5
-    ? '<col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="30" customWidth="1"/><col min="3" max="4" width="24" customWidth="1"/><col min="5" max="5" width="16" customWidth="1"/>'
+  <cols>${columnCount === 3
+    ? '<col min="1" max="1" width="42" customWidth="1"/><col min="2" max="2" width="18" customWidth="1"/><col min="3" max="3" width="18" customWidth="1"/>'
     : '<col min="1" max="1" width="28" customWidth="1"/><col min="2" max="4" width="16" customWidth="1"/><col min="5" max="5" width="55" customWidth="1"/><col min="6" max="6" width="16" customWidth="1"/>'}</cols>
   <sheetData>${sheetRows}</sheetData>
   <mergeCells count="1"><mergeCell ref="A1:${columnName(columnCount)}1"/></mergeCells>

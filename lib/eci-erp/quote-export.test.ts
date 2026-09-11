@@ -176,20 +176,22 @@ test("labels the single Unitary Patent quotation row consistently in PDF and XLS
 test("builds separate EP Granting language lines and keeps waived languages", () => {
   const table = buildEpGrantingQuoteTable(epGrantingQuote, true);
   assert.deepEqual(
-    table.baseFees.map((line) => [line.item, line.scope, line.amount]),
-    [
-      ["Professional Service Fee", "EP Granting", 7.76],
-      ["EPO Official Fee", "European Patent Office", 427.04],
-    ],
+    table.officialFees.map((line) => [line.feeCategory, line.unit, line.amount]),
+    [["EPO Official Fee", "Per Item", 427.04]],
   );
   assert.deepEqual(
-    table.translationFees.map((line) => [line.scope, line.amount, line.waived]),
+    table.serviceFees.map((line) => [line.feeCategory, line.unit, line.amount]),
+    [["Professional Service Fee", "Per Item", 7.76]],
+  );
+  assert.deepEqual(
+    table.translationFees.map((line) => [line.feeCategory, line.unit, line.amount, line.waived]),
     [
-      ["French", 300, false],
-      ["German", 0, true],
+      ["French", "Per Word", 300, false],
+      ["German", "Per Word", 0, true],
     ],
   );
-  assert.equal(table.baseFeeSubtotal, 434.8);
+  assert.equal(table.officialFeeSubtotal, 427.04);
+  assert.equal(table.serviceFeeSubtotal, 7.76);
   assert.equal(table.translationFeeSubtotal, 300);
   assert.equal(table.total, 734.8);
 });
@@ -222,13 +224,15 @@ test("generates an EP Granting quotation with its Terms and Conditions appendix"
     "Case Details",
     "Example EP Granting Case",
     "EP20793085.8",
-    "Base Fee Subtotal",
+    "Official Fee Subtotal",
+    "Service Fee Subtotal",
     "Translation Fee Subtotal",
     "French",
     "German",
     "Waived",
     "Quotation Total",
-    "USD 434.80",
+    "USD 427.04",
+    "USD 7.76",
     "USD 300.00",
     "USD 734.80",
     "Rule 71(3) Dispatch Date",
@@ -249,23 +253,57 @@ test("generates an EP Granting XLSX with the same fee breakdown as the quotation
 
   for (const expected of [
     "Fee Category",
-    "Fee Item",
-    "Language / Scope",
-    "Pricing Method",
+    "Unit",
+    "Amount",
     "Professional Service Fee",
     "EPO Official Fee",
-    "Claims Translation",
-    "Base Fee Subtotal",
+    "French",
+    "German",
+    "Per Item",
+    "Per Word",
+    "Official Fee Subtotal",
+    "Service Fee Subtotal",
     "Translation Fee Subtotal",
     "Quotation Total",
   ]) {
     assert.match(sheet, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
-  assert.doesNotMatch(sheet, /Countries|Official Fee Subtotal|Service Fee Subtotal/);
-  assert.match(sheet, /<c r="E15" s="5"><v>434\.8<\/v><\/c>/);
-  assert.match(sheet, /<c r="E16" s="5"><v>300<\/v><\/c>/);
-  assert.match(sheet, /<c r="E17" s="5"><v>734\.8<\/v><\/c>/);
-  assert.match(sheet, /<c r="E14" s="4"><v>0<\/v><\/c>/);
+  assert.doesNotMatch(sheet, /Countries|Fee Item|Language \/ Scope|Pricing Method|Base Fee/);
+  assert.match(sheet, /<c r="C15" s="5"><v>427\.04<\/v><\/c>/);
+  assert.match(sheet, /<c r="C16" s="5"><v>7\.76<\/v><\/c>/);
+  assert.match(sheet, /<c r="C17" s="5"><v>300<\/v><\/c>/);
+  assert.match(sheet, /<c r="C18" s="5"><v>734\.8<\/v><\/c>/);
+  assert.match(sheet, /<c r="C14" s="4"><v>0<\/v><\/c>/);
+});
+
+test("shows only final EP Granting prices in PDF and XLSX exports", async () => {
+  const discountedQuote: ErpQuotePreview = {
+    ...epGrantingQuote,
+    rows: epGrantingQuote.rows.map((row) => ({
+      ...row,
+      translationFees: { "15": 400, "17": 0 },
+      translationFee: 300,
+      translationFeeDetails: [
+        { languageId: 15, languageName: "French (France)", amount: 400 },
+        { languageId: 17, languageName: "German (Germany)", amount: 0 },
+      ],
+      total: 734.8,
+    })),
+  };
+  const pdf = await generateQuoteExport("pdf", discountedQuote, epGrantingMetadata);
+  const content = extractPdfContent(await PDFDocument.load(pdf));
+  assert.match(content, /Translation Fee Subtotal/);
+  assert.match(content, /400\.00/);
+  assert.match(content, /USD 300\.00/);
+  assert.doesNotMatch(content, /discount|Before Discount/i);
+
+  const xlsx = await generateQuoteExport("xlsx", discountedQuote, epGrantingMetadata);
+  const zip = await JSZip.loadAsync(xlsx);
+  const sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+  assert.match(sheet, /Translation Fee Subtotal/);
+  assert.doesNotMatch(sheet, /discount|Before Discount/i);
+  assert.match(sheet, /<c r="C13" s="2"><v>400<\/v><\/c>/);
+  assert.match(sheet, /<c r="C17" s="5"><v>300<\/v><\/c>/);
 });
 
 test("generates an EP Granting PDF without translation rows when translation is not required", async () => {
@@ -275,15 +313,16 @@ test("generates an EP Granting PDF without translation rows when translation is 
     { ...epGrantingMetadata, translationRequired: false },
   );
   const content = extractPdfContent(await PDFDocument.load(pdf));
-  assert.doesNotMatch(content, /Claims Translation/);
+  assert.doesNotMatch(content, /French|German|Per Word/);
   assert.doesNotMatch(content, /Translation Fee Subtotal/);
 });
 
 test("places EP Granting subtotals after all fee detail rows", async () => {
   const pdf = await generateQuoteExport("pdf", epGrantingQuote, epGrantingMetadata);
   const content = extractPdfContent(await PDFDocument.load(pdf));
-  assert.ok(content.indexOf("German") < content.indexOf("Base Fee Subtotal"));
-  assert.ok(content.indexOf("Base Fee Subtotal") < content.indexOf("Translation Fee Subtotal"));
+  assert.ok(content.indexOf("German") < content.indexOf("Official Fee Subtotal"));
+  assert.ok(content.indexOf("Official Fee Subtotal") < content.indexOf("Service Fee Subtotal"));
+  assert.ok(content.indexOf("Service Fee Subtotal") < content.indexOf("Translation Fee Subtotal"));
   assert.ok(content.indexOf("Translation Fee Subtotal") < content.indexOf("Quotation Total"));
 });
 

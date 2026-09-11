@@ -13,7 +13,7 @@ export type SignatureCountryScope = {
 export function signatureCountryScope(requirement?: {
   ep_service_type_code?: string | null;
   ep_country_ids?: number[] | null;
-} | null): SignatureCountryScope {
+} | null, poaCountryIds?: readonly number[]): SignatureCountryScope {
   const countryScoped = TRADITIONAL_SERVICES.has(
     requirement?.ep_service_type_code ?? "",
   );
@@ -21,6 +21,7 @@ export function signatureCountryScope(requirement?: {
     countryScoped,
     countryIds: countryScoped
       ? [...new Set(requirement?.ep_country_ids ?? [])]
+        .filter((countryId) => !poaCountryIds || poaCountryIds.includes(countryId))
       : [],
   };
 }

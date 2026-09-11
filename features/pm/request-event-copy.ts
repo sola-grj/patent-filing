@@ -48,6 +48,9 @@ const requestEventTitles: Record<
   "filing.signature.submitted.requester": "Requester returned signed filing documents",
   "filing.signature.cancelled.pm": "PM cancelled the signature package",
   "filing.signature.email_retried.pm": "PM retried the signature reminder email",
+  "filing.signature.files_submitted.requester": "Requester submitted POA files",
+  "filing.signature.country_confirmed.pm": "PM confirmed a country POA",
+  "quote.email_resent.pm": "PM resent the quotation email",
 };
 
 export function formatRequestEventTitle(

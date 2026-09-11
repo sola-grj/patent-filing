@@ -136,6 +136,7 @@ export type EpCountryOption = {
   cname: string;
   abbr: string;
   epvTranslationRequirement: 0 | 1 | 2;
+  poaRequirement: "original" | "scanned_copy" | "not_required";
 };
 
 export type WizardDictionaries = {

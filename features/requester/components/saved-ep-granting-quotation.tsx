@@ -38,7 +38,11 @@ export function SavedEpGrantingQuotation({
     ? buildEpGrantingQuoteTable(previousEstimate, translationRequired)
     : null;
   const previousFees = new Map(
-    [...(previousTable?.baseFees ?? []), ...(previousTable?.translationFees ?? [])]
+    [
+      ...(previousTable?.officialFees ?? []),
+      ...(previousTable?.serviceFees ?? []),
+      ...(previousTable?.translationFees ?? []),
+    ]
       .map((line) => [feeLineKey(line), line.amount]),
   );
 
@@ -48,14 +52,16 @@ export function SavedEpGrantingQuotation({
         <Table.Header>
           <Table.Row className="hover:bg-transparent">
             <Table.ColumnHeaderCell>Fee Category</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Fee Item</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Language / Scope</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Pricing Method</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Unit</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {[...table.baseFees, ...table.translationFees].map((line) => (
+          {[
+            ...table.officialFees,
+            ...table.serviceFees,
+            ...table.translationFees,
+          ].map((line) => (
             <FeeRow
               key={feeLineKey(line)}
               line={line}
@@ -72,16 +78,17 @@ export function SavedEpGrantingQuotation({
           </section>
         ) : null}
         <div className="space-y-3 text-sm font-semibold md:col-start-2 md:min-w-80">
-          <SummaryLine label="Base Fee Subtotal" value={formatAmount(table.baseFeeSubtotal)} />
+          <SummaryLine label="Official Fee Subtotal" value={`${erpQuoteCurrencySymbol(estimate.currency)}${formatAmount(table.officialFeeSubtotal)}`} />
+          <SummaryLine label="Service Fee Subtotal" value={`${erpQuoteCurrencySymbol(estimate.currency)}${formatAmount(table.serviceFeeSubtotal)}`} />
           {table.translationFees.length ? (
             <SummaryLine
               label={<SubtotalLabel discountPercent={translationDiscountPercent} />}
               value={translationFeeBeforeDiscount !== null && translationFeeBeforeDiscount !== table.translationFeeSubtotal ? (
                 <span className="flex items-center justify-end gap-2">
-                  <span className="text-muted-foreground line-through">{formatAmount(translationFeeBeforeDiscount)}</span>
-                  {formatAmount(table.translationFeeSubtotal)}
+                  <span className="text-muted-foreground line-through">{erpQuoteCurrencySymbol(estimate.currency)}{formatAmount(translationFeeBeforeDiscount)}</span>
+                  {erpQuoteCurrencySymbol(estimate.currency)}{formatAmount(table.translationFeeSubtotal)}
                 </span>
-              ) : formatAmount(table.translationFeeSubtotal)}
+              ) : `${erpQuoteCurrencySymbol(estimate.currency)}${formatAmount(table.translationFeeSubtotal)}`}
             />
           ) : null}
           <SummaryLine
@@ -98,10 +105,8 @@ export function SavedEpGrantingQuotation({
 function FeeRow({ line, previousAmount }: { line: EpGrantingFeeLine; previousAmount?: number }) {
   return (
     <Table.Row>
-      <Table.RowHeaderCell className="font-medium">{line.category}</Table.RowHeaderCell>
-      <Table.Cell>{line.item}</Table.Cell>
-      <Table.Cell>{line.scope}</Table.Cell>
-      <Table.Cell>{line.pricingMethod}</Table.Cell>
+      <Table.RowHeaderCell className="font-medium">{line.feeCategory}</Table.RowHeaderCell>
+      <Table.Cell>{line.unit}</Table.Cell>
       <Table.Cell justify="end" className="whitespace-nowrap">
         {line.waived ? <span className="mr-2 text-muted-foreground">Waived</span> : null}
         <ChangedAmount value={line.amount} previous={previousAmount} />
@@ -148,7 +153,7 @@ function SubtotalLabel({ discountPercent }: { discountPercent: number | null }) 
 }
 
 function feeLineKey(line: EpGrantingFeeLine) {
-  return [line.category, line.item, line.scope, line.pricingMethod].join("\u0000");
+  return [line.kind, line.feeCategory, line.unit].join("\u0000");
 }
 
 function formatDiscount(value: number) {

@@ -20,12 +20,11 @@ import {
   revisionRows,
   revisionTotals,
   translationDiscountPercent,
-  translationFeeBeforeDiscount,
   updateRevisionFee,
   updateRevisionTranslationFee,
   type RevisionQuote,
 } from "@/features/pm/quote-revision-model";
-import { PmQuoteSendAction } from "./pm-quote-send-action";
+import { PmQuoteResendAction, PmQuoteSendAction } from "./pm-quote-send-action";
 import { PmEpGrantingQuoteRevisionTable } from "./pm-ep-granting-quote-revision-table";
 import type { ActionResult } from "@/lib/validators/requester";
 import { quoteCountryName } from "@/lib/eci-erp/quote-country-name.ts";
@@ -59,16 +58,14 @@ export function PmQuoteRevisionDialog({
   const sourceWordCount = isEpGranting ? claimWordCount : descriptionWordCount;
   const latestAdjustedWordCount = adjustedWordCount(quote, sourceWordCount, isEpGranting);
   const latestDiscountPercent = translationDiscountPercent(quote);
-  const latestTranslationFeeBeforeDiscount = translationFeeBeforeDiscount(quote);
   const isCompleted = requestStage === "completed";
   const isPendingConfirmation = quote?.status === "sent";
+  const canResendEmail = isPendingConfirmation && !isCompleted;
   const cannotRevise = !quote || !rows.length || !Number.isInteger(sourceWordCount) || sourceWordCount < 0;
-  const disabled = isCompleted || isPendingConfirmation || cannotRevise;
+  const disabled = isCompleted || (!isPendingConfirmation && cannotRevise);
   const reason = isCompleted
     ? "Completed Requests cannot be repriced."
-    : isPendingConfirmation
-      ? "Waiting for customer confirmation of the latest quotation."
-      : cannotRevise
+    : cannotRevise
         ? `This quotation cannot be revised because its ERP pricing snapshot or ${isEpGranting ? "claim" : "description"} word count is unavailable.`
         : null;
 
@@ -81,21 +78,25 @@ export function PmQuoteRevisionDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100vh-4rem)] max-w-5xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Revise quotation</DialogTitle>
+          <DialogTitle>{isPendingConfirmation ? "Quotation awaiting confirmation" : "Revise quotation"}</DialogTitle>
           <DialogDescription>
-            Save the revision for review. You can send it to the Request creator only after PM confirmation.
+            {isPendingConfirmation
+              ? "This quotation is read-only while the requester reviews it. You can resend the email reminder below."
+              : "Save the revision for review. You can send it to the Request creator only after PM confirmation."}
           </DialogDescription>
         </DialogHeader>
         <PmQuoteRevisionFormFields
           adjustedWordCount={latestAdjustedWordCount}
           currency={quote?.currency ?? "USD"}
           initialDiscountPercent={latestDiscountPercent}
-          initialTranslationFeeBeforeDiscount={latestTranslationFeeBeforeDiscount}
           requestId={requestId}
           rows={rows}
           isEpGranting={isEpGranting}
           isUnitaryPatent={isUnitaryPatent}
           draftQuoteId={draftQuoteId}
+          readOnly={isPendingConfirmation}
+          resendQuoteId={canResendEmail ? quote?.id : undefined}
+          initialAdjustmentReason={quote?.notes ?? ""}
           onSavedQuote={setDraftQuoteId}
         />
       </DialogContent>
@@ -107,36 +108,39 @@ export function PmQuoteRevisionFormFields({
   adjustedWordCount,
   currency,
   initialDiscountPercent,
-  initialTranslationFeeBeforeDiscount,
   requestId,
   rows,
   isEpGranting,
   isUnitaryPatent = false,
   draftQuoteId,
+  initialAdjustmentReason = "",
+  readOnly = false,
+  resendQuoteId,
   onSavedQuote,
 }: {
   adjustedWordCount: number;
   currency: string;
   initialDiscountPercent: number;
-  initialTranslationFeeBeforeDiscount: number | null;
   requestId: string;
   rows: RevisionRow[];
   isEpGranting: boolean;
   isUnitaryPatent?: boolean;
   draftQuoteId?: string;
+  initialAdjustmentReason?: string;
+  readOnly?: boolean;
+  resendQuoteId?: string;
   onSavedQuote: (quoteId: string) => void;
 }) {
   const [state, formAction, isPending] = useActionState(revisePmQuotationFormState, initialState);
   const [adjustedRows, setAdjustedRows] = useState(rows);
   const [discountPercent, setDiscountPercent] = useState(String(initialDiscountPercent));
-  const [translationFeesAreDiscounted, setTranslationFeesAreDiscounted] = useState(initialDiscountPercent > 0);
   const [calculationError, setCalculationError] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isCalculating, startCalculation] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const totals = useMemo(
-    () => revisionTotals(adjustedRows, discountPercent, translationFeesAreDiscounted, initialTranslationFeeBeforeDiscount),
-    [adjustedRows, discountPercent, initialTranslationFeeBeforeDiscount, translationFeesAreDiscounted],
+    () => revisionTotals(adjustedRows, discountPercent),
+    [adjustedRows, discountPercent],
   );
 
   useEffect(() => {
@@ -149,6 +153,7 @@ export function PmQuoteRevisionFormFields({
   return (
     <form action={formAction} className="space-y-4" ref={formRef}>
       <input type="hidden" name="requestId" value={requestId} />
+      <fieldset disabled={readOnly} className="space-y-4 disabled:opacity-80">
       <div className="grid gap-3 md:grid-cols-2">
         <LabeledInput label={isEpGranting ? "Adjusted claim words" : "Adjusted description words"} name="adjustedWordCount" type="number" min="0" step="1" defaultValue={String(adjustedWordCount)} onChange={() => setHasUnsavedChanges(true)} required />
         <LabeledInput label="Translation fee discount (%)" name="translationDiscountPercent" type="number" min="0" max="100" step="0.01" value={discountPercent} onChange={(event) => { setDiscountPercent(event.target.value); setHasUnsavedChanges(true); }} required />
@@ -157,7 +162,7 @@ export function PmQuoteRevisionFormFields({
         <PmEpGrantingQuoteRevisionTable
           currency={currency}
           rows={adjustedRows}
-          totals={{ ...totals, baseFee: totals.officialFee + totals.serviceFee }}
+          totals={totals}
           onBaseFeeChange={(countryId, key, value) => {
             setAdjustedRows((current) => updateRevisionFee(current, countryId, key, value));
             setHasUnsavedChanges(true);
@@ -201,12 +206,15 @@ export function PmQuoteRevisionFormFields({
       )}
       <label className="block space-y-2 text-sm">
         <span className="font-medium">Adjustment reason</span>
-        <Textarea name="adjustmentNotes" required className="min-h-24 w-full resize-y" onChange={() => setHasUnsavedChanges(true)} />
+        <Textarea name="adjustmentNotes" required className="min-h-24 w-full resize-y" defaultValue={initialAdjustmentReason} onChange={() => setHasUnsavedChanges(true)} />
       </label>
+      </fieldset>
       {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
       {calculationError ? <p role="alert" className="text-sm text-destructive">{calculationError}</p> : null}
       {state.success && !hasUnsavedChanges ? <p className="text-sm text-emerald-700">Revision saved as a draft. Review it, then send it to the requester.</p> : null}
-      <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
+      <div className={`flex flex-wrap items-center gap-3 border-t pt-4 ${readOnly ? "justify-start" : "justify-end"}`}>
+        {readOnly && resendQuoteId ? <PmQuoteResendAction quoteId={resendQuoteId} /> : null}
+        {!readOnly ? <>
         <Button type="button" variant="outline" className="min-w-44" disabled={isPending || isCalculating} onClick={() => {
           if (!formRef.current || !reportCalculationValidity(formRef.current)) return;
           const formData = new FormData(formRef.current);
@@ -225,12 +233,12 @@ export function PmQuoteRevisionFormFields({
               translationFee: row.translationFee,
               translationFeeDetails: row.translationFeeDetails,
             })));
-            setTranslationFeesAreDiscounted(false);
             setHasUnsavedChanges(true);
           });
         }}>{isCalculating ? "Calculating quotation..." : "Calculate quotation"}</Button>
         <Button type="submit" className="min-w-48" disabled={isPending || !hasUnsavedChanges}>{isPending ? "Saving quotation..." : "Save revised quotation"}</Button>
         {draftQuoteId ? <PmQuoteSendAction quoteId={draftQuoteId} status="draft" /> : null}
+        </> : null}
       </div>
     </form>
   );

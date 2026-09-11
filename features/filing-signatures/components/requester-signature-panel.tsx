@@ -66,20 +66,44 @@ export function RequesterSignaturePanel({
     });
   }
 
-  const sourceFiles = active
+  const allSourceFiles = active
     ? signatureFilesByDirection(active, "pm_to_requester")
     : [];
+  const poaCountryIds = new Set(
+    countries
+      .filter((country) => country.poaRequirement && country.poaRequirement !== "not_required")
+      .map((country) => country.id),
+  );
+  const sourceFiles = allSourceFiles.some((file) => file.ep_country_id != null)
+    ? allSourceFiles.filter(
+        (file) => file.ep_country_id == null
+          || poaCountryIds.has(file.ep_country_id),
+      )
+    : allSourceFiles;
   const requiredCountryIds = [...new Set(
     sourceFiles
       .map((file) => file.ep_country_id)
-      .filter((countryId): countryId is number => Number.isInteger(countryId)),
+      .filter((countryId): countryId is number =>
+        Number.isInteger(countryId) && poaCountryIds.has(countryId as number)),
   )];
-  const uploadCountries = requiredCountryIds.map((countryId) =>
+  const allReturnedFiles = active
+    ? signatureFilesByDirection(active, "requester_to_pm")
+    : [];
+  const returnedFiles = allReturnedFiles.some((file) => file.ep_country_id != null)
+    ? allReturnedFiles.filter(
+        (file) => file.ep_country_id == null
+          || poaCountryIds.has(file.ep_country_id),
+      )
+    : allReturnedFiles;
+  const confirmedCountryIds = new Set(
+    (active?.filing_signature_country_confirmations ?? [])
+      .map((confirmation) => confirmation.ep_country_id),
+  );
+  const uploadCountries = requiredCountryIds
+    .filter((countryId) => !confirmedCountryIds.has(countryId))
+    .map((countryId) =>
     countries.find((country) => country.id === countryId)
       ?? { id: countryId, name: `EP country ${countryId}` },
-  );
-  const hasCountryCoverage = requiredCountryIds.every((countryId) =>
-    uploads.some((upload) => upload.epCountryId === countryId),
   );
 
   return (
@@ -136,15 +160,45 @@ export function RequesterSignaturePanel({
               </div>
               <CountrySignatureFileLinks countries={countries} files={sourceFiles} />
             </div>
+            {requiredCountryIds.length ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {requiredCountryIds.map((countryId) => {
+                  const country = countries.find((item) => item.id === countryId);
+                  const hasReturn = returnedFiles.some((file) => file.ep_country_id === countryId);
+                  const confirmed = confirmedCountryIds.has(countryId);
+                  return (
+                    <div key={countryId} className="rounded-lg border p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">{country?.name ?? `EP country ${countryId}`}</span>
+                        <Badge variant={confirmed ? "default" : "outline"}>
+                          {confirmed ? "Confirmed" : hasReturn ? "Awaiting PM confirmation" : "Awaiting upload"}
+                        </Badge>
+                      </div>
+                      {country?.poaRequirement ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {country.poaRequirement === "original" ? "Original POA required" : "Scanned copy accepted"}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+            {returnedFiles.length ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Your current returned files</p>
+                <CountrySignatureFileLinks countries={countries} files={returnedFiles} />
+              </div>
+            ) : null}
             {canSubmit ? <div className="space-y-2">
-              <CountrySignatureFilePicker
+              {uploadCountries.length || !requiredCountryIds.length ? <CountrySignatureFilePicker
                 countries={uploadCountries}
                 disabled={isPending}
                 inputKey={inputKey}
                 label="Upload signed files"
                 onChange={setUploads}
                 uploads={uploads}
-              />
+              /> : <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">All POA countries are confirmed and locked.</p>}
               <p className="text-xs text-muted-foreground">
                 PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
               </p>
@@ -153,10 +207,10 @@ export function RequesterSignaturePanel({
             {canSubmit ? <div className="flex justify-end">
               <Button
                 type="button"
-                disabled={isPending || !uploads.length || !hasCountryCoverage}
+                disabled={isPending || !uploads.length}
                 onClick={submit}
               >
-                {isPending ? "Submitting..." : "Submit signed files"}
+                {isPending ? "Submitting..." : returnedFiles.length ? "Submit replacement files" : "Submit signed files"}
               </Button>
             </div> : null}
           </div>

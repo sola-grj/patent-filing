@@ -1,7 +1,8 @@
 import type { PmQuoteRevisionRow } from "@/features/pm/actions";
 
 type RevisionTotals = {
-  baseFee: number;
+  officialFee: number;
+  serviceFee: number;
   translationBeforeDiscount: number;
   translationFee: number;
   discount: number;
@@ -27,45 +28,37 @@ export function PmEpGrantingQuoteRevisionTable({
 }) {
   return (
     <div className="overflow-x-auto rounded-md border">
-      <table className="w-full min-w-[760px] text-sm">
+      <table className="w-full min-w-[560px] text-sm">
         <thead className="text-left">
           <tr>
             <th className="p-3">Fee Category</th>
-            <th className="p-3">Fee Item</th>
-            <th className="p-3">Language / Scope</th>
-            <th className="p-3">Pricing Method</th>
+            <th className="p-3">Unit</th>
             <th className="p-3 text-right">Amount</th>
           </tr>
         </thead>
         <tbody>
           {rows.flatMap((row) => [
             <FeeRow
-              key={`${row.countryId}-service`}
-              category="Base Fee"
-              item="Professional Service Fee"
-              scope="EP Granting"
-              pricingMethod="Fixed Fee"
-              inputName={`serviceFee-${row.countryId}`}
-              value={row.serviceFee}
-              onChange={(value) => onBaseFeeChange(row.countryId, "serviceFee", value)}
-            />,
-            <FeeRow
               key={`${row.countryId}-official`}
-              category="Base Fee"
-              item="EPO Official Fee"
-              scope="European Patent Office"
-              pricingMethod="Disbursement"
+              feeCategory="EPO Official Fee"
+              unit="Per Item"
               inputName={`officialFee-${row.countryId}`}
               value={row.officialFee}
               onChange={(value) => onBaseFeeChange(row.countryId, "officialFee", value)}
             />,
+            <FeeRow
+              key={`${row.countryId}-service`}
+              feeCategory="Professional Service Fee"
+              unit="Per Item"
+              inputName={`serviceFee-${row.countryId}`}
+              value={row.serviceFee}
+              onChange={(value) => onBaseFeeChange(row.countryId, "serviceFee", value)}
+            />,
             ...row.translationFeeDetails.map((fee) => (
               <FeeRow
                 key={`${row.countryId}-translation-${fee.languageId}`}
-                category="Translation Fee"
-                item="Claims Translation"
-                scope={shortLanguageName(fee.languageName)}
-                pricingMethod="Per Language"
+                feeCategory={shortLanguageName(fee.languageName)}
+                unit="Per Word"
                 inputName={`translationFee-${row.countryId}-${fee.languageId}`}
                 value={fee.amount}
                 onChange={(value) => onTranslationFeeChange(row.countryId, fee.languageId, value)}
@@ -75,9 +68,10 @@ export function PmEpGrantingQuoteRevisionTable({
         </tbody>
         <tfoot className="border-t font-semibold">
           <tr>
-            <td colSpan={5} className="p-0">
+            <td colSpan={3} className="p-0">
               <div className="ml-auto grid w-fit grid-cols-[minmax(15rem,1fr)_max-content] items-center gap-x-6 gap-y-3 px-3 py-4">
-                <SummaryLine label="Base Fee Subtotal" value={formatAmount(totals.baseFee)} />
+                <SummaryLine label="Official Fee Subtotal" value={`${currencySymbol(currency)}${formatAmount(totals.officialFee)}`} />
+                <SummaryLine label="Service Fee Subtotal" value={`${currencySymbol(currency)}${formatAmount(totals.serviceFee)}`} />
                 <SummaryLine
                   label={(
                     <span className="flex items-center gap-2">
@@ -88,11 +82,11 @@ export function PmEpGrantingQuoteRevisionTable({
                   value={totals.discount > 0 ? (
                     <span className="flex justify-end gap-2">
                       <span className="text-muted-foreground line-through">
-                        {formatAmount(totals.translationBeforeDiscount)}
+                        {currencySymbol(currency)}{formatAmount(totals.translationBeforeDiscount)}
                       </span>
-                      {formatAmount(totals.translationFee)}
+                      {currencySymbol(currency)}{formatAmount(totals.translationFee)}
                     </span>
-                  ) : formatAmount(totals.translationFee)}
+                  ) : `${currencySymbol(currency)}${formatAmount(totals.translationFee)}`}
                 />
                 <SummaryLine
                   label="Quotation Total"
@@ -109,31 +103,25 @@ export function PmEpGrantingQuoteRevisionTable({
 }
 
 function FeeRow({
-  category,
-  item,
-  scope,
-  pricingMethod,
+  feeCategory,
+  unit,
   inputName,
   value,
   onChange,
 }: {
-  category: string;
-  item: string;
-  scope: string;
-  pricingMethod: string;
+  feeCategory: string;
+  unit: "Per Item" | "Per Word";
   inputName: string;
   value: number;
   onChange: (value: string) => void;
 }) {
   return (
     <tr className="border-t">
-      <th scope="row" className="p-3 text-left font-medium">{category}</th>
-      <td className="p-3">{item}</td>
-      <td className="p-3">{scope}</td>
-      <td className="p-3">{pricingMethod}</td>
+      <th scope="row" className="p-3 text-left font-medium">{feeCategory}</th>
+      <td className="p-3">{unit}</td>
       <td className="p-3 text-right">
         <input
-          aria-label={`${scope} amount`}
+          aria-label={`${feeCategory} amount`}
           className="h-9 w-28 rounded-md border bg-background px-2 text-right"
           name={inputName}
           type="number"

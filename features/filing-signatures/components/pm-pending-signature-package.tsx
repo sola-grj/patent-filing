@@ -3,6 +3,18 @@
 import { MailWarning, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogClose,
@@ -31,6 +43,7 @@ export function PmPendingSignaturePackage({
   message,
   onAppend,
   onCancel,
+  onConfirm,
   onUploadChange,
   onOpenChange,
   onRetry,
@@ -45,13 +58,26 @@ export function PmPendingSignaturePackage({
   message: string | null;
   onAppend: () => void;
   onCancel: () => void;
+  onConfirm: (epCountryId: number) => void;
   onUploadChange: (uploads: SignatureUpload[]) => void;
   onOpenChange: (open: boolean) => void;
   onRetry: () => void;
   open: boolean;
   request: FilingSignatureRequest;
 }) {
-  const files = signatureFilesByDirection(request, "pm_to_requester");
+  const poaCountryIds = new Set(countries.map((country) => country.id));
+  const files = visibleCurrentPoaFiles(
+    signatureFilesByDirection(request, "pm_to_requester"),
+    poaCountryIds,
+  );
+  const returnedFiles = visibleCurrentPoaFiles(
+    signatureFilesByDirection(request, "requester_to_pm"),
+    poaCountryIds,
+  );
+  const confirmedCountryIds = new Set(
+    (request.filing_signature_country_confirmations ?? [])
+      .map((confirmation) => confirmation.ep_country_id),
+  );
 
   return (
     <div className="space-y-4">
@@ -73,7 +99,62 @@ export function PmPendingSignaturePackage({
         ) : null}
       </div>
       <CountrySignatureFileLinks countries={countries} files={files} />
-      {canAppend ? (
+      {countries.length ? (
+        <div className="space-y-3">
+          <p className="text-sm font-medium">Returned POA review</p>
+          {countries.map((country) => {
+            const countryFiles = returnedFiles.filter(
+              (file) => file.ep_country_id === country.id,
+            );
+            const confirmed = confirmedCountryIds.has(country.id);
+            return (
+              <div key={country.id} className="rounded-lg border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{country.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {country.poaRequirement === "original"
+                        ? "Original POA required"
+                        : "Scanned copy accepted"}
+                    </p>
+                  </div>
+                  {confirmed ? (
+                    <Badge>Confirmed</Badge>
+                  ) : countryFiles.length ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button type="button" size="sm" disabled={disabled}>Confirm</Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Confirm {country.name} POA?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This permanently locks the requester files for this country. The action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => onConfirm(country.id)}>
+                            Confirm POA
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : (
+                    <Badge variant="outline">Awaiting upload</Badge>
+                  )}
+                </div>
+                {countryFiles.length ? (
+                  <div className="mt-3">
+                    <CountrySignatureFileLinks countries={countries} files={countryFiles} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {canAppend && !returnedFiles.length ? (
         <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3">
           <div>
             <p className="text-sm font-medium">Send additional documents</p>
@@ -165,6 +246,19 @@ export function PmPendingSignaturePackage({
         </Button>
       </div>
     </div>
+  );
+}
+
+function visibleCurrentPoaFiles(
+  files: FilingSignatureRequest["filing_signature_files"],
+  poaCountryIds: ReadonlySet<number>,
+) {
+  const values = files ?? [];
+  if (!values.some((file) => file.ep_country_id != null)) {
+    return values;
+  }
+  return values.filter(
+    (file) => file.ep_country_id == null || poaCountryIds.has(file.ep_country_id),
   );
 }
 

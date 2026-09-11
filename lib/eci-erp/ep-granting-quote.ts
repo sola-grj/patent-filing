@@ -2,18 +2,19 @@ import type { ErpQuotePreview } from "./types";
 import { sumMoney } from "./money.ts";
 
 export type EpGrantingFeeLine = {
-  category: "Base Fee" | "Translation Fee";
-  item: string;
-  scope: string;
-  pricingMethod: string;
+  kind: "official" | "service" | "translation";
+  feeCategory: string;
+  unit: "Per Item" | "Per Word";
   amount: number;
   waived: boolean;
 };
 
 export type EpGrantingQuoteTable = {
-  baseFees: EpGrantingFeeLine[];
+  officialFees: EpGrantingFeeLine[];
+  serviceFees: EpGrantingFeeLine[];
   translationFees: EpGrantingFeeLine[];
-  baseFeeSubtotal: number;
+  officialFeeSubtotal: number;
+  serviceFeeSubtotal: number;
   translationFeeSubtotal: number;
   total: number;
 };
@@ -22,29 +23,37 @@ export function buildEpGrantingQuoteTable(
   quote: ErpQuotePreview,
   translationRequired: boolean,
 ): EpGrantingQuoteTable {
-  const baseFees = quote.rows.flatMap((row) => [
-    feeLine("Professional Service Fee", "EP Granting", "Fixed Fee", row.serviceFee),
-    feeLine("EPO Official Fee", "European Patent Office", "Disbursement", row.officialFee),
-  ]);
+  const officialFees = quote.rows.map((row) =>
+    feeLine("official", "EPO Official Fee", "Per Item", row.officialFee),
+  );
+  const serviceFees = quote.rows.map((row) =>
+    feeLine("service", "Professional Service Fee", "Per Item", row.serviceFee),
+  );
   const translationFees = translationRequired
     ? quote.rows.flatMap((row) => row.translationFeeDetails.map((fee) => ({
-        category: "Translation Fee" as const,
-        item: "Claims Translation",
-        scope: shortLanguageName(fee.languageName),
-        pricingMethod: "Per Language",
+        kind: "translation" as const,
+        feeCategory: shortLanguageName(fee.languageName),
+        unit: "Per Word" as const,
         amount: fee.amount,
         waived: fee.amount === 0,
       })))
     : [];
-  const baseFeeSubtotal = sumAmounts(baseFees);
-  const translationFeeSubtotal = sumAmounts(translationFees);
+  const officialFeeSubtotal = sumAmounts(officialFees);
+  const serviceFeeSubtotal = sumAmounts(serviceFees);
+  const translationFeeSubtotal = translationRequired
+    ? sumMoney(quote.rows.map((row) => row.translationFee))
+    : 0;
 
   return {
-    baseFees,
+    officialFees,
+    serviceFees,
     translationFees,
-    baseFeeSubtotal,
+    officialFeeSubtotal,
+    serviceFeeSubtotal,
     translationFeeSubtotal,
-    total: sumMoney([baseFeeSubtotal, translationFeeSubtotal]),
+    total: translationRequired
+      ? quote.total
+      : sumMoney([officialFeeSubtotal, serviceFeeSubtotal]),
   };
 }
 
@@ -53,12 +62,16 @@ export function quoteValidUntilTimestamp(validUntil?: string, nowMs = Date.now()
   return `${validUntil}T23:59:59.999+08:00`;
 }
 
-function feeLine(item: string, scope: string, pricingMethod: string, amount: number) {
+function feeLine(
+  kind: "official" | "service",
+  feeCategory: string,
+  unit: "Per Item",
+  amount: number,
+) {
   return {
-    category: "Base Fee" as const,
-    item,
-    scope,
-    pricingMethod,
+    kind,
+    feeCategory,
+    unit,
     amount,
     waived: false,
   };

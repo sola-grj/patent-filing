@@ -200,6 +200,7 @@ type RequestDetail = {
     name: string;
     cname: string;
     abbr: string;
+    poaRequirement?: "original" | "scanned_copy" | "not_required";
   }> | null;
   viewer_is_owner?: boolean;
 };

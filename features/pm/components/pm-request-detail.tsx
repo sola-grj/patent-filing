@@ -189,6 +189,7 @@ type PmRequestDetailProps = {
       name: string;
       cname: string;
       abbr: string;
+      poaRequirement?: "original" | "scanned_copy" | "not_required";
     }> | null;
   };
   currentUserId: string | null;
@@ -317,6 +318,7 @@ export function PmRequestDetail({
                   translationRequired={config.translationRequired}
                   editAction={(
                     <PmQuoteRevisionDialog
+                      key="pm-quote-revision-dialog"
                       quote={latestQuote}
                       claimWordCount={Number(patent?.claims_word_count ?? 0)}
                       descriptionWordCount={Number(patent?.description_word_count ?? 0)}

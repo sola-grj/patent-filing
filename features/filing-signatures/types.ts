@@ -19,6 +19,15 @@ export type SignatureCountry = {
   id: number;
   name: string;
   abbr?: string;
+  poaRequirement?: "original" | "scanned_copy" | "not_required";
+};
+
+export type FilingSignatureCountryConfirmation = {
+  id: string;
+  ep_country_id: number;
+  confirmed_by: string;
+  confirmed_at: string;
+  created_at: string;
 };
 
 export type SignatureUpload = {
@@ -69,6 +78,7 @@ export type FilingSignatureRequest = {
   created_at: string;
   updated_at: string;
   filing_signature_files?: FilingSignatureFile[] | null;
+  filing_signature_country_confirmations?: FilingSignatureCountryConfirmation[] | null;
 };
 
 export function signatureFilesByDirection(

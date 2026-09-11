@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   cancelPmSignatureRequest,
+  confirmPmSignatureCountry,
   removePmSignatureFile,
   retryPmSignatureEmail,
   savePmSignatureDraft,
@@ -70,6 +71,9 @@ export function PmSignaturePanel({
   const history = sorted.filter((request) => request.id !== active?.id);
   const [pmNote, setPmNote] = useState(active?.status === "draft" ? active.pm_note ?? "" : "");
   const [dueAt, setDueAt] = useState(active?.status === "draft" ? active.due_at ?? "" : "");
+  const poaCountries = countries.filter(
+    (country) => country.poaRequirement && country.poaRequirement !== "not_required",
+  );
   const activeDraft = active?.status === "draft" ? active : null;
   const hasUnsavedDraftChanges = Boolean(
     uploads.length
@@ -152,6 +156,13 @@ export function PmSignaturePanel({
     run(() => action(formData));
   }
 
+  function confirmCountry(signatureRequestId: string, epCountryId: number) {
+    const formData = new FormData();
+    formData.set("signatureRequestId", signatureRequestId);
+    formData.set("epCountryId", String(epCountryId));
+    run(() => confirmPmSignatureCountry(formData));
+  }
+
   return (
     <Card id="signature-documents">
       {showHeader ? <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
@@ -194,7 +205,7 @@ export function PmSignaturePanel({
             <PmPendingSignaturePackage
               canAppend={canManage}
               disabled={isPending}
-              countries={countries}
+              countries={poaCountries}
               uploads={uploads}
               inputKey={inputKey}
               message={message}
@@ -205,11 +216,12 @@ export function PmSignaturePanel({
               onUploadChange={setUploads}
               onOpenChange={changeAppendOpen}
               onRetry={() => runForRequest(retryPmSignatureEmail, active.id)}
+              onConfirm={(epCountryId) => confirmCountry(active.id, epCountryId)}
             />
           ) : canManage ? (
             <DraftEditor
               active={activeDraft}
-              countries={countries}
+              countries={poaCountries}
               disabled={isPending}
               dueAt={dueAt}
               uploads={uploads}
@@ -287,6 +299,9 @@ function DraftEditor({
   onSend?: () => void;
 }) {
   const sourceFiles = active ? signatureFilesByDirection(active, "pm_to_requester") : [];
+  const hasCountryCoverage = countries.every((country) =>
+    sourceFiles.some((file) => file.ep_country_id === country.id),
+  );
   return (
     <div className="space-y-5">
       <div className="space-y-2">
@@ -305,6 +320,11 @@ function DraftEditor({
         <p className="text-xs text-muted-foreground">
           PDF, DOC, DOCX, JPG, PNG, or ZIP · up to 10 files · 100 MB total
         </p>
+        {countries.length ? (
+          <p className="text-xs text-muted-foreground">
+            Upload at least one document for every listed POA country before sending.
+          </p>
+        ) : null}
       </div>
       <label className="space-y-2 text-sm">
         <span className="font-medium">Message to requester (optional)</span>
@@ -350,7 +370,7 @@ function DraftEditor({
         {onSend ? (
           <Button
             type="button"
-            disabled={disabled || !sourceFiles.length || hasUnsavedChanges}
+            disabled={disabled || !sourceFiles.length || !hasCountryCoverage || hasUnsavedChanges}
             onClick={onSend}
           >
             <Send /> Send to requester

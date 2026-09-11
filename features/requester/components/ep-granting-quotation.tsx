@@ -74,24 +74,27 @@ function QuotationTable({
   table: ReturnType<typeof buildEpGrantingQuoteTable>;
   currency: ErpQuoteCurrencyCode;
 }) {
-  const showSubtotals = table.baseFees.length + table.translationFees.length > 1;
+  const showSubtotals = table.officialFees.length
+    + table.serviceFees.length
+    + table.translationFees.length > 1;
   return (
     <div className="overflow-x-auto px-6">
       <Table.Root size="2" variant="ghost" className="min-w-[760px] text-xs">
         <Table.Header>
           <Table.Row className="hover:bg-transparent">
             <Table.ColumnHeaderCell>Fee Category</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Fee Item</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Language / Scope</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Pricing Method</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Unit</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell justify="end">
               Amount
             </Table.ColumnHeaderCell>
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {table.baseFees.map((line, index) => (
-            <FeeRow key={`base-${index}`} line={line} />
+          {table.officialFees.map((line, index) => (
+            <FeeRow key={`official-${index}`} line={line} />
+          ))}
+          {table.serviceFees.map((line, index) => (
+            <FeeRow key={`service-${index}`} line={line} />
           ))}
           {table.translationFees.map((line, index) => (
             <FeeRow key={`translation-${index}`} line={line} />
@@ -99,20 +102,27 @@ function QuotationTable({
           {showSubtotals ? (
             <>
               <SubtotalRow
-                label="Base Fee Subtotal"
-                amount={table.baseFeeSubtotal}
+                label="Official Fee Subtotal"
+                amount={table.officialFeeSubtotal}
+                currency={currency}
+              />
+              <SubtotalRow
+                label="Service Fee Subtotal"
+                amount={table.serviceFeeSubtotal}
+                currency={currency}
               />
               {table.translationFees.length ? (
                 <SubtotalRow
                   label="Translation Fee Subtotal"
                   amount={table.translationFeeSubtotal}
+                  currency={currency}
                 />
               ) : null}
             </>
           ) : null}
           <Table.Row className="font-semibold [--table-row-box-shadow:none]">
             <Table.Cell
-              colSpan={4}
+              colSpan={2}
               className="py-3 text-right text-sm font-semibold"
             >
               Quotation Total
@@ -135,11 +145,9 @@ function FeeRow({ line }: { line: EpGrantingFeeLine }) {
   return (
     <Table.Row>
       <Table.RowHeaderCell className="font-medium">
-        {line.category}
+        {line.feeCategory}
       </Table.RowHeaderCell>
-      <Table.Cell>{line.item}</Table.Cell>
-      <Table.Cell>{line.scope}</Table.Cell>
-      <Table.Cell>{line.pricingMethod}</Table.Cell>
+      <Table.Cell>{line.unit}</Table.Cell>
       <Table.Cell justify="end" className="whitespace-nowrap">
         {line.waived ? (
           <span className="mr-2 text-muted-foreground">Waived</span>
@@ -153,17 +161,19 @@ function FeeRow({ line }: { line: EpGrantingFeeLine }) {
 function SubtotalRow({
   label,
   amount,
+  currency,
 }: {
   label: string;
   amount: number;
+  currency: ErpQuoteCurrencyCode;
 }) {
   return (
     <Table.Row className="font-semibold [--table-row-box-shadow:none]">
-      <Table.Cell colSpan={4} className="text-right">
+      <Table.Cell colSpan={2} className="text-right">
         {label}
       </Table.Cell>
       <Table.Cell justify="end" className="whitespace-nowrap">
-        {formatAmount(amount)}
+        {erpQuoteCurrencySymbol(currency)}{formatAmount(amount)}
       </Table.Cell>
     </Table.Row>
   );

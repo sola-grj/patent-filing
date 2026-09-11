@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
 
 import {
   optionalNumber,
@@ -21,9 +22,15 @@ import {
 } from "@/features/deliverables/delivery-progress";
 import { safeFileName } from "@/features/requester/server-utils";
 import { createServiceClient } from "@/lib/supabase/server";
-import { executeErpQuote } from "@/lib/eci-erp/pricing";
 import { reviseErpQuote, type CountryFeeOverride } from "@/lib/eci-erp/quote-revision";
-import type { ErpActionResult, ErpPriceRequest, ErpQuoteRow, PreparedErpEstimate } from "@/lib/eci-erp/types";
+import {
+  isErpQuoteCurrencyCode,
+  type ErpActionResult,
+  type ErpPriceRequest,
+  type ErpQuoteResult,
+  type ErpQuoteRow,
+  type PreparedErpEstimate,
+} from "@/lib/eci-erp/types";
 import { sendQuoteConfirmationEmail } from "./quote-confirmation-email";
 import { usesSingleEpDelivery } from "@/features/requester/request-paths";
 import { ensureCompletedRequestNotification } from "@/features/requester/notification-reconciliation";
@@ -113,7 +120,7 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
     const notes = requiredString(formData.get("adjustmentNotes"), "Adjustment reason");
     const { data: request, error: requestError } = await context.supabase
       .from("translation_requests")
-      .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count, claims_word_count), quotes(id, version_no, currency, estimated_delivery_at, pricing_snapshot, quote_factor_snapshots(factors))")
+      .select("id, organization_id, requester_id, workflow_stage, request_patents(description_word_count, claims_word_count), quotes(id, version_no, currency, total_amount, created_at, estimated_delivery_at, pricing_snapshot, breakdown_json, quote_factor_snapshots(factors))")
       .eq("id", requestId)
       .single();
     if (requestError) throw new Error(requestError.message);
@@ -121,25 +128,26 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
       throw new Error("Completed Requests cannot be repriced.");
     }
     const latestQuote = latestQuoteRow(request.quotes ?? []);
-    const storedRequest = erpRequestFromSnapshot(latestQuote?.pricing_snapshot)
+    const latestSnapshot = latestQuote?.breakdown_json ?? latestQuote?.pricing_snapshot;
+    const storedRequest = erpRequestFromSnapshot(latestSnapshot)
       ?? erpRequestFromSnapshot(quoteFactorSnapshot(latestQuote?.quote_factor_snapshots));
     if (!latestQuote || !storedRequest) {
       throw new Error("This Request has no ERP quotation available for revision.");
     }
     const wordAdjustment = adjustErpWordCount(
       storedRequest,
-      latestQuote.pricing_snapshot,
+      latestSnapshot,
       firstRelation(request.request_patents),
       adjustedWordCount,
     );
     const revisedRequest = wordAdjustment.request;
-    const customer = await resolveErpCustomer(request.organization_id, request.requester_id);
-    const baseQuote = await executeErpQuote({
-      request: { ...revisedRequest, clientId: customer.clientId },
-      currency: latestQuote.currency ?? "USD",
-      customerName: customer.clientName,
-      translationRequired: revisedRequest.isTranslate === 1,
-    });
+    const baseQuote = savedErpQuoteFromSnapshot(
+      latestSnapshot,
+      revisedRequest,
+      latestQuote.currency,
+      latestQuote.total_amount,
+      latestQuote.created_at,
+    );
     const countryOverrides = parseCountryOverrides(formData, baseQuote.rows);
     const revision = reviseErpQuote(baseQuote, {
       countryOverrides,
@@ -159,6 +167,7 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
         translationDiscountPercent: discountPercent,
         translationFeeBeforeDiscount: revision.translationFeeBeforeDiscount,
         translationDiscountAmount: revision.discountAmount,
+        translationDetailsAreBeforeDiscount: true,
         adjustmentNotes: notes,
         revisedBy: context.userId,
         revisedAt: new Date().toISOString(),
@@ -1006,6 +1015,83 @@ function erpRequestFromSnapshot(value: unknown): ErpPriceRequest | null {
     : null;
 }
 
+function savedErpQuoteFromSnapshot(
+  value: unknown,
+  request: ErpPriceRequest,
+  currencyValue: unknown,
+  totalValue: unknown,
+  createdAtValue: unknown,
+): ErpQuoteResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("This Request has no saved ERP pricing rows available for revision.");
+  }
+  const snapshot = value as Record<string, unknown>;
+  const rows = Array.isArray(snapshot.response)
+    ? snapshot.response.flatMap(savedErpQuoteRow)
+    : [];
+  if (!rows.length || !isErpQuoteCurrencyCode(currencyValue)) {
+    throw new Error("This Request has no saved ERP pricing rows available for revision.");
+  }
+  const total = Number(totalValue);
+  return {
+    source: "eci_erp",
+    currency: currencyValue,
+    quotedAt: typeof createdAtValue === "string" ? createdAtValue : new Date().toISOString(),
+    customerName: typeof snapshot.customerName === "string" ? snapshot.customerName : "Pat customer",
+    request,
+    response: rows,
+    rows,
+    total: Number.isFinite(total) ? total : rows.reduce((sum, row) => sum + row.total, 0),
+  };
+}
+
+function savedErpQuoteRow(value: unknown): ErpQuoteRow[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const row = value as Record<string, unknown>;
+  const countryId = Number(row.countryId);
+  const countryName = typeof row.countryName === "string" ? row.countryName : null;
+  const officialFee = Number(row.officialFee);
+  const serviceFee = Number(row.serviceFee);
+  const translationFee = Number(row.translationFee);
+  if (
+    !Number.isInteger(countryId)
+    || !countryName
+    || ![officialFee, serviceFee, translationFee].every(Number.isFinite)
+  ) {
+    return [];
+  }
+  const translationFeeDetails = Array.isArray(row.translationFeeDetails)
+    ? row.translationFeeDetails.flatMap(savedTranslationFeeDetail)
+    : [];
+  const translationFees = Object.fromEntries(
+    translationFeeDetails.map((fee) => [String(fee.languageId), fee.amount]),
+  );
+  const total = Number(row.total);
+  return [{
+    countryId,
+    countryName,
+    officialFee,
+    serviceFee,
+    translationFees,
+    translationFee,
+    translationFeeDetails,
+    total: Number.isFinite(total)
+      ? total
+      : officialFee + serviceFee + translationFee,
+  }];
+}
+
+function savedTranslationFeeDetail(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const detail = value as Record<string, unknown>;
+  const languageId = Number(detail.languageId);
+  const languageName = typeof detail.languageName === "string" ? detail.languageName : null;
+  const amount = Number(detail.amount);
+  return Number.isInteger(languageId) && languageName && Number.isFinite(amount)
+    ? [{ languageId, languageName, amount }]
+    : [];
+}
+
 export async function preparePmQuotation(formData: FormData): Promise<ErpActionResult<PreparedErpEstimate>> {
   try {
     const context = await assertPm();
@@ -1089,6 +1175,73 @@ export async function sendPmQuoteRevision(formData: FormData): Promise<ActionRes
     revalidatePmRequest(quote.request_id);
     revalidatePath(`/requester/requests/${quote.request_id}`);
     revalidatePath("/requester", "layout");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toPmErrorMessage(error) };
+  }
+}
+
+export async function resendPmQuoteRevisionEmail(
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    const context = await assertPm();
+    const supplierOrganizationId = context.organization?.id;
+    if (!supplierOrganizationId) {
+      throw new Error("Your PM account is not linked to a supplier organization.");
+    }
+    const quoteId = requiredString(formData.get("quoteId"), "Quotation");
+    const { data: quote, error: quoteError } = await context.supabase
+      .from("quotes")
+      .select("id, request_id, status, version_no, translation_requests(request_no, title, requester_id, supplier_organization_id, workflow_stage, request_patents(patent_number), quotes(id, version_no))")
+      .eq("id", quoteId)
+      .single();
+    if (quoteError) throw new Error(quoteError.message);
+
+    const request = firstRelation(quote.translation_requests);
+    if (!request || request.supplier_organization_id !== supplierOrganizationId) {
+      throw new Error("Quotation not found.");
+    }
+    const latestQuote = [...(request.quotes ?? [])]
+      .sort((left, right) => Number(right.version_no) - Number(left.version_no))[0];
+    if (quote.status !== "sent" || latestQuote?.id !== quote.id) {
+      throw new Error("Only the latest quotation awaiting customer confirmation can resend its email.");
+    }
+    if (request.workflow_stage === "completed") {
+      throw new Error("Completed Requests cannot resend quotation emails.");
+    }
+
+    const service = createServiceClient();
+    const { data: profile, error: profileError } = await service
+      .from("profiles")
+      .select("email, display_name")
+      .eq("user_id", request.requester_id)
+      .single();
+    if (profileError || !profile?.email?.trim()) {
+      throw new Error("The requester email address is missing.");
+    }
+
+    await sendQuoteConfirmationEmail({
+      recipient: profile.email,
+      recipientName: profile.display_name,
+      requestId: quote.request_id,
+      requestNo: request.request_no,
+      matter: firstRelation(request.request_patents)?.patent_number
+        ?? request.title
+        ?? request.request_no,
+      quoteId,
+      idempotencyKey: `quote-confirmation/${quoteId}/resend/${randomUUID()}`,
+    });
+    await writeRequestEvent(
+      context.supabase,
+      quote.request_id,
+      context.userId,
+      "quote.email_resent.pm",
+      null,
+      null,
+      { quoteId },
+    );
+    revalidatePmRequest(quote.request_id);
     return { success: true };
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };

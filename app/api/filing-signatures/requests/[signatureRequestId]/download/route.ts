@@ -19,7 +19,7 @@ export async function GET(
   const { data: signatureRequest, error } = await supabase
     .from("filing_signature_requests")
     .select(
-      "id, request_id, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at, ep_countries(name, abbr)), translation_requests(translation_requirements(ep_service_type_code))",
+      "id, request_id, filing_signature_files(id, direction, ep_country_id, storage_bucket, storage_path, original_filename, mime_type, file_size, uploaded_by, created_at, ep_countries(name, abbr, poa_requirement)), translation_requests(translation_requirements(ep_service_type_code))",
     )
     .eq("id", signatureRequestId)
     .maybeSingle();
@@ -27,19 +27,23 @@ export async function GET(
     return new Response("Signature request not found.", { status: 404 });
   }
 
-  const files = (signatureRequest.filing_signature_files ?? [])
-    .filter((file) => file.direction === direction);
-  if (!files.length) {
-    return new Response("No files are available for download.", { status: 404 });
-  }
-
-  const zip = new JSZip();
   const parentRequest = firstRelation(signatureRequest.translation_requests);
   const requirement = firstRelation(parentRequest?.translation_requirements);
   const countryScoped = [
     "traditional_validation",
     "traditional_validation_unitary_patent",
   ].includes(requirement?.ep_service_type_code ?? "");
+  const files = (signatureRequest.filing_signature_files ?? [])
+    .filter((file) => file.direction === direction)
+    .filter((file) => {
+      if (!countryScoped || file.ep_country_id === null) return true;
+      return firstRelation(file.ep_countries)?.poa_requirement !== "not_required";
+    });
+  if (!files.length) {
+    return new Response("No files are available for download.", { status: 404 });
+  }
+
+  const zip = new JSZip();
   for (const file of files) {
     const { data, error: downloadError } = await supabase.storage
       .from(file.storage_bucket)

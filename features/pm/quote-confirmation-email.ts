@@ -11,6 +11,7 @@ export async function sendQuoteConfirmationEmail(input: {
   requestNo: string;
   matter: string;
   quoteId: string;
+  idempotencyKey?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
@@ -25,7 +26,7 @@ export async function sendQuoteConfirmationEmail(input: {
     subject,
     html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#17211b;max-width:640px;margin:auto"><p>Hi ${greeting},</p><p>Your project manager has prepared a revised quotation for <strong>${escapeHtml(input.requestNo)}</strong> — ${escapeHtml(input.matter)}.</p><p>Please review and confirm it in Pat before work can continue.</p><p style="margin:28px 0"><a href="${portalUrl}" style="background:#315d46;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none">Review quotation</a></p><p style="font-size:13px;color:#66756d">This is an automated message from Pat.</p></div>`,
     text: `Hi ${input.recipientName?.trim() || "there"},\n\nYour project manager has prepared a revised quotation for ${input.requestNo} — ${input.matter}.\n\nPlease review and confirm it in Pat before work can continue:\n${portalUrl}\n\nThis is an automated message from Pat.`,
-  }, { idempotencyKey: `quote-confirmation/${input.quoteId}` });
+  }, { idempotencyKey: input.idempotencyKey ?? `quote-confirmation/${input.quoteId}` });
   if (error) throw new Error(error.message);
   if (!data?.id) throw new Error("Resend did not return an email identifier.");
   return data.id;

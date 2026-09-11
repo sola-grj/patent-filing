@@ -3,6 +3,7 @@ import type { PmQuoteRevisionRow } from "./actions";
 export type RevisionQuote = {
   id?: string;
   status?: string | null;
+  notes?: string | null;
   currency?: string | null;
   breakdown_json?: unknown;
   pricing_snapshot?: unknown;
@@ -14,7 +15,21 @@ export function revisionRows(quote: RevisionQuote | null): PmQuoteRevisionRow[] 
     ? (snapshot as { response?: unknown }).response
     : null;
   if (!Array.isArray(response)) return [];
-  return response.flatMap((row) => parseRevisionRow(row));
+  const rows = response.flatMap((row) => parseRevisionRow(row));
+  const revision = quoteRevision(quote);
+  const discount = Number(revision?.translationDiscountPercent);
+  if (
+    !Number.isFinite(discount)
+    || discount <= 0
+    || discount >= 100
+    || revision?.translationDetailsAreBeforeDiscount === true
+  ) {
+    return rows;
+  }
+  return reconcileTranslationTotal(
+    rows.map((row) => restoreRowTranslationBeforeDiscount(row, discount)),
+    Number(revision.translationFeeBeforeDiscount),
+  );
 }
 
 export function adjustedWordCount(
@@ -42,19 +57,13 @@ export function translationFeeBeforeDiscount(quote: RevisionQuote | null) {
 export function revisionTotals(
   rows: PmQuoteRevisionRow[],
   discountValue: string,
-  translationFeesAreDiscounted: boolean,
-  savedTranslationFeeBeforeDiscount: number | null,
 ) {
   const officialFee = rows.reduce((sum, row) => sum + row.officialFee, 0);
   const serviceFee = rows.reduce((sum, row) => sum + row.serviceFee, 0);
   const rowTranslationFee = rows.reduce((sum, row) => sum + row.translationFee, 0);
   const discount = Math.min(100, Math.max(0, Number(discountValue) || 0));
-  const translationBeforeDiscount = translationFeesAreDiscounted
-    ? savedTranslationFeeBeforeDiscount ?? restoreDiscount(rowTranslationFee, discount)
-    : rowTranslationFee;
-  const translationFee = translationFeesAreDiscounted
-    ? rowTranslationFee
-    : roundMoney(translationBeforeDiscount * (1 - discount / 100));
+  const translationBeforeDiscount = rowTranslationFee;
+  const translationFee = roundMoney(translationBeforeDiscount * (1 - discount / 100));
   return {
     officialFee,
     serviceFee,
@@ -108,13 +117,16 @@ function parseRevisionRow(row: unknown): PmQuoteRevisionRow[] {
   if (!Number.isInteger(countryId) || !countryName || ![officialFee, serviceFee, translationFee].every(Number.isFinite)) {
     return [];
   }
+  const translationFeeDetails = parseTranslationFeeDetails(value.translationFeeDetails);
   return [{
     countryId,
     countryName,
     officialFee,
     serviceFee,
-    translationFee,
-    translationFeeDetails: parseTranslationFeeDetails(value.translationFeeDetails),
+    translationFee: translationFeeDetails.length
+      ? roundMoney(translationFeeDetails.reduce((sum, fee) => sum + fee.amount, 0))
+      : translationFee,
+    translationFeeDetails,
   }];
 }
 
@@ -142,8 +154,46 @@ function quoteRevision(quote: RevisionQuote | null) {
     : null;
 }
 
+function restoreRowTranslationBeforeDiscount(row: PmQuoteRevisionRow, discount: number) {
+  const translationFeeDetails = row.translationFeeDetails.map((fee) => ({
+    ...fee,
+    amount: restoreDiscount(fee.amount, discount),
+  }));
+  return {
+    ...row,
+    translationFeeDetails,
+    translationFee: translationFeeDetails.length
+      ? roundMoney(translationFeeDetails.reduce((sum, fee) => sum + fee.amount, 0))
+      : restoreDiscount(row.translationFee, discount),
+  };
+}
+
 function restoreDiscount(value: number, discount: number) {
-  return discount < 100 ? roundMoney(value / (1 - discount / 100)) : value;
+  return roundMoney(value / (1 - discount / 100));
+}
+
+function reconcileTranslationTotal(rows: PmQuoteRevisionRow[], expectedTotal: number) {
+  if (!Number.isFinite(expectedTotal) || expectedTotal < 0 || !rows.length) return rows;
+  const actualTotal = roundMoney(rows.reduce((sum, row) => sum + row.translationFee, 0));
+  const adjustment = roundMoney(expectedTotal - actualTotal);
+  if (!adjustment) return rows;
+  const lastIndex = rows.length - 1;
+  return rows.map((row, index) => {
+    if (index !== lastIndex) return row;
+    const details = [...row.translationFeeDetails];
+    if (details.length) {
+      const detailIndex = details.length - 1;
+      details[detailIndex] = {
+        ...details[detailIndex],
+        amount: roundMoney(details[detailIndex].amount + adjustment),
+      };
+    }
+    return {
+      ...row,
+      translationFeeDetails: details,
+      translationFee: roundMoney(row.translationFee + adjustment),
+    };
+  });
 }
 
 function roundMoney(value: number) {

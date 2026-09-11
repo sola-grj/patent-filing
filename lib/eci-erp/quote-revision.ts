@@ -62,13 +62,11 @@ function reviseRow(
     row.translationFeeDetails,
     override?.translationFee,
     override?.translationFees,
-  ).map((fee) => ({
-    ...fee,
-    amount: roundMoney(fee.amount * (1 - discountRate)),
-  }));
-  const translationFee = override?.translationFee !== undefined && !translationFeeDetails.length
-    ? roundMoney(override.translationFee * (1 - discountRate))
+  );
+  const translationFeeBeforeDiscount = override?.translationFee !== undefined && !translationFeeDetails.length
+    ? override.translationFee
     : sumMoney(translationFeeDetails.map((fee) => fee.amount));
+  const translationFee = roundMoney(translationFeeBeforeDiscount * (1 - discountRate));
   return {
     ...row,
     officialFee,

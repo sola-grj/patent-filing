@@ -25,6 +25,8 @@ test("applies country overrides before a translation-only percentage discount", 
   assert.equal(result.quote.rows[1].serviceFee, 45);
   assert.equal(result.quote.rows[0].translationFee, 27);
   assert.equal(result.quote.rows[1].translationFee, 36);
+  assert.deepEqual(result.quote.rows[0].translationFeeDetails.map((fee) => fee.amount), [30]);
+  assert.deepEqual(result.quote.rows[1].translationFeeDetails.map((fee) => fee.amount), [40]);
   assert.equal(result.translationFeeBeforeDiscount, 70);
   assert.equal(result.discountAmount, 7);
   assert.equal(result.quote.total, 348);
@@ -46,7 +48,7 @@ test("allows a PM to override the pre-discount translate fee", () => {
   });
 
   assert.equal(result.quote.rows[0].translationFee, 72);
-  assert.equal(result.quote.rows[0].translationFeeDetails[0].amount, 72);
+  assert.equal(result.quote.rows[0].translationFeeDetails[0].amount, 80);
   assert.equal(result.translationFeeBeforeDiscount, 80);
   assert.equal(result.quote.total, 222);
 });
@@ -78,7 +80,7 @@ test("allows EP Granting translation fees to be revised per language", () => {
     translationDiscountPercent: 10,
   });
 
-  assert.deepEqual(result.quote.rows[0].translationFeeDetails.map((fee) => fee.amount), [126, 108]);
+  assert.deepEqual(result.quote.rows[0].translationFeeDetails.map((fee) => fee.amount), [140, 120]);
   assert.equal(result.translationFeeBeforeDiscount, 260);
   assert.equal(result.quote.rows[0].translationFee, 234);
   assert.equal(result.quote.total, 298.94);
