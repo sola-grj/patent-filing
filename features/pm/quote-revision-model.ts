@@ -17,7 +17,8 @@ export function revisionRows(quote: RevisionQuote | null): PmQuoteRevisionRow[] 
   if (!Array.isArray(response)) return [];
   const rows = response.flatMap((row) => parseRevisionRow(row));
   const revision = quoteRevision(quote);
-  const discount = Number(revision?.translationDiscountPercent);
+  if (!revision) return rows;
+  const discount = Number(revision.translationDiscountPercent);
   if (
     !Number.isFinite(discount)
     || discount <= 0
