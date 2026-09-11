@@ -111,6 +111,7 @@ export async function generatePmQuote(formData: FormData): Promise<ActionResult>
 export async function revisePmQuotation(formData: FormData): Promise<ActionResult<{ quoteId: string }>> {
   try {
     const context = await assertPm();
+    if (!context.isPm) throw new Error("Only a PM can revise quotations.");
     const requestId = requiredString(formData.get("requestId"), "Request");
     const adjustedWordCount = requiredNonNegativeInteger(
       formData.get("adjustedWordCount") ?? formData.get("descriptionWordCount"),
@@ -195,7 +196,7 @@ export async function revisePmQuotation(formData: FormData): Promise<ActionResul
       },
     );
     if (revisionError) throw new Error(revisionError.message);
-    await writeRequestEvent(context.supabase, requestId, context.userId, "quote.revised.pm", request.workflow_stage, "negotiation", {
+    await writeRequestEvent(context.supabase, requestId, context.userId, "quote.revised.pm", request.workflow_stage, request.workflow_stage, {
       quoteId,
       translationDiscountPercent: discountPercent,
       ...wordAdjustment.event,
@@ -632,7 +633,6 @@ export async function startTranslationTaskFromPm(
         order_id: order.id,
         request_file_id: file.id,
         assigned_pm_id: context.userId,
-        assigned_translator_id: null,
         task_type: "translation" as const,
         status: "in_progress" as const,
         started_at: now,
@@ -1139,9 +1139,12 @@ export async function preparePmQuotation(formData: FormData): Promise<ErpActionR
   }
 }
 
-export async function sendPmQuoteRevision(formData: FormData): Promise<ActionResult> {
+export async function sendPmQuoteRevision(
+  formData: FormData,
+): Promise<ActionResult<{ warning?: string }>> {
   try {
     const context = await assertPm();
+    if (!context.isPm) throw new Error("Only a PM can send quotation changes.");
     const quoteId = requiredString(formData.get("quoteId"), "Quotation");
     const { data: quote, error: quoteError } = await context.supabase
       .from("quotes")
@@ -1151,31 +1154,37 @@ export async function sendPmQuoteRevision(formData: FormData): Promise<ActionRes
     if (quoteError) throw new Error(quoteError.message);
     if (quote.status !== "draft") throw new Error("Only a saved draft quotation can be sent.");
 
-    const service = createServiceClient();
     const request = firstRelation(quote.translation_requests);
     if (!request) throw new Error("Request not found.");
-    const { data: profile, error: profileError } = await service
-      .from("profiles")
-      .select("email, display_name")
-      .eq("user_id", request.requester_id)
-      .single();
-    if (profileError || !profile?.email?.trim()) throw new Error("The requester email address is missing.");
-
     const { error: sendError } = await context.supabase.rpc("send_pm_quote_revision", { p_quote_id: quoteId });
     if (sendError) throw new Error(sendError.message);
-    await sendQuoteConfirmationEmail({
-      recipient: profile.email,
-      recipientName: profile.display_name,
-      requestId: quote.request_id,
-      requestNo: request.request_no,
-      matter: firstRelation(request.request_patents)?.patent_number ?? request.title ?? request.request_no,
-      quoteId,
-    });
-    await writeRequestEvent(context.supabase, quote.request_id, context.userId, "quote.sent.pm", "quoted", "quoted", { quoteId });
+
+    let warning: string | undefined;
+    try {
+      const service = createServiceClient();
+      const { data: profile, error: profileError } = await service
+        .from("profiles")
+        .select("email, display_name")
+        .eq("user_id", request.requester_id)
+        .single();
+      if (profileError || !profile?.email?.trim()) {
+        throw new Error("The requester email address is missing.");
+      }
+      await sendQuoteConfirmationEmail({
+        recipient: profile.email,
+        recipientName: profile.display_name,
+        requestId: quote.request_id,
+        requestNo: request.request_no,
+        matter: firstRelation(request.request_patents)?.patent_number ?? request.title ?? request.request_no,
+        quoteId,
+      });
+    } catch (emailError) {
+      warning = `The quotation was sent in Pat, but the email failed: ${toPmErrorMessage(emailError)}`;
+    }
     revalidatePmRequest(quote.request_id);
     revalidatePath(`/requester/requests/${quote.request_id}`);
     revalidatePath("/requester", "layout");
-    return { success: true };
+    return { success: true, data: warning ? { warning } : {} };
   } catch (error) {
     return { success: false, error: toPmErrorMessage(error) };
   }

@@ -204,8 +204,7 @@ async function setBlacklistState(
   const { error } = await service.from("organization_members").upsert({
     organization_id: organizationId,
     user_id: userId,
-    role: "requester",
-    is_org_admin: true,
+    role: "requester_admin",
   }, { onConflict: "organization_id,user_id,role" });
   if (error) throw new Error("Unable to restore the customer membership.");
 }

@@ -18,9 +18,13 @@ import {
   resendPmQuoteRevisionEmail,
   sendPmQuoteRevision,
 } from "@/features/pm/actions";
+import { submitQuoteRevisionApproval } from "@/features/pm/actions/approvals";
 
-export function PmQuoteSendAction({ quoteId, status }: { quoteId?: string; status?: string | null }) {
+type QuoteApproval = { id: string; status: string; decision_reason?: string | null; sent_at?: string | null };
+
+export function PmQuoteSendAction({ quoteId, status, approval }: { quoteId?: string; status?: string | null; approval?: QuoteApproval | null }) {
   const [error, setError] = useState<string | null>(null);
+  const [completedWithWarning, setCompletedWithWarning] = useState<"submitted" | "sent" | null>(null);
   const [isPending, startTransition] = useTransition();
   if (!quoteId || status !== "draft") return null;
   const draftQuoteId = quoteId;
@@ -31,8 +35,49 @@ export function PmQuoteSendAction({ quoteId, status }: { quoteId?: string; statu
       formData.set("quoteId", draftQuoteId);
       const result = await sendPmQuoteRevision(formData);
       setError(result.error ?? null);
-      if (result.success) window.location.reload();
+      if (result.success && result.data?.warning) {
+        setError(result.data.warning);
+        setCompletedWithWarning("sent");
+      } else if (result.success) window.location.reload();
     });
+  }
+
+  function submit() {
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set("quoteId", draftQuoteId);
+      const result = await submitQuoteRevisionApproval(formData);
+      setError(result.error ?? result.data?.warning ?? null);
+      if (result.success && result.data?.warning) {
+        setCompletedWithWarning("submitted");
+      } else if (result.success) window.location.reload();
+    });
+  }
+
+  if (completedWithWarning) {
+    return (
+      <div className="flex items-center gap-2">
+        <p className="max-w-80 text-right text-xs text-amber-700">{error}</p>
+        <Button type="button" className="min-w-48" disabled>
+          {completedWithWarning === "sent" ? "Sent" : "Pending approval"}
+        </Button>
+      </div>
+    );
+  }
+
+  if (approval?.status === "pending") {
+    return <Button type="button" className="min-w-48" disabled>Pending approval</Button>;
+  }
+
+  if (approval?.status !== "approved") {
+    return (
+      <div className="flex items-center gap-2">
+        {error ? <p className="max-w-72 text-right text-xs text-destructive">{error}</p> : null}
+        <Button type="button" className="min-w-48" disabled={isPending} onClick={submit}>
+          {isPending ? "Submitting..." : approval?.status === "rejected" ? "Resubmit" : "Submit"}
+        </Button>
+      </div>
+    );
   }
 
   return (

@@ -1,6 +1,6 @@
 import { requirePortalContext } from "@/lib/auth/portal-context";
 
-export const staffRoles = ["pm", "ops", "admin"] as const;
+export const staffRoles = ["pm", "pm_admin", "super_admin"] as const;
 export type StaffRole = (typeof staffRoles)[number];
 
 export async function getPmContext() {
@@ -14,8 +14,11 @@ export async function getPmContext() {
     email: portalContext.email,
     organization,
     membership: staffMembership,
-    isStaff: Boolean(staffMembership),
-    isSupplierAdmin: staffMembership?.role === "admin",
+    effectiveRole: portalContext.effectiveRole,
+    isStaff: Boolean(staffMembership) || portalContext.isSuperAdmin,
+    isPm: staffMembership?.role === "pm" && !portalContext.isSuperAdmin,
+    isSupplierAdmin: staffMembership?.role === "pm_admin" || portalContext.isSuperAdmin,
+    isSuperAdmin: portalContext.isSuperAdmin,
   };
 }
 

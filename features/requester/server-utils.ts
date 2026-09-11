@@ -22,7 +22,7 @@ export async function getRequesterOrganization() {
     membership,
     supplierOrganizationId: membership?.supplier_organization_id ?? null,
     requestSharingEnabled: membership?.request_sharing_enabled ?? false,
-    isOrgAdmin: membership?.is_org_admin ?? false,
+    isOrgAdmin: membership?.role === "requester_admin" || context.isSuperAdmin,
   };
 }
 

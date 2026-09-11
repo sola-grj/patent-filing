@@ -38,6 +38,7 @@ import { PmHeader } from "./pm-header";
 import { PmPatentInfo, type PmRequestPatent } from "./pm-patent-info";
 import { PmQuoteSheet } from "./pm-quote-sheet";
 import { PmQuoteRevisionDialog } from "./pm-quote-revision-form";
+import { PmQuoteApprovalStatus } from "./pm-quote-approval-status";
 import { PmRequestHeaderAction } from "./pm-request-header-action";
 import { PmRequestOverview } from "./pm-request-overview";
 
@@ -139,7 +140,6 @@ type Order = {
   translation_tasks?: Array<{
     id: string;
     request_file_id?: string | null;
-    assigned_translator_id?: string | null;
     status?: string | null;
     task_type?: string | null;
     started_at?: string | null;
@@ -193,15 +193,25 @@ type PmRequestDetailProps = {
     }> | null;
   };
   currentUserId: string | null;
+  effectiveRole?: string;
+  approvalRequests?: Array<{
+    id: string; subject_id: string; status: string; submitted_by: string;
+    submitted_at: string; reviewed_by?: string | null; reviewed_at?: string | null;
+    decision_reason?: string | null; sent_at?: string | null;
+  }>;
 };
 
 export function PmRequestDetail({
   request,
   currentUserId,
+  effectiveRole,
+  approvalRequests = [],
 }: PmRequestDetailProps) {
   const organization = firstRelation(request.organizations);
   const requirement = firstRelation(request.translation_requirements);
   const latestQuote = latestBy(request.quotes ?? [], "version_no");
+  const latestQuoteApproval = approvalRequests.find((approval) => approval.subject_id === latestQuote?.id);
+  const canReviseQuote = effectiveRole === "pm";
   const hasPendingQuoteConfirmation = (request.quotes ?? []).some((quote) => quote.status === "sent");
   const patent = firstRelation(request.request_patents);
   const patentCandidate = firstRelation(
@@ -316,7 +326,7 @@ export function PmRequestDetail({
                   isEpGranting={config.epServiceType === "ep_granting"}
                   isUnitaryPatent={config.epServiceType === "unitary_patent"}
                   translationRequired={config.translationRequired}
-                  editAction={(
+                  editAction={canReviseQuote ? (
                     <PmQuoteRevisionDialog
                       key="pm-quote-revision-dialog"
                       quote={latestQuote}
@@ -326,8 +336,13 @@ export function PmRequestDetail({
                       isUnitaryPatent={config.epServiceType === "unitary_patent"}
                       requestId={request.id}
                       requestStage={request.workflow_stage}
+                      approval={latestQuoteApproval}
                     />
-                  )}
+                  ) : null}
+                />
+                <PmQuoteApprovalStatus
+                  approval={latestQuoteApproval}
+                  canReview={effectiveRole === "pm_admin" || effectiveRole === "super_admin"}
                 />
                 {SHOW_NEGOTIATION_HISTORY ? (
                   negotiationHistory.length ? (

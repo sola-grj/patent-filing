@@ -44,6 +44,8 @@ async function PmRequestDetailContent({
     <PmRequestDetail
       request={result.request}
       currentUserId={result.currentUserId}
+      effectiveRole={result.effectiveRole}
+      approvalRequests={result.approvalRequests}
     />
   );
 }

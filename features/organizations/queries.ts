@@ -4,18 +4,19 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 export async function getSupplierCustomers() {
   const context = await requirePmContext();
-  if (context.denied || !context.organization) {
+  if (context.denied || !context.organization || !context.isSupplierAdmin) {
     return { denied: true as const, isAdmin: false, customers: [] };
   }
 
-  const { data, error } = await context.supabase
+  let query = context.supabase
     .from("customer_supplier_relationships")
     .select(
       "customer_organization_id, started_at, customer:organizations!customer_supplier_relationships_customer_organization_id_fkey(id, name, type, customer_organization_settings(request_sharing_enabled))",
     )
-    .eq("supplier_organization_id", context.organization.id)
     .eq("status", "active")
     .order("started_at", { ascending: false });
+  if (!context.isSuperAdmin) query = query.eq("supplier_organization_id", context.organization.id);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   return {
@@ -38,13 +39,13 @@ export async function getSupplierCustomer(organizationId: string) {
     return { denied: true as const, customer: null };
   }
 
-  const { data: relationship, error: relationshipError } = await context.supabase
+  let relationshipQuery = context.supabase
     .from("customer_supplier_relationships")
     .select("customer_organization_id")
     .eq("customer_organization_id", organizationId)
-    .eq("supplier_organization_id", context.organization.id)
-    .eq("status", "active")
-    .maybeSingle();
+    .eq("status", "active");
+  if (!context.isSuperAdmin) relationshipQuery = relationshipQuery.eq("supplier_organization_id", context.organization.id);
+  const { data: relationship, error: relationshipError } = await relationshipQuery.maybeSingle();
   if (relationshipError) throw new Error(relationshipError.message);
   if (!relationship) return { denied: true as const, customer: null };
 
@@ -89,12 +90,12 @@ async function loadOrganization(
         .single(),
       supabase
         .from("organization_members")
-        .select("user_id, role, is_org_admin, created_at")
+        .select("user_id, role, created_at")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: true }),
       supabase
         .from("organization_invitations")
-        .select("id, email, invited_as_admin, status, expires_at, created_at")
+        .select("id, email, invited_role, status, expires_at, created_at")
         .eq("organization_id", organizationId)
         .order("created_at", { ascending: false }),
       supabase

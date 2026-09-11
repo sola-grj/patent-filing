@@ -151,7 +151,6 @@ type Order = {
   id: string;
   assignment_contacts?: {
     pm_names?: string | null;
-    linguist_names?: string | null;
   } | null;
   translation_tasks?: Array<{
     id: string;

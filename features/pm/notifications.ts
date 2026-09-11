@@ -2,6 +2,9 @@ export const pmNotificationTypes = [
   "pm_request_submitted",
   "pm_quote_confirmed",
   "pm_signed_documents_received",
+  "pm_quote_revision_approval_requested",
+  "pm_quote_revision_approved",
+  "pm_quote_revision_rejected",
 ] as const;
 
 export type PmNotificationType = (typeof pmNotificationTypes)[number];
@@ -41,6 +44,15 @@ export function toPmNotificationItem(row: PmNotificationRow): PmNotificationItem
     const version = numberValue(payload.quoteVersion);
     return item(row, "Quotation confirmed", context, version ? `Quotation v${version}` : requestNo, payload);
   }
+  if (row.type === "pm_quote_revision_approval_requested") {
+    return item(row, "Quotation change approval required", context, requestNo, payload);
+  }
+  if (row.type === "pm_quote_revision_approved") {
+    return item(row, "Quotation change approved", context, "Ready to send", payload);
+  }
+  if (row.type === "pm_quote_revision_rejected") {
+    return item(row, "Quotation change rejected", context, stringValue(payload.reason) ?? "Revision required", payload);
+  }
   const count = numberValue(payload.fileCount) ?? 0;
   return item(row, "Signed documents received", context, `${count} ${count === 1 ? "file" : "files"}`, payload);
 }
@@ -65,6 +77,7 @@ function item(
 }
 
 function safePmHref(value: unknown, requestId: unknown) {
+  if (value === "/pm/approvals") return value;
   if (typeof value === "string" && /^\/pm\/[0-9a-f-]+(?:[?#].*)?$/i.test(value)) return value;
   if (typeof requestId === "string" && /^[0-9a-f-]+$/i.test(requestId)) return `/pm/${requestId}`;
   return "/pm";

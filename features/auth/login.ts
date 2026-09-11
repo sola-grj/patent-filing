@@ -43,15 +43,33 @@ async function prepareErpTokenCache() {
 
 async function resolveClientEmail(clientName: string) {
   const service = createServiceClient();
+  const normalizedLogin = normalizeLogin(clientName);
   const { data, error } = await service
     .from("eci_erp_customers")
     .select("auth_user_id")
-    .eq("normalized_login", normalizeLogin(clientName))
+    .eq("normalized_login", normalizedLogin)
     .eq("is_black", false)
     .is("sync_error", null);
-  if (error || data?.length !== 1 || !data[0].auth_user_id) return null;
+
+  if (error) return null;
+  let authUserId = data?.length === 1 ? data[0].auth_user_id : null;
+
+  const clientIdAlias = normalizedLogin.match(/^client(\d+)$/)?.[1];
+  if (!authUserId && clientIdAlias) {
+    const { data: aliasData, error: aliasError } = await service
+      .from("eci_erp_customers")
+      .select("auth_user_id")
+      .eq("client_id", Number(clientIdAlias))
+      .eq("is_black", false)
+      .is("sync_error", null)
+      .maybeSingle();
+    if (aliasError) return null;
+    authUserId = aliasData?.auth_user_id ?? null;
+  }
+
+  if (!authUserId) return null;
   const { data: authData, error: authError } = await service.auth.admin.getUserById(
-    data[0].auth_user_id,
+    authUserId,
   );
   return authError ? null : authData.user?.email ?? null;
 }

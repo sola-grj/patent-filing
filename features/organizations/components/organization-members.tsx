@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 
 type OrganizationMember = {
   user_id: string;
-  is_org_admin: boolean;
+  role: string;
   created_at: string;
   profile: { display_name: string | null; email: string | null } | null;
 };
@@ -10,7 +10,7 @@ type OrganizationMember = {
 type OrganizationInvitation = {
   id: string;
   email: string;
-  invited_as_admin: boolean;
+  invited_role: string;
   status: string;
   expires_at: string;
 };
@@ -33,7 +33,7 @@ export function OrganizationMembers({
                 <p className="text-sm font-medium">{member.profile?.display_name || member.profile?.email || "Member"}</p>
                 {member.profile?.display_name && visibleEmail(member.profile.email) ? <p className="text-xs text-muted-foreground">{member.profile.email}</p> : null}
               </div>
-              <Badge variant="outline">{member.is_org_admin ? "Customer admin" : "Member"}</Badge>
+              <Badge variant="outline">{member.role === "requester_admin" ? "Customer admin" : "Member"}</Badge>
             </div>
           ))}
           {!members.length ? <p className="py-4 text-sm text-muted-foreground">No members yet.</p> : null}
@@ -48,7 +48,7 @@ export function OrganizationMembers({
                 <p className="text-sm font-medium">{invitation.email}</p>
                 <p className="text-xs text-muted-foreground">Expires {new Date(invitation.expires_at).toLocaleString("en-US", { timeZone: "UTC" })} UTC</p>
               </div>
-              <Badge variant="outline">{invitation.status}{invitation.invited_as_admin ? " · Admin" : ""}</Badge>
+              <Badge variant="outline">{invitation.status}{invitation.invited_role === "requester_admin" ? " · Admin" : ""}</Badge>
             </div>
           ))}
           {!invitations.length ? <p className="py-4 text-sm text-muted-foreground">No invitations yet.</p> : null}

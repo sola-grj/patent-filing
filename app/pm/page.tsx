@@ -70,7 +70,7 @@ async function PmDashboardContent({
   return (
     <div className="flex h-full min-h-0 flex-col gap-5 overflow-hidden">
       <PmHeader
-        title="Operations workspace"
+        title="PM workspace"
         description="Manage patent translation requests from quote preparation through production start."
       />
       <PmRequestFilterForm

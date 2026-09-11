@@ -8,7 +8,6 @@ import { PmStartTaskForm } from "./pm-start-task-form";
 type TranslationTask = {
   id: string;
   request_file_id?: string | null;
-  assigned_translator_id?: string | null;
   status?: string | null;
   task_type?: string | null;
   started_at?: string | null;

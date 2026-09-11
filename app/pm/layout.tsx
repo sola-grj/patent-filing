@@ -16,6 +16,7 @@ function getPmNavLinks(isSupplierAdmin: boolean) {
     ? [
         ...pmBaseNavLinks.slice(0, 2),
         { href: "/pm/customers", label: "Customers" },
+        { href: "/pm/approvals", label: "Approvals" },
         ...pmBaseNavLinks.slice(2),
       ]
     : pmBaseNavLinks;
@@ -38,7 +39,9 @@ async function PmShell({ children }: { children: React.ReactNode }) {
   if (context.passwordSetupRequired) {
     redirect("/auth/update-password?next=/pm");
   }
-  const pmNavLinks = getPmNavLinks(context.staffMembership?.role === "admin");
+  const pmNavLinks = getPmNavLinks(
+    context.staffMembership?.role === "pm_admin" || context.isSuperAdmin,
+  );
   return (
     <main className="fixed inset-0 grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background">
       <Suspense fallback={<AppTopNavFallback links={pmNavLinks} notificationHref="/pm/messages" />}>

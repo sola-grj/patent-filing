@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
-const PM_LANDING_ROLES = new Set(["pm", "ops", "admin"]);
+const PM_LANDING_ROLES = new Set(["pm", "pm_admin", "super_admin"]);
 
 export type AppLandingPath = "/pm" | "/requester";
 

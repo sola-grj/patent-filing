@@ -41,6 +41,7 @@ export function PmQuoteRevisionDialog({
   isUnitaryPatent = false,
   requestId,
   requestStage,
+  approval,
 }: {
   quote: RevisionQuote | null;
   claimWordCount: number;
@@ -49,6 +50,7 @@ export function PmQuoteRevisionDialog({
   isUnitaryPatent?: boolean;
   requestId: string;
   requestStage?: string | null;
+  approval?: { id: string; status: string; decision_reason?: string | null; sent_at?: string | null } | null;
 }) {
   const [open, setOpen] = useState(false);
   const [draftQuoteId, setDraftQuoteId] = useState(
@@ -60,6 +62,7 @@ export function PmQuoteRevisionDialog({
   const latestDiscountPercent = translationDiscountPercent(quote);
   const isCompleted = requestStage === "completed";
   const isPendingConfirmation = quote?.status === "sent";
+  const isApprovalLocked = approval?.status === "pending";
   const canResendEmail = isPendingConfirmation && !isCompleted;
   const cannotRevise = !quote || !rows.length || !Number.isInteger(sourceWordCount) || sourceWordCount < 0;
   const disabled = isCompleted || (!isPendingConfirmation && cannotRevise);
@@ -82,7 +85,7 @@ export function PmQuoteRevisionDialog({
           <DialogDescription>
             {isPendingConfirmation
               ? "This quotation is read-only while the requester reviews it. You can resend the email reminder below."
-              : "Save the revision for review. You can send it to the Request creator only after PM confirmation."}
+              : "Save the revision for administrator review. You can send it to the Request creator only after approval."}
           </DialogDescription>
         </DialogHeader>
         <PmQuoteRevisionFormFields
@@ -94,9 +97,10 @@ export function PmQuoteRevisionDialog({
           isEpGranting={isEpGranting}
           isUnitaryPatent={isUnitaryPatent}
           draftQuoteId={draftQuoteId}
-          readOnly={isPendingConfirmation}
+          readOnly={isPendingConfirmation || isApprovalLocked}
           resendQuoteId={canResendEmail ? quote?.id : undefined}
           initialAdjustmentReason={quote?.notes ?? ""}
+          approval={approval}
           onSavedQuote={setDraftQuoteId}
         />
       </DialogContent>
@@ -117,6 +121,7 @@ export function PmQuoteRevisionFormFields({
   readOnly = false,
   resendQuoteId,
   onSavedQuote,
+  approval,
 }: {
   adjustedWordCount: number;
   currency: string;
@@ -130,6 +135,7 @@ export function PmQuoteRevisionFormFields({
   readOnly?: boolean;
   resendQuoteId?: string;
   onSavedQuote: (quoteId: string) => void;
+  approval?: { id: string; status: string; decision_reason?: string | null; sent_at?: string | null } | null;
 }) {
   const [state, formAction, isPending] = useActionState(revisePmQuotationFormState, initialState);
   const [adjustedRows, setAdjustedRows] = useState(rows);
@@ -142,6 +148,9 @@ export function PmQuoteRevisionFormFields({
     () => revisionTotals(adjustedRows, discountPercent),
     [adjustedRows, discountPercent],
   );
+  const actionApproval = state.success && approval?.status === "approved"
+    ? { ...approval, status: "cancelled" }
+    : approval;
 
   useEffect(() => {
     if (state.success && state.data?.quoteId) {
@@ -211,9 +220,11 @@ export function PmQuoteRevisionFormFields({
       </fieldset>
       {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
       {calculationError ? <p role="alert" className="text-sm text-destructive">{calculationError}</p> : null}
-      {state.success && !hasUnsavedChanges ? <p className="text-sm text-emerald-700">Revision saved as a draft. Review it, then send it to the requester.</p> : null}
-      <div className={`flex flex-wrap items-center gap-3 border-t pt-4 ${readOnly ? "justify-start" : "justify-end"}`}>
+      {state.success && !hasUnsavedChanges ? <p className="text-sm text-emerald-700">Revision saved as a draft. Submit it for approval when ready.</p> : null}
+      {approval?.status === "rejected" && approval.decision_reason ? <p className="text-sm text-destructive">Rejected: {approval.decision_reason}</p> : null}
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
         {readOnly && resendQuoteId ? <PmQuoteResendAction quoteId={resendQuoteId} /> : null}
+        {readOnly && draftQuoteId && actionApproval ? <PmQuoteSendAction quoteId={draftQuoteId} status="draft" approval={actionApproval} /> : null}
         {!readOnly ? <>
         <Button type="button" variant="outline" className="min-w-44" disabled={isPending || isCalculating} onClick={() => {
           if (!formRef.current || !reportCalculationValidity(formRef.current)) return;
@@ -237,7 +248,7 @@ export function PmQuoteRevisionFormFields({
           });
         }}>{isCalculating ? "Calculating quotation..." : "Calculate quotation"}</Button>
         <Button type="submit" className="min-w-48" disabled={isPending || !hasUnsavedChanges}>{isPending ? "Saving quotation..." : "Save revised quotation"}</Button>
-        {draftQuoteId ? <PmQuoteSendAction quoteId={draftQuoteId} status="draft" /> : null}
+        {draftQuoteId && !hasUnsavedChanges ? <PmQuoteSendAction quoteId={draftQuoteId} status="draft" approval={actionApproval} /> : null}
         </> : null}
       </div>
     </form>

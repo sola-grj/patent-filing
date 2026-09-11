@@ -296,7 +296,6 @@ type QuoteRow = {
 
 type OrderAssignmentContacts = {
   pm_names?: string | null;
-  linguist_names?: string | null;
 };
 
 export async function getRequesterDashboard() {
